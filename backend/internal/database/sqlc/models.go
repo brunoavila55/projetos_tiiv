@@ -90,6 +90,13 @@ type Tarefas struct {
 	AtualizadoEm  pgtype.Timestamptz `json:"atualizado_em"`
 }
 
+type UsuarioFotos struct {
+	UsuarioID    pgtype.UUID        `json:"usuario_id"`
+	Conteudo     []byte             `json:"conteudo"`
+	Mime         string             `json:"mime"`
+	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
+}
+
 type Usuarios struct {
 	ID               pgtype.UUID        `json:"id"`
 	Nome             string             `json:"nome"`

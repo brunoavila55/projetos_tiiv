@@ -252,154 +252,122 @@
 	});
 </script>
 
-<div class="space-y-6">
-	<!-- Topo com Abas e Botão Novo Item -->
-	<div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-		<div>
-			<h1 class="text-2xl font-bold text-slate-800">Controle de Estoque</h1>
-			<p class="text-sm text-slate-500">Gestão transacional imutável baseada em movimentações e bloqueio pessimista</p>
-		</div>
+{#snippet tipoMov(valor: 'entrada' | 'saida' | 'ajuste', rotulo: string, detalhe: string, Icon: any, cor: string)}
+	<button
+		type="button"
+		onclick={() => movTipo = valor}
+		aria-pressed={movTipo === valor}
+		class="flex flex-col items-start gap-1 p-3 rounded-lg border text-left cursor-pointer transition-colors {movTipo === valor
+			? 'border-current bg-surface ring-1 ring-current ' + cor
+			: 'border-line-strong text-ink-2 hover:bg-sunken'}"
+	>
+		<Icon class="size-4" />
+		<span class="text-sm font-bold {movTipo === valor ? '' : 'text-ink'}">{rotulo}</span>
+		<span class="text-xs text-ink-3">{detalhe}</span>
+	</button>
+{/snippet}
 
-		<div class="flex items-center gap-3">
-			{#if auth.user?.papel === 'admin'}
-				<button
-					onclick={abrirCriarItem}
-					class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition active:scale-95 cursor-pointer"
-				>
-					<Plus class="w-4 h-4" />
-					<span>Novo Item</span>
-				</button>
-			{/if}
+<div class="space-y-6">
+	<div class="page-head">
+		<div>
+			<h1 class="page-title">Estoque</h1>
+			<p class="page-sub">Saldos calculados a partir de cada entrada, saída e ajuste registrados.</p>
 		</div>
+		{#if auth.user?.papel === 'admin'}
+			<button onclick={abrirCriarItem} class="btn btn-primary">
+				<Plus class="size-4" />
+				<span>Cadastrar item</span>
+			</button>
+		{/if}
 	</div>
 
-	<!-- Barra de Navegação de Abas -->
-	<div class="flex items-center bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs max-w-sm">
-		<button
-			onclick={() => abaAtiva = 'itens'}
-			class="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition cursor-pointer {abaAtiva === 'itens' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-800'}"
-		>
-			<Boxes class="w-4 h-4" />
-			<span>Itens e Saldos</span>
+	<div class="segmented" role="group" aria-label="Seção">
+		<button aria-pressed={abaAtiva === 'itens'} onclick={() => abaAtiva = 'itens'}>
+			<Boxes class="size-4" />
+			<span>Itens e saldos</span>
 		</button>
-		<button
-			onclick={() => abaAtiva = 'historico'}
-			class="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition cursor-pointer {abaAtiva === 'historico' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-800'}"
-		>
-			<History class="w-4 h-4" />
+		<button aria-pressed={abaAtiva === 'historico'} onclick={() => abaAtiva = 'historico'}>
+			<History class="size-4" />
 			<span>Movimentações</span>
 		</button>
 	</div>
 
 	{#if abaAtiva === 'itens'}
-		<!-- Filtros de Itens -->
-		<div class="flex flex-col sm:flex-row items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-			<div class="relative flex-1 w-full">
-				<Search class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+		<div class="flex flex-col sm:flex-row gap-3">
+			<div class="relative flex-1">
+				<Search class="size-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
 				<input
-					type="text"
+					type="search"
 					bind:value={buscaItens}
 					oninput={carregarItens}
-					placeholder="Buscar item de estoque por nome ou categoria..."
-					class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-sm focus:outline-blue-500 bg-slate-50/50"
+					placeholder="Buscar por nome ou categoria"
+					class="field pl-9"
+					aria-label="Buscar itens"
 				/>
 			</div>
-
-			<div class="w-full sm:w-auto">
-				<select
-					bind:value={categoriaSelecionada}
-					onchange={carregarItens}
-					class="w-full sm:w-48 px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:outline-blue-500 bg-white"
-				>
-					<option value="">Todas as categorias</option>
-					{#each categorias as cat}
-						<option value={cat}>{cat}</option>
-					{/each}
-				</select>
-			</div>
+			<select bind:value={categoriaSelecionada} onchange={carregarItens} class="field sm:w-56" aria-label="Categoria">
+				<option value="">Todas as categorias</option>
+				{#each categorias as cat}
+					<option value={cat}>{cat}</option>
+				{/each}
+			</select>
 		</div>
 
-		<!-- Tabela de Itens de Estoque -->
 		{#if loading}
-			<div class="flex justify-center py-20">
-				<div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-			</div>
+			<div class="flex justify-center py-20"><div class="spinner"></div></div>
 		{:else if itens.length === 0}
-			<div class="bg-white rounded-2xl border border-slate-200 p-12 text-center max-w-md mx-auto shadow-xs">
-				<Package class="w-12 h-12 text-slate-300 mx-auto mb-3" />
-				<h3 class="text-base font-bold text-slate-800">Nenhum item encontrado</h3>
-				<p class="text-xs text-slate-500 mt-1">Cadastre novos materiais ou redefina os filtros de busca.</p>
+			<div class="panel empty">
+				<Package class="size-9 text-ink-3" strokeWidth={1.5} />
+				<h3 class="empty-title">Nenhum item encontrado</h3>
+				<p class="empty-text">Ajuste a busca ou cadastre um novo material.</p>
 			</div>
 		{:else}
-			<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+			<div class="panel overflow-hidden">
 				<div class="overflow-x-auto">
-					<table class="w-full text-left border-collapse text-sm">
+					<table class="data-table">
 						<thead>
-							<tr class="bg-slate-50/75 border-b border-slate-200 text-slate-600 font-semibold">
-								<th class="py-3 px-4">Material</th>
-								<th class="py-3 px-4">Categoria</th>
-								<th class="py-3 px-4">Estoque Mínimo</th>
-								<th class="py-3 px-4">Saldo Atual</th>
-								<th class="py-3 px-4 text-right">Ações</th>
+							<tr>
+								<th>Material</th>
+								<th>Categoria</th>
+								<th class="text-right">Saldo</th>
+								<th class="text-right">Mínimo</th>
+								<th class="text-right"><span class="sr-only">Ações</span></th>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-slate-100">
+						<tbody>
 							{#each itens as it (it.id)}
-								<tr class="hover:bg-slate-50/50 transition {it.abaixo_do_minimo ? 'bg-amber-50/20' : ''}">
-									<td class="py-3.5 px-4 font-semibold text-slate-800">
+								<tr>
+									<td>
 										<div class="flex items-center gap-2">
-											<span>{it.nome}</span>
+											<span class="font-semibold text-ink">{it.nome}</span>
 											{#if it.abaixo_do_minimo}
-												<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 animate-pulse" title="Saldo abaixo do estoque mínimo!">
-													<AlertTriangle class="w-3 h-3" />
-													<span>Crítico</span>
+												<span class="tag tag-danger" title="Saldo abaixo do mínimo">
+													<AlertTriangle class="size-3" />
+													Baixo
 												</span>
 											{/if}
 										</div>
 									</td>
-									<td class="py-3.5 px-4 text-slate-600">
-										<span class="inline-flex px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700">
-											{it.categoria}
-										</span>
+									<td class="text-ink-2">{it.categoria || '—'}</td>
+									<td class="text-right whitespace-nowrap">
+										<span class="text-base font-bold {it.abaixo_do_minimo ? 'text-danger' : 'text-ink'}">{it.saldo}</span>
+										<span class="text-[13px] text-ink-3 ml-0.5">{it.unidade}</span>
 									</td>
-									<td class="py-3.5 px-4 text-slate-500 text-xs">
-										{it.estoque_minimo} {it.unidade}
-									</td>
-									<td class="py-3.5 px-4">
-										<span class="font-extrabold text-base {it.abaixo_do_minimo ? 'text-red-600' : 'text-slate-800'}">
-											{it.saldo}
-										</span>
-										<span class="text-xs text-slate-500 ml-1">{it.unidade}</span>
-									</td>
-									<td class="py-3.5 px-4 text-right space-x-1">
-										<!-- Botão Movimentar (qualquer operador) -->
-										<button
-											onclick={() => abrirMovimentar(it)}
-											class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition"
-											title="Registrar entrada, saída ou ajuste"
-										>
-											<span>Movimentar</span>
-										</button>
-
-										<!-- Botão Histórico do Item -->
-										<button
-											onclick={() => verHistoricoItem(it)}
-											class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
-											title="Ver histórico de movimentações"
-										>
-											<History class="w-4 h-4" />
-										</button>
-
-										<!-- Botão Editar Item (Admin) -->
-										{#if auth.user?.papel === 'admin'}
-											<button
-												onclick={() => abrirEditarItem(it)}
-												class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-												title="Editar item de estoque"
-											>
-												<Edit3 class="w-4 h-4" />
+									<td class="text-right text-ink-3 whitespace-nowrap">{it.estoque_minimo} {it.unidade}</td>
+									<td class="text-right whitespace-nowrap">
+										<div class="inline-flex items-center gap-0.5">
+											<button onclick={() => abrirMovimentar(it)} class="btn btn-sm btn-soft mr-1" title="Registrar entrada, saída ou ajuste">
+												Movimentar
 											</button>
-										{/if}
+											<button onclick={() => verHistoricoItem(it)} class="icon-btn" title="Histórico do item" aria-label="Histórico do item">
+												<History class="size-4" />
+											</button>
+											{#if auth.user?.papel === 'admin'}
+												<button onclick={() => abrirEditarItem(it)} class="icon-btn" title="Editar item" aria-label="Editar item">
+													<Edit3 class="size-4" />
+												</button>
+											{/if}
+										</div>
 									</td>
 								</tr>
 							{/each}
@@ -409,142 +377,104 @@
 			</div>
 		{/if}
 	{:else}
-		<!-- Aba Histórico de Movimentações -->
-		<div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-			<div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-				<div>
-					<label class="block text-xs font-semibold text-slate-700 mb-1">Filtrar por Item</label>
-					<select
-						bind:value={histItemId}
-						onchange={carregarHistorico}
-						class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-medium focus:outline-blue-500 bg-white"
-					>
-						<option value="">Todos os itens</option>
-						{#each itens as it}
-							<option value={it.id}>{it.nome}</option>
-						{/each}
-					</select>
-				</div>
-
-				<div>
-					<label class="block text-xs font-semibold text-slate-700 mb-1">Tipo de Operação</label>
-					<select
-						bind:value={histTipo}
-						onchange={carregarHistorico}
-						class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-medium focus:outline-blue-500 bg-white"
-					>
-						<option value="">Todos os tipos</option>
-						<option value="entrada">Entradas (+)</option>
-						<option value="saida">Saídas (-)</option>
-						<option value="ajuste">Ajustes de inventário</option>
-					</select>
-				</div>
-
-				<div>
-					<label class="block text-xs font-semibold text-slate-700 mb-1">Operador</label>
-					<select
-						bind:value={histUsuarioId}
-						onchange={carregarHistorico}
-						class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-medium focus:outline-blue-500 bg-white"
-					>
-						<option value="">Todos os operadores</option>
-						{#each usuarios as u}
-							<option value={u.id}>{u.nome}</option>
-						{/each}
-					</select>
-				</div>
-
-				<div>
-					<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Ações</label>
-					<div class="flex items-center gap-2">
-						<button
-							onclick={exportarCSV}
-							class="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition cursor-pointer"
-							title="Exportar movimentações filtradas em CSV para Excel"
-						>
-							<Download class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-							<span>CSV</span>
-						</button>
-						<button
-							onclick={() => {
-								histItemId = '';
-								histTipo = '';
-								histUsuarioId = '';
-								histInicio = '';
-								histFim = '';
-								carregarHistorico();
-							}}
-							class="flex-1 py-2 px-3 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 transition cursor-pointer"
-						>
-							Limpar
-						</button>
-					</div>
-				</div>
+		<!-- Filtros do histórico -->
+		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end">
+			<div>
+				<label class="label" for="h-item">Item</label>
+				<select id="h-item" bind:value={histItemId} onchange={carregarHistorico} class="field">
+					<option value="">Todos os itens</option>
+					{#each itens as it}
+						<option value={it.id}>{it.nome}</option>
+					{/each}
+				</select>
+			</div>
+			<div>
+				<label class="label" for="h-tipo">Operação</label>
+				<select id="h-tipo" bind:value={histTipo} onchange={carregarHistorico} class="field">
+					<option value="">Todas</option>
+					<option value="entrada">Entradas</option>
+					<option value="saida">Saídas</option>
+					<option value="ajuste">Ajustes de inventário</option>
+				</select>
+			</div>
+			<div>
+				<label class="label" for="h-op">Operador</label>
+				<select id="h-op" bind:value={histUsuarioId} onchange={carregarHistorico} class="field">
+					<option value="">Todos os operadores</option>
+					{#each usuarios as u}
+						<option value={u.id}>{u.nome}</option>
+					{/each}
+				</select>
+			</div>
+			<div class="flex gap-2">
+				<button
+					onclick={() => {
+						histItemId = '';
+						histTipo = '';
+						histUsuarioId = '';
+						histInicio = '';
+						histFim = '';
+						carregarHistorico();
+					}}
+					class="btn btn-ghost h-10"
+				>
+					Limpar
+				</button>
+				<button onclick={exportarCSV} class="btn btn-secondary h-10" title="Exporta as movimentações filtradas">
+					<Download class="size-4" />
+					<span>CSV</span>
+				</button>
 			</div>
 		</div>
 
-		<!-- Tabela do Histórico Imutável -->
 		{#if loading}
-			<div class="flex justify-center py-20">
-				<div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-			</div>
+			<div class="flex justify-center py-20"><div class="spinner"></div></div>
 		{:else if movimentacoes.length === 0}
-			<div class="bg-white rounded-2xl border border-slate-200 p-12 text-center max-w-md mx-auto shadow-xs">
-				<History class="w-12 h-12 text-slate-300 mx-auto mb-3" />
-				<h3 class="text-base font-bold text-slate-800">Nenhuma movimentação registrada</h3>
-				<p class="text-xs text-slate-500 mt-1">As entradas, saídas e ajustes realizados ficarão registrados de forma imutável aqui.</p>
+			<div class="panel empty">
+				<History class="size-9 text-ink-3" strokeWidth={1.5} />
+				<h3 class="empty-title">Nenhuma movimentação</h3>
+				<p class="empty-text">Entradas, saídas e ajustes aparecem aqui assim que forem registrados. O histórico não pode ser alterado.</p>
 			</div>
 		{:else}
-			<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+			<div class="panel overflow-hidden">
 				<div class="overflow-x-auto">
-					<table class="w-full text-left border-collapse text-sm">
+					<table class="data-table">
 						<thead>
-							<tr class="bg-slate-50/75 border-b border-slate-200 text-slate-600 font-semibold">
-								<th class="py-3 px-4">Data/Hora</th>
-								<th class="py-3 px-4">Material</th>
-								<th class="py-3 px-4">Operação</th>
-								<th class="py-3 px-4">Qtd.</th>
-								<th class="py-3 px-4">Saldo Resultante</th>
-								<th class="py-3 px-4">Motivo</th>
-								<th class="py-3 px-4">Operador</th>
+							<tr>
+								<th>Quando</th>
+								<th>Material</th>
+								<th>Operação</th>
+								<th class="text-right">Qtd.</th>
+								<th class="text-right">Saldo após</th>
+								<th>Motivo</th>
+								<th>Operador</th>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-slate-100">
+						<tbody>
 							{#each movimentacoes as m (m.id)}
-								<tr class="hover:bg-slate-50/50 transition">
-									<td class="py-3.5 px-4 text-xs text-slate-500 whitespace-nowrap">
-										{new Date(m.criado_em).toLocaleString('pt-BR')}
+								<tr>
+									<td class="text-[13px] text-ink-3 whitespace-nowrap">
+										{new Date(m.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
 									</td>
-									<td class="py-3.5 px-4 font-semibold text-slate-800">
-										{m.item_nome}
-									</td>
-									<td class="py-3.5 px-4">
+									<td class="font-semibold text-ink">{m.item_nome}</td>
+									<td>
 										{#if m.tipo === 'entrada'}
-											<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-												<ArrowDownRight class="w-3.5 h-3.5" /> Entrada
-											</span>
+											<span class="tag tag-ok"><ArrowDownRight class="size-3.5" /> Entrada</span>
 										{:else if m.tipo === 'saida'}
-											<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
-												<ArrowUpRight class="w-3.5 h-3.5" /> Saída
-											</span>
+											<span class="tag tag-danger"><ArrowUpRight class="size-3.5" /> Saída</span>
 										{:else}
-											<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
-												<SlidersHorizontal class="w-3.5 h-3.5" /> Ajuste
-											</span>
+											<span class="tag tag-warn"><SlidersHorizontal class="size-3.5" /> Ajuste</span>
 										{/if}
 									</td>
-									<td class="py-3.5 px-4 font-bold text-slate-800">
-										{m.quantidade > 0 && m.tipo === 'entrada' ? `+${m.quantidade}` : m.quantidade} {m.item_unidade}
+									<td class="text-right font-semibold whitespace-nowrap {m.tipo === 'entrada' ? 'text-ok' : m.tipo === 'saida' ? 'text-danger' : 'text-ink'}">
+										{m.quantidade > 0 && m.tipo === 'entrada' ? `+${m.quantidade}` : m.quantidade}
 									</td>
-									<td class="py-3.5 px-4 font-extrabold text-blue-700">
-										{m.saldo_resultante} {m.item_unidade}
+									<td class="text-right whitespace-nowrap">
+										<span class="font-bold text-ink">{m.saldo_resultante}</span>
+										<span class="text-[13px] text-ink-3">{m.item_unidade}</span>
 									</td>
-									<td class="py-3.5 px-4 text-xs text-slate-600 max-w-xs truncate" title={m.motivo}>
-										{m.motivo || '—'}
-									</td>
-									<td class="py-3.5 px-4 text-xs font-medium text-slate-700">
-										{m.usuario_nome}
-									</td>
+									<td class="text-ink-2 max-w-xs truncate" title={m.motivo}>{m.motivo || '—'}</td>
+									<td class="text-ink-2 whitespace-nowrap">{m.usuario_nome}</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -554,188 +484,117 @@
 		{/if}
 	{/if}
 
-	<!-- Modal Registrar Movimentação (Entrada, Saída, Ajuste) -->
+	<!-- Modal movimentação -->
 	{#if modalMovimentoAberto && itemSelecionado}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-				<div class="flex items-center justify-between border-b border-slate-100 pb-3">
+		<div class="modal-backdrop">
+			<div class="modal max-w-md" role="dialog" aria-modal="true">
+				<div class="modal-head">
 					<div>
-						<span class="text-xs font-bold uppercase text-slate-400">Movimentação</span>
-						<h3 class="font-bold text-slate-800 text-lg leading-tight">{itemSelecionado.nome}</h3>
+						<h3 class="modal-title">{itemSelecionado.nome}</h3>
+						<p class="mt-0.5 text-sm text-ink-3">
+							Saldo atual: <strong class="text-ink tabular">{itemSelecionado.saldo} {itemSelecionado.unidade}</strong>
+						</p>
 					</div>
-					<button onclick={() => modalMovimentoAberto = false} class="text-slate-400 hover:text-slate-600">
-						<X class="w-5 h-5" />
+					<button onclick={() => modalMovimentoAberto = false} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<div class="p-3 bg-slate-50 rounded-xl text-xs flex items-center justify-between">
-					<span class="text-slate-500 font-medium">Saldo Atual no Estoque:</span>
-					<span class="font-bold text-sm text-slate-800">{itemSelecionado.saldo} {itemSelecionado.unidade}</span>
-				</div>
+				<div class="modal-body">
+					<div class="grid grid-cols-3 gap-2" role="group" aria-label="Tipo de movimentação">
+						{@render tipoMov('entrada', 'Entrada', 'Soma ao saldo', ArrowDownRight, 'text-ok')}
+						{@render tipoMov('saida', 'Saída', 'Tira do saldo', ArrowUpRight, 'text-danger')}
+						{@render tipoMov('ajuste', 'Ajuste', 'Define a contagem', SlidersHorizontal, 'text-warn')}
+					</div>
 
-				<!-- Seletor do Tipo de Movimento -->
-				<div class="grid grid-cols-3 gap-2">
-					<button
-						type="button"
-						onclick={() => movTipo = 'entrada'}
-						class="py-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition cursor-pointer {movTipo === 'entrada' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}"
-					>
-						<ArrowDownRight class="w-4 h-4 text-emerald-600" />
-						<span>Entrada (+)</span>
-					</button>
-					<button
-						type="button"
-						onclick={() => movTipo = 'saida'}
-						class="py-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition cursor-pointer {movTipo === 'saida' ? 'bg-red-50 border-red-500 text-red-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}"
-					>
-						<ArrowUpRight class="w-4 h-4 text-red-600" />
-						<span>Saída (-)</span>
-					</button>
-					<button
-						type="button"
-						onclick={() => movTipo = 'ajuste'}
-						class="py-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition cursor-pointer {movTipo === 'ajuste' ? 'bg-amber-50 border-amber-500 text-amber-700 shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}"
-					>
-						<SlidersHorizontal class="w-4 h-4 text-amber-600" />
-						<span>Ajuste (=)</span>
-					</button>
-				</div>
-
-				<div class="space-y-3">
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">
-							{#if movTipo === 'ajuste'}
-								Novo Saldo Contado ({itemSelecionado.unidade}) *
-							{:else}
-								Quantidade ({itemSelecionado.unidade}) *
-							{/if}
+						<label class="label" for="mov-qtd">
+							{movTipo === 'ajuste' ? 'Quantidade contada' : 'Quantidade'}
+							<span class="font-normal text-ink-3">({itemSelecionado.unidade})</span>
 						</label>
-						<input 
-							type="number" 
-							bind:value={movQtd} 
+						<input
+							id="mov-qtd"
+							type="number"
+							bind:value={movQtd}
 							min="0"
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-lg font-bold text-center focus:outline-blue-500" 
+							class="field h-12 text-xl font-bold tabular"
 						/>
 						{#if movTipo === 'ajuste'}
-							<p class="text-[11px] text-slate-400 mt-1 text-center">
-								Diferença calculada: <strong>{movQtd - itemSelecionado.saldo}</strong> {itemSelecionado.unidade}
+							<p class="hint tabular">
+								Diferença: <strong class="text-ink">{movQtd - itemSelecionado.saldo > 0 ? '+' : ''}{movQtd - itemSelecionado.saldo}</strong> {itemSelecionado.unidade}
 							</p>
 						{/if}
 					</div>
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">
-							Motivo {movTipo !== 'entrada' ? '*' : '(opcional)'}
+						<label class="label" for="mov-motivo">
+							Motivo {#if movTipo === 'entrada'}<span class="font-normal text-ink-3">(opcional)</span>{/if}
 						</label>
-						<input 
-							type="text" 
-							bind:value={movMotivo} 
-							placeholder={movTipo === 'saida' ? 'Ex: Uso na sala de reuniões / atendimento #12' : movTipo === 'ajuste' ? 'Ex: Contagem de inventário mensal' : 'Ex: Compra ou reposição de material'}
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
+						<input
+							id="mov-motivo"
+							type="text"
+							bind:value={movMotivo}
+							placeholder={movTipo === 'saida' ? 'Ex.: Usado no atendimento da recepção' : movTipo === 'ajuste' ? 'Ex.: Inventário mensal' : 'Ex.: Reposição de compra'}
+							class="field"
 						/>
 					</div>
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-					<button 
-						onclick={() => modalMovimentoAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium"
-					>
-						Cancelar
-					</button>
-					<button 
-						onclick={salvarMovimentacao}
-						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
-					>
-						Confirmar Movimentação
+				<div class="modal-foot">
+					<button onclick={() => modalMovimentoAberto = false} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarMovimentacao} class="btn btn-primary">
+						Registrar {movTipo === 'entrada' ? 'entrada' : movTipo === 'saida' ? 'saída' : 'ajuste'}
 					</button>
 				</div>
 			</div>
 		</div>
 	{/if}
 
-	<!-- Modal Criar / Editar Item de Estoque (Admin) -->
+	<!-- Modal item (admin) -->
 	{#if modalItemAberto}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-				<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-					<h3 class="font-bold text-slate-800 text-lg">
-						{formItemId ? 'Editar Item de Estoque' : 'Novo Item de Estoque'}
-					</h3>
-					<button onclick={() => modalItemAberto = false} class="text-slate-400 hover:text-slate-600">
-						<X class="w-5 h-5" />
+		<div class="modal-backdrop">
+			<div class="modal max-w-md" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<h3 class="modal-title">{formItemId ? 'Editar item' : 'Cadastrar item'}</h3>
+					<button onclick={() => modalItemAberto = false} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<div class="space-y-3">
+				<div class="modal-body">
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Nome do Material *</label>
-						<input 
-							type="text" 
-							bind:value={formItemNome} 
-							placeholder="Ex: Cabo de Rede RJ45 Cat6"
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-						/>
+						<label class="label" for="it-nome">Nome do material</label>
+						<input id="it-nome" type="text" bind:value={formItemNome} placeholder="Ex.: Cabo de rede Cat6" class="field" />
 					</div>
 
-					<div class="grid grid-cols-2 gap-3">
+					<div class="grid grid-cols-2 gap-4">
 						<div>
-							<label class="block text-xs font-semibold text-slate-700 mb-1">Unidade *</label>
-							<input 
-								type="text" 
-								bind:value={formItemUnidade} 
-								placeholder="un, cx, m, kg"
-								class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-							/>
+							<label class="label" for="it-un">Unidade</label>
+							<input id="it-un" type="text" bind:value={formItemUnidade} placeholder="un, cx, m, kg" class="field" />
 						</div>
 						<div>
-							<label class="block text-xs font-semibold text-slate-700 mb-1">Estoque Mínimo</label>
-							<input 
-								type="number" 
-								bind:value={formItemMinimo} 
-								min="0"
-								class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-							/>
+							<label class="label" for="it-min">Estoque mínimo</label>
+							<input id="it-min" type="number" bind:value={formItemMinimo} min="0" class="field tabular" />
 						</div>
 					</div>
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Categoria</label>
-						<input 
-							type="text" 
-							bind:value={formItemCategoria} 
-							placeholder="Ex: Rede, Elétrica, Papelaria..."
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-						/>
+						<label class="label" for="it-cat">Categoria</label>
+						<input id="it-cat" type="text" bind:value={formItemCategoria} placeholder="Ex.: Rede, Elétrica, Papelaria" class="field" />
 					</div>
 
 					{#if formItemId}
-						<div class="flex items-center gap-2 pt-1">
-							<input 
-								type="checkbox" 
-								id="itemAtivo" 
-								bind:checked={formItemAtivo}
-								class="w-4 h-4 rounded text-blue-600"
-							/>
-							<label for="itemAtivo" class="text-xs font-semibold text-slate-700 cursor-pointer">
-								Item Ativo para movimentações
-							</label>
-						</div>
+						<label class="flex items-center gap-2.5 text-sm text-ink cursor-pointer">
+							<input type="checkbox" bind:checked={formItemAtivo} class="check" />
+							Item ativo para movimentações
+						</label>
 					{/if}
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-					<button 
-						onclick={() => modalItemAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium"
-					>
-						Cancelar
-					</button>
-					<button 
-						onclick={salvarItem}
-						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
-					>
-						{formItemId ? 'Atualizar Item' : 'Cadastrar Item'}
+				<div class="modal-foot">
+					<button onclick={() => modalItemAberto = false} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarItem} class="btn btn-primary">
+						{formItemId ? 'Salvar alterações' : 'Cadastrar item'}
 					</button>
 				</div>
 			</div>

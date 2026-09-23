@@ -64,8 +64,12 @@ type Querier interface {
 	ListarTarefasPendentesUsuario(ctx context.Context, responsavelID pgtype.UUID) ([]ListarTarefasPendentesUsuarioRow, error)
 	ListarTodosUsuarios(ctx context.Context) ([]ListarTodosUsuariosRow, error)
 	ListarUsuariosAtivos(ctx context.Context) ([]ListarUsuariosAtivosRow, error)
+	ObterFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (ObterFotoUsuarioRow, error)
 	ObterUltimaMovimentacaoItem(ctx context.Context, itemID pgtype.UUID) (MovimentacoesEstoque, error)
+	ObterVersaoFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (pgtype.Timestamptz, error)
+	RemoverFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) error
 	RemoverParticipantesEvento(ctx context.Context, eventoID pgtype.UUID) error
+	SalvarFotoUsuario(ctx context.Context, arg SalvarFotoUsuarioParams) (pgtype.Timestamptz, error)
 	ZerarTentativasFalhas(ctx context.Context, id pgtype.UUID) error
 }
 

@@ -6,17 +6,11 @@
 		Headphones, 
 		Plus, 
 		Search, 
-		Filter, 
-		Calendar, 
-		User, 
-		Clock, 
 		Edit3, 
 		Trash2, 
 		X, 
 		ChevronLeft, 
 		ChevronRight,
-		CheckCircle2,
-		AlertCircle,
 		Download
 	} from 'lucide-svelte';
 
@@ -192,80 +186,48 @@
 </script>
 
 <div class="space-y-6">
-	<!-- Topo com Título e Botão de Ação -->
-	<div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+	<div class="page-head">
 		<div>
-			<h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Registro de Atendimentos</h1>
-			<p class="text-sm text-slate-500 dark:text-slate-400">Histórico de atendimentos do setor com busca rápida sem diferenciação de acentos</p>
+			<h1 class="page-title">Atendimentos</h1>
+			<p class="page-sub">Registro de tudo o que o setor atendeu. A busca ignora acentos.</p>
 		</div>
 
 		<div class="flex items-center gap-2">
-			<button
-				onclick={exportarCSV}
-				class="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 font-semibold text-sm shadow-xs transition active:scale-95 cursor-pointer"
-				title="Exportar atendimentos filtrados em CSV"
-			>
-				<Download class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+			<button onclick={exportarCSV} class="btn btn-secondary" title="Exporta os atendimentos filtrados">
+				<Download class="size-4" />
 				<span>Exportar CSV</span>
 			</button>
-			<button
-				onclick={abrirCriar}
-				class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition active:scale-95 cursor-pointer"
-			>
-				<Plus class="w-4 h-4" />
-				<span>Novo Atendimento</span>
+			<button onclick={abrirCriar} class="btn btn-primary">
+				<Plus class="size-4" />
+				<span>Registrar atendimento</span>
 			</button>
 		</div>
 	</div>
 
-	<!-- Barra de Busca e Filtros -->
-	<div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-3">
-		<div class="flex flex-col sm:flex-row items-center gap-3">
-			<div class="relative flex-1 w-full">
-				<Search class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-				<input
-					type="text"
-					bind:value={filtroBusca}
-					oninput={handleBuscaInput}
-					placeholder="Buscar por cliente ou conteúdo da descrição..."
-					class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-sm focus:outline-blue-500 bg-slate-50/50"
-				/>
-			</div>
-
-			<div class="flex items-center gap-2 w-full sm:w-auto">
-				<!-- Filtro por Usuário -->
-				<select
-					bind:value={filtroUsuario}
-					onchange={() => carregar(true)}
-					class="w-full sm:w-44 px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium focus:outline-blue-500 bg-white"
-				>
-					<option value="">Todos operadores</option>
-					{#each usuarios as u}
-						<option value={u.id}>{u.nome}</option>
-					{/each}
-				</select>
-			</div>
+	<!-- Busca e filtros -->
+	<div class="flex flex-col lg:flex-row lg:items-center gap-3">
+		<div class="relative flex-1">
+			<Search class="size-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+			<input
+				type="search"
+				bind:value={filtroBusca}
+				oninput={handleBuscaInput}
+				placeholder="Buscar por cliente ou descrição"
+				class="field pl-9"
+				aria-label="Buscar atendimentos"
+			/>
 		</div>
 
-		<div class="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100 text-xs">
-			<span class="text-slate-500 font-semibold flex items-center gap-1">
-				<Filter class="w-3.5 h-3.5" /> Período:
-			</span>
-			<div class="flex items-center gap-2">
-				<input
-					type="date"
-					bind:value={filtroInicio}
-					onchange={() => carregar(true)}
-					class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs bg-white text-slate-700 focus:outline-blue-500"
-				/>
-				<span class="text-slate-400">até</span>
-				<input
-					type="date"
-					bind:value={filtroFim}
-					onchange={() => carregar(true)}
-					class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs bg-white text-slate-700 focus:outline-blue-500"
-				/>
-			</div>
+		<div class="flex flex-wrap items-center gap-2">
+			<select bind:value={filtroUsuario} onchange={() => carregar(true)} class="field w-auto min-w-40" aria-label="Operador">
+				<option value="">Todos os operadores</option>
+				{#each usuarios as u}
+					<option value={u.id}>{u.nome}</option>
+				{/each}
+			</select>
+			<input type="date" bind:value={filtroInicio} onchange={() => carregar(true)} class="field w-auto" aria-label="De" />
+			<span class="text-sm text-ink-3">até</span>
+			<input type="date" bind:value={filtroFim} onchange={() => carregar(true)} class="field w-auto" aria-label="Até" />
 			{#if filtroBusca || filtroUsuario || filtroInicio || filtroFim}
 				<button
 					onclick={() => {
@@ -275,7 +237,7 @@
 						filtroFim = '';
 						carregar(true);
 					}}
-					class="text-blue-600 hover:text-blue-800 font-semibold ml-auto"
+					class="btn btn-ghost"
 				>
 					Limpar filtros
 				</button>
@@ -283,215 +245,176 @@
 		</div>
 	</div>
 
-	<!-- Lista de Atendimentos -->
+	<!-- Lista -->
 	{#if loading}
-		<div class="flex justify-center py-20">
-			<div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-		</div>
+		<div class="flex justify-center py-20"><div class="spinner"></div></div>
 	{:else if atendimentos.length === 0}
-		<div class="bg-white rounded-2xl border border-slate-200 p-12 text-center max-w-md mx-auto shadow-xs">
-			<Headphones class="w-12 h-12 text-slate-300 mx-auto mb-3" />
-			<h3 class="text-base font-bold text-slate-800">Nenhum atendimento encontrado</h3>
-			<p class="text-xs text-slate-500 mt-1">Ajuste os filtros de busca ou cadastre o primeiro atendimento.</p>
+		<div class="panel empty">
+			<Headphones class="size-9 text-ink-3" strokeWidth={1.5} />
+			<h3 class="empty-title">Nenhum atendimento encontrado</h3>
+			<p class="empty-text">Ajuste a busca ou registre um novo atendimento.</p>
+			<button onclick={abrirCriar} class="btn btn-secondary mt-5">
+				<Plus class="size-4" />
+				<span>Registrar atendimento</span>
+			</button>
 		</div>
 	{:else}
-		<div class="bg-white rounded-2xl border border-slate-200 shadow-xs divide-y divide-slate-100 overflow-hidden">
+		<ul class="panel divide-y divide-line overflow-hidden">
 			{#each atendimentos as a (a.id)}
-				<div 
-					class="p-4 sm:p-5 hover:bg-slate-50/70 transition flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer"
+				<li
+					class="group flex items-start gap-4 px-4 sm:px-5 py-4 hover:bg-sunken transition-colors cursor-pointer"
 					onclick={() => abrirDetalhes(a)}
 				>
-					<div class="space-y-1.5 flex-1 min-w-0">
-						<div class="flex items-center gap-2.5 flex-wrap">
-							<span class="font-bold text-slate-800 text-base">{a.cliente_nome}</span>
-							<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-								<span class="w-2 h-2 rounded-full" style="background-color: {a.usuario_cor};"></span>
-								<span>{a.usuario_nome}</span>
+					<time class="hidden sm:block w-20 shrink-0 pt-0.5 text-[13px] leading-tight text-ink-3">
+						<span class="block font-semibold text-ink-2">{new Date(a.data_atendimento).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
+						{new Date(a.data_atendimento).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+					</time>
+
+					<div class="flex-1 min-w-0">
+						<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+							<span class="font-bold text-ink text-[15px]">{a.cliente_nome}</span>
+							<span class="inline-flex items-center gap-1.5 text-[13px] text-ink-3">
+								<span class="dot size-2" style="background-color: {a.usuario_cor};"></span>
+								{a.usuario_nome}
 							</span>
-							<span class="text-xs text-slate-400 flex items-center gap-1">
-								<Clock class="w-3.5 h-3.5" />
-								<span>{new Date(a.data_atendimento).toLocaleString('pt-BR')}</span>
-							</span>
+							<time class="sm:hidden text-[13px] text-ink-3">{new Date(a.data_atendimento).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</time>
 						</div>
-						<p class="text-sm text-slate-600 line-clamp-2">{a.descricao}</p>
+						<p class="mt-1 text-sm text-ink-2 line-clamp-2 max-w-[75ch]">{a.descricao}</p>
 					</div>
 
 					{#if a.pode_editar}
-						<div class="flex items-center gap-1 sm:self-center" onclick={(e) => e.stopPropagation()}>
-							<button
-								onclick={() => abrirEditar(a)}
-								class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-								title="Editar atendimento"
-							>
-								<Edit3 class="w-4 h-4" />
+						<div class="flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity" onclick={(e) => e.stopPropagation()}>
+							<button onclick={() => abrirEditar(a)} class="icon-btn" title="Editar" aria-label="Editar atendimento">
+								<Edit3 class="size-4" />
 							</button>
-							<button
-								onclick={() => excluirAtendimento(a.id)}
-								class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-								title="Excluir atendimento"
-							>
-								<Trash2 class="w-4 h-4" />
+							<button onclick={() => excluirAtendimento(a.id)} class="icon-btn icon-btn-danger" title="Excluir" aria-label="Excluir atendimento">
+								<Trash2 class="size-4" />
 							</button>
 						</div>
 					{/if}
-				</div>
+				</li>
 			{/each}
-		</div>
+		</ul>
 
 		<!-- Paginação -->
-		<div class="flex items-center justify-between text-xs text-slate-500 px-2">
-			<span>Total de {totalRegistros} atendimento(s)</span>
-			<div class="flex items-center gap-2">
+		<div class="flex items-center justify-between text-[13px] text-ink-3">
+			<span class="tabular">{totalRegistros} {totalRegistros === 1 ? 'atendimento' : 'atendimentos'}</span>
+			<div class="flex items-center gap-1">
 				<button
 					disabled={paginaAtual <= 1}
 					onclick={() => { paginaAtual--; carregar(); }}
-					class="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+					class="icon-btn disabled:opacity-30 disabled:pointer-events-none"
+					aria-label="Página anterior"
 				>
-					<ChevronLeft class="w-4 h-4" />
+					<ChevronLeft class="size-4" />
 				</button>
-				<span class="font-semibold">Página {paginaAtual} de {totalPaginas}</span>
+				<span class="px-2 font-semibold text-ink-2 tabular">{paginaAtual} de {totalPaginas}</span>
 				<button
 					disabled={paginaAtual >= totalPaginas}
 					onclick={() => { paginaAtual++; carregar(); }}
-					class="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+					class="icon-btn disabled:opacity-30 disabled:pointer-events-none"
+					aria-label="Próxima página"
 				>
-					<ChevronRight class="w-4 h-4" />
+					<ChevronRight class="size-4" />
 				</button>
 			</div>
 		</div>
 	{/if}
 
-	<!-- Modal Registrar / Editar Atendimento -->
+	<!-- Modal registrar / editar -->
 	{#if modalAberto}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-				<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-					<h3 class="font-bold text-slate-800 text-lg">
-						{formId ? 'Editar Atendimento' : 'Novo Atendimento'}
-					</h3>
-					<button onclick={() => modalAberto = false} class="text-slate-400 hover:text-slate-600">
-						<X class="w-5 h-5" />
+		<div class="modal-backdrop">
+			<div class="modal max-w-lg" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<h3 class="modal-title">{formId ? 'Editar atendimento' : 'Registrar atendimento'}</h3>
+					<button onclick={() => modalAberto = false} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<div class="space-y-3.5">
+				<div class="modal-body">
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Nome do Cliente *</label>
-						<input 
-							type="text" 
-							bind:value={formCliente} 
-							placeholder="Ex: João da Silva / Secretaria de Saúde"
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
+						<label class="label" for="at-cliente">Cliente</label>
+						<input
+							id="at-cliente"
+							type="text"
+							bind:value={formCliente}
+							placeholder="Pessoa ou órgão atendido"
+							class="field"
 							autofocus
 						/>
 					</div>
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Data e Hora do Atendimento</label>
-						<input 
-							type="datetime-local" 
-							bind:value={formData}
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-						/>
+						<label class="label" for="at-data">Data e hora</label>
+						<input id="at-data" type="datetime-local" bind:value={formData} class="field" />
 					</div>
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">O que foi feito? *</label>
-						<textarea 
+						<label class="label" for="at-desc">O que foi feito</label>
+						<textarea
+							id="at-desc"
 							bind:value={formDescricao}
-							rows="4"
-							placeholder="Descreva detalhadamente o serviço ou suporte prestado..."
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500"
+							rows="5"
+							placeholder="Descreva o serviço ou suporte prestado"
+							class="field"
 						></textarea>
 					</div>
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-					<button 
-						onclick={() => modalAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium"
-					>
-						Cancelar
-					</button>
-					<button 
-						onclick={salvarAtendimento}
-						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
-					>
-						{formId ? 'Salvar Alterações' : 'Registrar Atendimento'}
+				<div class="modal-foot">
+					<button onclick={() => modalAberto = false} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarAtendimento} class="btn btn-primary">
+						{formId ? 'Salvar alterações' : 'Registrar'}
 					</button>
 				</div>
 			</div>
 		</div>
 	{/if}
 
-	<!-- Modal Detalhes do Atendimento -->
+	<!-- Modal detalhes -->
 	{#if modalDetalhesAberto && atendimentoSelecionado}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-				<div class="flex items-start justify-between">
-					<div>
-						<span class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Cliente</span>
-						<h3 class="font-bold text-slate-800 text-xl leading-snug">{atendimentoSelecionado.cliente_nome}</h3>
+		<div class="modal-backdrop">
+			<div class="modal max-w-lg" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<div class="min-w-0">
+						<h3 class="modal-title">{atendimentoSelecionado.cliente_nome}</h3>
+						<p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-3">
+							<span class="inline-flex items-center gap-1.5">
+								<span class="dot size-2" style="background-color: {atendimentoSelecionado.usuario_cor};"></span>
+								{atendimentoSelecionado.usuario_nome}
+							</span>
+							<time class="tabular">{new Date(atendimentoSelecionado.data_atendimento).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' })}</time>
+						</p>
 					</div>
-					<button onclick={() => modalDetalhesAberto = false} class="text-slate-400 hover:text-slate-600">
-						<X class="w-5 h-5" />
+					<button onclick={() => modalDetalhesAberto = false} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<div class="space-y-3 text-sm text-slate-600 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-					<div>
-						<span class="text-xs font-semibold text-slate-400">Atendido por:</span>
-						<div class="flex items-center gap-2 mt-0.5 font-medium text-slate-800">
-							<span class="w-2.5 h-2.5 rounded-full" style="background-color: {atendimentoSelecionado.usuario_cor};"></span>
-							<span>{atendimentoSelecionado.usuario_nome}</span>
-						</div>
-					</div>
-
-					<div>
-						<span class="text-xs font-semibold text-slate-400">Data e Horário:</span>
-						<div class="text-slate-800 font-medium mt-0.5">
-							{new Date(atendimentoSelecionado.data_atendimento).toLocaleString('pt-BR')}
-						</div>
-					</div>
-
-					<div>
-						<span class="text-xs font-semibold text-slate-400">Descrição do que foi realizado:</span>
-						<div class="mt-1 text-slate-800 whitespace-pre-wrap leading-relaxed">
-							{atendimentoSelecionado.descricao}
-						</div>
-					</div>
+				<div class="modal-body">
+					<p class="text-[15px] text-ink whitespace-pre-wrap leading-relaxed">{atendimentoSelecionado.descricao}</p>
 
 					{#if atendimentoSelecionado.atualizado_em !== atendimentoSelecionado.criado_em}
-						<div class="text-[11px] text-slate-400 pt-2 border-t border-slate-200">
-							Editado em: {new Date(atendimentoSelecionado.atualizado_em).toLocaleString('pt-BR')}
-						</div>
+						<p class="text-xs text-ink-3">
+							Editado em {new Date(atendimentoSelecionado.atualizado_em).toLocaleString('pt-BR')}
+						</p>
 					{/if}
 				</div>
 
-				<div class="flex items-center justify-between pt-2 border-t border-slate-100">
+				<div class="modal-foot">
 					{#if atendimentoSelecionado.pode_editar}
-						<button 
-							onclick={() => excluirAtendimento(atendimentoSelecionado!.id)}
-							class="flex items-center gap-1.5 px-3 py-2 text-xs text-red-600 hover:bg-red-50 rounded-xl font-medium"
-						>
-							<Trash2 class="w-4 h-4" />
+						<button onclick={() => excluirAtendimento(atendimentoSelecionado!.id)} class="btn btn-danger mr-auto">
+							<Trash2 class="size-4" />
 							<span>Excluir</span>
 						</button>
-						<button 
-							onclick={() => abrirEditar(atendimentoSelecionado!)}
-							class="flex items-center gap-1.5 px-4 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
-						>
-							<Edit3 class="w-4 h-4" />
+						<button onclick={() => abrirEditar(atendimentoSelecionado!)} class="btn btn-primary">
+							<Edit3 class="size-4" />
 							<span>Editar</span>
 						</button>
 					{:else}
-						<div class="text-xs text-slate-400 italic">Visualização apenas</div>
-						<button 
-							onclick={() => modalDetalhesAberto = false}
-							class="px-4 py-2 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold ml-auto"
-						>
-							Fechar
-						</button>
+						<span class="mr-auto text-[13px] text-ink-3">Só quem registrou ou um administrador pode editar.</span>
+						<button onclick={() => modalDetalhesAberto = false} class="btn btn-secondary">Fechar</button>
 					{/if}
 				</div>
 			</div>

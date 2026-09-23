@@ -5,14 +5,12 @@
 	import { Calendar, TimeGrid, DayGrid, Interaction, List } from '@event-calendar/core';
 	import { 
 		Plus, 
-		Calendar as CalendarIcon, 
 		Clock, 
 		Users, 
 		X, 
 		Trash2, 
 		Edit3, 
 		Check,
-		Filter,
 		Repeat
 	} from 'lucide-svelte';
 
@@ -68,8 +66,13 @@
 			month: 'Mês',
 			week: 'Semana',
 			day: 'Dia',
-			list: 'Lista'
+			list: 'Lista',
+			dayGridMonth: 'Mês',
+			timeGridWeek: 'Semana',
+			timeGridDay: 'Dia',
+			listWeek: 'Lista'
 		},
+		allDayContent: 'Dia todo',
 		locale: 'pt-br',
 		firstDay: 0 as const,
 		slotMinTime: '06:00:00',
@@ -103,12 +106,12 @@
 
 			options.events = res.map(e => ({
 				id: e.id,
-				title: e.recorrencia && e.recorrencia !== 'nenhuma' ? `🔄 ${e.titulo}` : e.titulo,
+				title: e.recorrencia && e.recorrencia !== 'nenhuma' ? `↻ ${e.titulo}` : e.titulo,
 				start: e.inicio,
 				end: e.fim,
 				allDay: e.dia_inteiro,
-				backgroundColor: e.criador_cor || '#2563EB',
-				borderColor: e.criador_cor || '#2563EB',
+				backgroundColor: e.criador_cor || '#1f5c5a',
+				borderColor: e.criador_cor || '#1f5c5a',
 				editable: e.pode_editar,
 				extendedProps: {
 					descricao: e.descricao,
@@ -281,168 +284,110 @@
 </script>
 
 <div class="space-y-6">
-	<!-- Topo com Filtros e Novo Evento -->
-	<div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+	<div class="page-head">
 		<div>
-			<h1 class="text-2xl font-bold text-slate-800">Calendário de Reuniões</h1>
-			<p class="text-sm text-slate-500">Agende compromissos entre operadores com sincronização em tempo real</p>
+			<h1 class="page-title">Calendário</h1>
+			<p class="page-sub">Reuniões e compromissos da equipe. Arraste um evento para mudar o horário.</p>
 		</div>
 
-		<div class="flex items-center gap-3">
-			<!-- Filtro Meus Eventos / Todos -->
-			<div class="flex items-center bg-slate-200/70 p-1 rounded-xl text-xs font-semibold">
-				<button
-					onclick={() => filtroMeus = false}
-					class="px-3 py-1.5 rounded-lg transition {!filtroMeus ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-700'}"
-				>
-					Todos os eventos
-				</button>
-				<button
-					onclick={() => filtroMeus = true}
-					class="px-3 py-1.5 rounded-lg transition {filtroMeus ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-700'}"
-				>
-					Meus eventos
-				</button>
+		<div class="flex items-center gap-2">
+			<div class="segmented" role="group" aria-label="Filtro">
+				<button aria-pressed={!filtroMeus} onclick={() => filtroMeus = false}>Todos</button>
+				<button aria-pressed={filtroMeus} onclick={() => filtroMeus = true}>Os meus</button>
 			</div>
-
-			<button
-				onclick={abrirCriarManual}
-				class="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition active:scale-95 cursor-pointer"
-			>
-				<Plus class="w-4 h-4" />
-				<span class="hidden sm:inline">Novo Evento</span>
+			<button onclick={abrirCriarManual} class="btn btn-primary">
+				<Plus class="size-4" />
+				<span class="hidden sm:inline">Novo evento</span>
 			</button>
 		</div>
 	</div>
 
-	<!-- Container do Calendário -->
-	<div class="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-xs relative">
+	<div class="panel relative p-3 sm:p-5">
 		{#if loading}
-			<div class="absolute inset-0 bg-white/70 backdrop-blur-xs flex items-center justify-center z-10 rounded-2xl">
-				<div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-			</div>
+			<div class="absolute top-5 right-5 z-10"><div class="spinner size-5"></div></div>
 		{/if}
-
 		<div class="ec-theme-custom overflow-x-auto min-h-[600px]">
 			<Calendar {plugins} {options} />
 		</div>
 	</div>
 
-	<!-- Modal Criar / Editar Evento -->
+	<!-- Modal criar / editar -->
 	{#if modalAberto}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-				<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-					<h3 class="font-bold text-slate-800 text-lg">
-						{formId ? 'Editar Evento' : 'Novo Evento'}
-					</h3>
-					<button onclick={() => modalAberto = false} class="text-slate-400 hover:text-slate-600">
-						<X class="w-5 h-5" />
+		<div class="modal-backdrop">
+			<div class="modal max-w-lg" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<h3 class="modal-title">{formId ? 'Editar evento' : 'Novo evento'}</h3>
+					<button onclick={() => modalAberto = false} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<div class="space-y-3">
+				<div class="modal-body">
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Título do Evento</label>
-						<input 
-							type="text" 
-							bind:value={formTitulo} 
-							placeholder="Ex: Alinhamento de estoque ou treinamento"
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-						/>
+						<label class="label" for="ev-titulo">Título</label>
+						<input id="ev-titulo" type="text" bind:value={formTitulo} placeholder="Ex.: Reunião de planejamento" class="field" autofocus />
 					</div>
 
-					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div>
-							<label class="block text-xs font-semibold text-slate-700 mb-1">Início</label>
-							<input 
-								type="datetime-local" 
-								bind:value={formInicio}
-								class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-							/>
+							<label class="label" for="ev-inicio">Início</label>
+							<input id="ev-inicio" type="datetime-local" bind:value={formInicio} class="field" />
 						</div>
 						<div>
-							<label class="block text-xs font-semibold text-slate-700 mb-1">Término</label>
-							<input 
-								type="datetime-local" 
-								bind:value={formFim}
-								class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-							/>
+							<label class="label" for="ev-fim">Término</label>
+							<input id="ev-fim" type="datetime-local" bind:value={formFim} class="field" />
 						</div>
 					</div>
 
-					<div class="flex items-center gap-2 pt-1">
-						<input 
-							type="checkbox" 
-							id="diaInteiro" 
-							bind:checked={formDiaInteiro}
-							class="w-4 h-4 rounded text-blue-600"
-						/>
-						<label for="diaInteiro" class="text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
-							Evento de dia inteiro
-						</label>
-					</div>
+					<label class="flex items-center gap-2.5 text-sm text-ink cursor-pointer">
+						<input type="checkbox" bind:checked={formDiaInteiro} class="check" />
+						Dia inteiro
+					</label>
 
-					<!-- Recorrência -->
-					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div>
-							<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Repetição</label>
-							<select
-								bind:value={formRecorrencia}
-								class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-blue-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-							>
+							<label class="label" for="ev-rep">Repetição</label>
+							<select id="ev-rep" bind:value={formRecorrencia} class="field">
 								<option value="nenhuma">Não se repete</option>
-								<option value="semanal">Semanalmente (a cada 7 dias)</option>
-								<option value="mensal">Mensalmente (mesmo dia do mês)</option>
+								<option value="semanal">Toda semana</option>
+								<option value="mensal">Todo mês, no mesmo dia</option>
 							</select>
 						</div>
-
 						{#if formRecorrencia !== 'nenhuma'}
 							<div>
-								<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Repetir até (opcional)</label>
-								<input
-									type="date"
-									bind:value={formRecorrenciaFim}
-									class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-blue-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-								/>
+								<label class="label" for="ev-ate">Repetir até <span class="font-normal text-ink-3">(opcional)</span></label>
+								<input id="ev-ate" type="date" bind:value={formRecorrenciaFim} class="field" />
 							</div>
 						{/if}
 					</div>
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Descrição (opcional)</label>
-						<textarea 
-							bind:value={formDescricao}
-							rows="2"
-							placeholder="Pauta da reunião ou observações adicionais..."
-							class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-blue-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-						></textarea>
+						<label class="label" for="ev-desc">Descrição <span class="font-normal text-ink-3">(opcional)</span></label>
+						<textarea id="ev-desc" bind:value={formDescricao} rows="2" placeholder="Pauta, local, link" class="field"></textarea>
 					</div>
 
-					<!-- Seleção de Participantes -->
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-							Participantes (Operadores do setor)
-						</label>
-						<div class="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-1">
+						<span class="label">Participantes</span>
+						<div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
 							{#each usuarios as u (u.id)}
 								{@const selecionado = formParticipantes.includes(u.id)}
 								{@const ehCriador = u.id === auth.user?.id}
 								<button
 									type="button"
 									onclick={() => alternarParticipante(u.id)}
-									class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer {selecionado ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-400 text-blue-800 dark:text-blue-300' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}"
+									aria-pressed={selecionado}
+									class="inline-flex items-center gap-2 h-8 pl-2.5 pr-3 rounded-full text-[13px] font-semibold border cursor-pointer transition-colors {selecionado
+										? 'bg-accent-soft border-accent/40 text-ink'
+										: 'bg-surface border-line-strong text-ink-2 hover:bg-sunken'}"
 								>
-									<span 
-										class="w-2.5 h-2.5 rounded-full" 
-										style="background-color: {u.cor || '#2563EB'};"
-									></span>
+									{#if selecionado}
+										<Check class="size-3.5 text-accent" strokeWidth={3} />
+									{:else}
+										<span class="dot" style="background-color: {u.cor || '#1f5c5a'};"></span>
+									{/if}
 									<span>{u.nome}</span>
 									{#if ehCriador}
-										<span class="text-[10px] text-blue-600 dark:text-blue-400 font-bold">(Você)</span>
-									{/if}
-									{#if selecionado}
-										<Check class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+										<span class="font-normal text-ink-3">você</span>
 									{/if}
 								</button>
 							{/each}
@@ -450,108 +395,83 @@
 					</div>
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-					<button 
-						onclick={() => modalAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium cursor-pointer"
-					>
-						Cancelar
-					</button>
-					<button 
-						onclick={salvarEvento}
-						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs cursor-pointer"
-					>
-						{formId ? 'Atualizar Evento' : 'Salvar Evento'}
+				<div class="modal-foot">
+					<button onclick={() => modalAberto = false} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarEvento} class="btn btn-primary">
+						{formId ? 'Salvar alterações' : 'Criar evento'}
 					</button>
 				</div>
 			</div>
 		</div>
 	{/if}
 
-	<!-- Modal Detalhes do Evento -->
+	<!-- Modal detalhes -->
 	{#if modalDetalhesAberto && eventoSelecionado}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-slate-800 dark:text-slate-100">
-				<div class="flex items-start justify-between">
-					<div class="flex items-center gap-2">
-						<span 
-							class="w-4 h-4 rounded-full mt-0.5" 
-							style="background-color: {eventoSelecionado.criador_cor};"
-						></span>
-						<h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg leading-snug">{eventoSelecionado.titulo}</h3>
+		<div class="modal-backdrop">
+			<div class="modal max-w-md" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<div class="flex gap-3 min-w-0">
+						<span class="w-1 self-stretch rounded-full shrink-0" style="background-color: {eventoSelecionado.criador_cor};"></span>
+						<div class="min-w-0">
+							<h3 class="modal-title">{eventoSelecionado.titulo}</h3>
+							<p class="mt-1 flex items-center gap-1.5 text-sm text-ink-2 tabular">
+								<Clock class="size-4 text-ink-3" />
+								{#if eventoSelecionado.dia_inteiro}
+									{new Date(eventoSelecionado.inicio).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}, dia inteiro
+								{:else}
+									{new Date(eventoSelecionado.inicio).toLocaleString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+									até {new Date(eventoSelecionado.fim).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+								{/if}
+							</p>
+							{#if eventoSelecionado.recorrencia && eventoSelecionado.recorrencia !== 'nenhuma'}
+								<p class="mt-1 flex items-center gap-1.5 text-sm text-ink-2">
+									<Repeat class="size-4 text-ink-3" />
+									{eventoSelecionado.recorrencia === 'semanal' ? 'Repete toda semana' : 'Repete todo mês'}
+								</p>
+							{/if}
+						</div>
 					</div>
-					<button onclick={() => modalDetalhesAberto = false} class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer">
-						<X class="w-5 h-5" />
+					<button onclick={() => modalDetalhesAberto = false} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<div class="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-					<div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-						<Clock class="w-4 h-4" />
-						<span>
-							{new Date(eventoSelecionado.inicio).toLocaleString('pt-BR')} até {new Date(eventoSelecionado.fim).toLocaleTimeString('pt-BR')}
-						</span>
-					</div>
-
-					{#if eventoSelecionado.recorrencia && eventoSelecionado.recorrencia !== 'nenhuma'}
-						<div class="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1.5 rounded-lg border border-blue-100 dark:border-blue-900/50">
-							<Repeat class="w-3.5 h-3.5" />
-							<span>Evento recorrente ({eventoSelecionado.recorrencia === 'semanal' ? 'Semanal' : 'Mensal'})</span>
-						</div>
-					{/if}
-
+				<div class="modal-body">
 					{#if eventoSelecionado.descricao}
-						<div class="p-3 bg-slate-50 rounded-xl text-slate-700 text-xs border border-slate-100 whitespace-pre-wrap">
-							{eventoSelecionado.descricao}
-						</div>
+						<p class="text-[15px] text-ink whitespace-pre-wrap leading-relaxed">{eventoSelecionado.descricao}</p>
 					{/if}
 
 					<div>
-						<div class="text-xs font-semibold text-slate-500 mb-1 flex items-center gap-1.5">
-							<Users class="w-3.5 h-3.5" />
-							<span>Participantes ({eventoSelecionado.participantes.length}):</span>
-						</div>
+						<h4 class="flex items-center gap-1.5 text-[13px] font-semibold text-ink-3 mb-2">
+							<Users class="size-4" />
+							{eventoSelecionado.participantes.length} {eventoSelecionado.participantes.length === 1 ? 'participante' : 'participantes'}
+						</h4>
 						<div class="flex flex-wrap gap-1.5">
 							{#each eventoSelecionado.participantes as p}
-								<span 
-									class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-700"
-								>
-									<span class="w-2 h-2 rounded-full" style="background-color: {p.cor};"></span>
-									<span>{p.nome}</span>
+								<span class="tag h-7 px-2.5 text-[13px]">
+									<span class="dot size-2" style="background-color: {p.cor};"></span>
+									{p.nome}
 								</span>
 							{/each}
 						</div>
 					</div>
 
-					<div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100">
-						Criado por: <strong>{eventoSelecionado.criador_nome}</strong>
-					</div>
+					<p class="text-[13px] text-ink-3">Criado por {eventoSelecionado.criador_nome}</p>
 				</div>
 
-				<div class="flex items-center justify-between pt-3 border-t border-slate-100">
+				<div class="modal-foot">
 					{#if eventoSelecionado.pode_editar}
-						<button 
-							onclick={excluirEvento}
-							class="flex items-center gap-1.5 px-3 py-2 text-xs text-red-600 hover:bg-red-50 rounded-xl font-medium"
-						>
-							<Trash2 class="w-4 h-4" />
+						<button onclick={excluirEvento} class="btn btn-danger mr-auto">
+							<Trash2 class="size-4" />
 							<span>Excluir</span>
 						</button>
-						<button 
-							onclick={editarEventoSelecionado}
-							class="flex items-center gap-1.5 px-4 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
-						>
-							<Edit3 class="w-4 h-4" />
+						<button onclick={editarEventoSelecionado} class="btn btn-primary">
+							<Edit3 class="size-4" />
 							<span>Editar</span>
 						</button>
 					{:else}
-						<div class="text-xs text-slate-400 italic">Visualização apenas (você não é o criador nem admin)</div>
-						<button 
-							onclick={() => modalDetalhesAberto = false}
-							class="px-4 py-2 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold"
-						>
-							Fechar
-						</button>
+						<span class="mr-auto text-[13px] text-ink-3">Só o criador ou um administrador pode editar.</span>
+						<button onclick={() => modalDetalhesAberto = false} class="btn btn-secondary">Fechar</button>
 					{/if}
 				</div>
 			</div>

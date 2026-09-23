@@ -7,7 +7,8 @@ export default defineConfig({
 	server: {
 		proxy: {
 			'/api': {
-				target: 'http://localhost:8080',
+				// API_TARGET permite apontar para outro backend (ex.: um `go run` local)
+				target: process.env.API_TARGET ?? 'http://localhost:8080',
 				changeOrigin: true
 			}
 		}

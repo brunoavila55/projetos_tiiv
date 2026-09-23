@@ -814,3 +814,112 @@ func TestEventos_Recurrence(t *testing.T) {
 		t.Errorf("esperava pelo menos 3 ocorrências expandidas do evento semanal, encontrou %d", ocorrencias)
 	}
 }
+
+// -------------------------------------------------------------
+// Fotos de perfil: envio, validação de tipo, leitura pública e remoção
+// -------------------------------------------------------------
+func TestUsuarios_Foto(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	if err != nil || len(users) == 0 {
+		t.Fatalf("usuários não encontrados: %v", err)
+	}
+	var adminID string
+	for _, u := range users {
+		if u.Papel == "admin" && u.Ativo {
+			adminID = database.UUIDToString(u.ID)
+			break
+		}
+	}
+	adminCookie, status, _ := env.login(t, adminID, env.cfg.AdminPIN)
+	if status != http.StatusOK {
+		t.Fatalf("falha ao logar como admin: status %d", status)
+	}
+
+	enviar := func(conteudo []byte, cookie *http.Cookie) (*http.Response, map[string]any) {
+		req, _ := http.NewRequest(http.MethodPut, env.server.URL+"/api/usuarios/"+adminID+"/foto", bytes.NewReader(conteudo))
+		req.Header.Set("Content-Type", "application/octet-stream")
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		resp, err := env.client.Do(req)
+		if err != nil {
+			t.Fatalf("erro ao enviar foto: %v", err)
+		}
+		defer resp.Body.Close()
+		var res map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&res)
+		return resp, res
+	}
+
+	// PNG 1x1 válido
+	png := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+		0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+		0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+		0x42, 0x60, 0x82,
+	}
+
+	// 1. Sem sessão não pode enviar
+	if resp, _ := enviar(png, nil); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("esperado 401 sem sessão, obteve %d", resp.StatusCode)
+	}
+
+	// 2. Conteúdo que não é imagem (ex.: SVG/HTML) é recusado
+	if resp, _ := enviar([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`), adminCookie); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("esperado 400 para conteúdo não suportado, obteve %d", resp.StatusCode)
+	}
+
+	// 3. PNG válido é aceito e devolve a versão
+	resp, res := enviar(png, adminCookie)
+	if resp.StatusCode != http.StatusOK || res["foto_versao"] == nil {
+		t.Fatalf("falha ao enviar foto: status %d, resposta %v", resp.StatusCode, res)
+	}
+
+	// 4. A lista pública informa a versão da foto
+	respLista, err := env.client.Get(env.server.URL + "/api/auth/usuarios")
+	if err != nil {
+		t.Fatalf("erro ao listar usuários: %v", err)
+	}
+	var lista []map[string]any
+	_ = json.NewDecoder(respLista.Body).Decode(&lista)
+	respLista.Body.Close()
+	encontrou := false
+	for _, u := range lista {
+		if u["id"] == adminID && u["foto_versao"] != nil {
+			encontrou = true
+		}
+	}
+	if !encontrou {
+		t.Errorf("foto_versao ausente na lista pública para o admin")
+	}
+
+	// 5. Leitura pública devolve a imagem com o tipo detectado
+	respFoto, err := env.client.Get(fmt.Sprintf("%s/api/auth/usuarios/%s/foto?v=1", env.server.URL, adminID))
+	if err != nil {
+		t.Fatalf("erro ao buscar foto: %v", err)
+	}
+	var corpo bytes.Buffer
+	_, _ = corpo.ReadFrom(respFoto.Body)
+	respFoto.Body.Close()
+	if respFoto.StatusCode != http.StatusOK || respFoto.Header.Get("Content-Type") != "image/png" || !bytes.Equal(corpo.Bytes(), png) {
+		t.Errorf("foto inválida: status %d, tipo %q, %d bytes", respFoto.StatusCode, respFoto.Header.Get("Content-Type"), corpo.Len())
+	}
+	if respFoto.Header.Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("esperado cabeçalho nosniff na foto")
+	}
+
+	// 6. Remover e confirmar 404
+	respDel, _, _ := env.doRequest(http.MethodDelete, "/api/usuarios/"+adminID+"/foto", adminCookie, nil)
+	if respDel.StatusCode != http.StatusNoContent {
+		t.Errorf("esperado 204 ao remover foto, obteve %d", respDel.StatusCode)
+	}
+	respFoto2, _ := env.client.Get(env.server.URL + "/api/auth/usuarios/" + adminID + "/foto")
+	respFoto2.Body.Close()
+	if respFoto2.StatusCode != http.StatusNotFound {
+		t.Errorf("esperado 404 após remover foto, obteve %d", respFoto2.StatusCode)
+	}
+}

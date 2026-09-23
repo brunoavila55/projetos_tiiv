@@ -2,16 +2,17 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
+	import { enviarFoto, removerFoto } from '$lib/foto';
+	import Avatar from '$lib/components/Avatar.svelte';
 	import { 
-		Users, 
 		UserPlus, 
 		KeyRound, 
 		Unlock, 
 		Edit3, 
-		ShieldCheck, 
 		ShieldAlert, 
 		X, 
 		Check,
+		Camera,
 		AlertCircle
 	} from 'lucide-svelte';
 
@@ -24,6 +25,7 @@
 		tentativas_falhas: number;
 		bloqueado_ate: string | null;
 		criado_em: string;
+		foto_versao: number | null;
 	}
 
 	let usuarios = $state<UsuarioItem[]>([]);
@@ -39,23 +41,27 @@
 
 	// Formulário Criar
 	let formNome = $state('');
-	let formCor = $state('#2563EB');
+	let formCor = $state('#1F5C5A');
 	let formPin = $state('');
 	let formPapel = $state<'admin' | 'usuario'>('usuario');
+	let formFoto = $state<File | null>(null);
+	let formFotoPreview = $state<string | null>(null);
 
 	// Formulário Editar
 	let editNome = $state('');
-	let editCor = $state('#2563EB');
+	let editCor = $state('#1F5C5A');
 	let editPapel = $state<'admin' | 'usuario'>('usuario');
 	let editAtivo = $state(true);
+	let enviandoFoto = $state(false);
 
 	// Formulário Redefinir PIN
 	let novoPin = $state('');
 
+	// Tons sóbrios, todos legíveis com texto branco
 	const paletaCores = [
-		'#2563EB', '#3B82F6', '#0284C7', '#0D9488', 
-		'#059669', '#16A34A', '#D97706', '#EA580C', 
-		'#DC2626', '#E11D48', '#9333EA', '#4F46E5'
+		'#1F5C5A', '#2E7D6B', '#4D7A3A', '#8A6D1E',
+		'#B0622B', '#A8433A', '#8E3B6B', '#6B4C9A',
+		'#4A5AA8', '#2F5D8A', '#5B6770', '#7A5840'
 	];
 
 	async function carregar() {
@@ -75,7 +81,54 @@
 		formCor = paletaCores[Math.floor(Math.random() * paletaCores.length)];
 		formPin = '';
 		formPapel = 'usuario';
+		definirFotoNova(null);
 		modalCriarAberto = true;
+	}
+
+	function definirFotoNova(arquivo: File | null) {
+		if (formFotoPreview) URL.revokeObjectURL(formFotoPreview);
+		formFoto = arquivo;
+		formFotoPreview = arquivo ? URL.createObjectURL(arquivo) : null;
+	}
+
+	function arquivoDoInput(e: Event): File | null {
+		const input = e.currentTarget as HTMLInputElement;
+		const arquivo = input.files?.[0] ?? null;
+		input.value = '';
+		return arquivo;
+	}
+
+	// Foto no modal de edição: envia na hora, sem esperar o "Salvar"
+	async function trocarFotoEditar(arquivo: File | null) {
+		if (!arquivo || !usuarioSelecionado) return;
+		enviandoFoto = true;
+		try {
+			aplicarFotoVersao(usuarioSelecionado.id, await enviarFoto(usuarioSelecionado.id, arquivo));
+		} catch (err: any) {
+			alert(err.message || 'Erro ao enviar foto');
+		} finally {
+			enviandoFoto = false;
+		}
+	}
+
+	async function removerFotoEditar() {
+		if (!usuarioSelecionado) return;
+		enviandoFoto = true;
+		try {
+			await removerFoto(usuarioSelecionado.id);
+			aplicarFotoVersao(usuarioSelecionado.id, null);
+		} catch (err: any) {
+			alert(err.message || 'Erro ao remover foto');
+		} finally {
+			enviandoFoto = false;
+		}
+	}
+
+	function aplicarFotoVersao(id: string, versao: number | null) {
+		if (usuarioSelecionado?.id === id) usuarioSelecionado.foto_versao = versao;
+		const u = usuarios.find((x) => x.id === id);
+		if (u) u.foto_versao = versao;
+		if (auth.user?.id === id) auth.user.foto_versao = versao;
 	}
 
 	async function salvarCriar() {
@@ -84,7 +137,7 @@
 			return;
 		}
 		try {
-			await apiFetch('/api/usuarios', {
+			const criado = await apiFetch<UsuarioItem>('/api/usuarios', {
 				method: 'POST',
 				body: JSON.stringify({
 					nome: formNome,
@@ -93,8 +146,16 @@
 					papel: formPapel
 				})
 			});
+			if (formFoto) {
+				try {
+					await enviarFoto(criado.id, formFoto);
+				} catch (err: any) {
+					alert(`Operador cadastrado, mas a foto não foi enviada: ${err.message}`);
+				}
+			}
+			definirFotoNova(null);
 			modalCriarAberto = false;
-			successMsg = 'Usuário cadastrado com sucesso!';
+			successMsg = 'Operador cadastrado.';
 			setTimeout(() => successMsg = null, 4000);
 			carregar();
 		} catch (err: any) {
@@ -124,7 +185,7 @@
 				})
 			});
 			modalEditarAberto = false;
-			successMsg = 'Usuário atualizado com sucesso!';
+			successMsg = 'Alterações salvas.';
 			setTimeout(() => successMsg = null, 4000);
 			carregar();
 		} catch (err: any) {
@@ -171,141 +232,154 @@
 			carregar();
 		}
 	});
-
-	function getIniciais(nome: string): string {
-		const p = nome.trim().split(/\s+/);
-		if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
-		return (p[0][0] + p[p.length - 1][0]).toUpperCase();
-	}
 </script>
 
+{#snippet campoFoto(previa: import('svelte').Snippet, temFoto: boolean, ocupado: boolean, escolher: (f: File | null) => void, remover: () => void)}
+	<div class="flex items-center gap-4">
+		<div class="relative">
+			{@render previa()}
+			{#if ocupado}
+				<span class="absolute inset-0 grid place-items-center rounded-full bg-overlay">
+					<span class="size-5 rounded-full border-2 border-white/40 border-t-white animate-spin"></span>
+				</span>
+			{/if}
+		</div>
+		<div class="flex flex-wrap gap-2">
+			<label class="btn btn-secondary btn-sm {ocupado ? 'pointer-events-none opacity-45' : ''}">
+				<Camera class="size-4" />
+				{temFoto ? 'Trocar foto' : 'Adicionar foto'}
+				<input
+					type="file"
+					accept="image/jpeg,image/png,image/webp"
+					class="sr-only"
+					disabled={ocupado}
+					onchange={(e) => escolher(arquivoDoInput(e))}
+				/>
+			</label>
+			{#if temFoto}
+				<button type="button" onclick={remover} disabled={ocupado} class="btn btn-sm btn-danger">Remover</button>
+			{/if}
+		</div>
+	</div>
+{/snippet}
+
+{#snippet seletorCor(atual: string, escolher: (c: string) => void)}
+	<div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Cor">
+		{#each paletaCores as c}
+			<button
+				type="button"
+				onclick={() => escolher(c)}
+				role="radio"
+				aria-checked={atual === c}
+				aria-label={c}
+				class="size-8 rounded-full cursor-pointer flex items-center justify-center text-white transition-transform hover:scale-110 {atual === c ? 'ring-2 ring-offset-2 ring-ink ring-offset-surface' : ''}"
+				style="background-color: {c};"
+			>
+				{#if atual === c}
+					<Check class="size-4" strokeWidth={3} />
+				{/if}
+			</button>
+		{/each}
+	</div>
+{/snippet}
+
 {#if auth.user?.papel !== 'admin'}
-	<div class="bg-red-50 border border-red-200 text-red-700 p-8 rounded-2xl text-center max-w-lg mx-auto my-12">
-		<ShieldAlert class="w-12 h-12 mx-auto mb-3 text-red-500" />
-		<h2 class="text-xl font-bold">Acesso Restrito</h2>
-		<p class="text-sm mt-1 text-red-600">Apenas administradores podem acessar a gestão de operadores.</p>
+	<div class="panel empty max-w-lg mx-auto mt-12">
+		<ShieldAlert class="size-10 text-danger" strokeWidth={1.5} />
+		<h2 class="empty-title">Acesso restrito</h2>
+		<p class="empty-text">Só administradores podem gerenciar operadores.</p>
+		<a href="/" class="btn btn-secondary mt-5">Voltar ao painel</a>
 	</div>
 {:else}
 	<div class="space-y-6">
-		<div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+		<div class="page-head">
 			<div>
-				<h1 class="text-2xl font-bold text-slate-800">Gestão de Usuários</h1>
-				<p class="text-sm text-slate-500">Cadastre operadores, redefina PINs e gerencie acessos ao terminal</p>
+				<h1 class="page-title">Operadores</h1>
+				<p class="page-sub">Quem pode entrar no terminal, com que papel e com qual PIN.</p>
 			</div>
-			<button
-				onclick={abrirCriar}
-				class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition active:scale-95 cursor-pointer"
-			>
-				<UserPlus class="w-4 h-4" />
-				<span>Novo Usuário</span>
+			<button onclick={abrirCriar} class="btn btn-primary">
+				<UserPlus class="size-4" />
+				<span>Cadastrar operador</span>
 			</button>
 		</div>
 
 		{#if successMsg}
-			<div class="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3.5 rounded-xl text-sm flex items-center gap-2">
-				<Check class="w-4 h-4 text-emerald-600" />
+			<div class="alert bg-ok-soft text-ok" role="status">
+				<Check class="size-4 shrink-0" />
 				<span>{successMsg}</span>
 			</div>
 		{/if}
 
 		{#if errorMsg}
-			<div class="bg-red-50 border border-red-200 text-red-700 p-3.5 rounded-xl text-sm flex items-center gap-2">
-				<AlertCircle class="w-4 h-4 text-red-600" />
+			<div class="alert bg-danger-soft text-danger" role="alert">
+				<AlertCircle class="size-4 shrink-0" />
 				<span>{errorMsg}</span>
 			</div>
 		{/if}
 
 		{#if loading}
-			<div class="flex justify-center py-16">
-				<div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-			</div>
+			<div class="flex justify-center py-16"><div class="spinner"></div></div>
 		{:else}
-			<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+			<div class="panel overflow-hidden">
 				<div class="overflow-x-auto">
-					<table class="w-full text-left border-collapse text-sm">
+					<table class="data-table">
 						<thead>
-							<tr class="bg-slate-50/75 border-b border-slate-200 text-slate-600 font-semibold">
-								<th class="py-3 px-4">Operador</th>
-								<th class="py-3 px-4">Papel</th>
-								<th class="py-3 px-4">Status</th>
-								<th class="py-3 px-4">Falhas / Bloqueio</th>
-								<th class="py-3 px-4 text-right">Ações</th>
+							<tr>
+								<th>Operador</th>
+								<th>Papel</th>
+								<th>Situação</th>
+								<th>Acesso</th>
+								<th class="text-right"><span class="sr-only">Ações</span></th>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-slate-100">
+						<tbody>
 							{#each usuarios as u (u.id)}
-								<tr class="hover:bg-slate-50/50 transition">
-									<td class="py-3.5 px-4 flex items-center gap-3">
-										<div
-											class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-xs"
-											style="background-color: {u.cor || '#2563EB'};"
-										>
-											{getIniciais(u.nome)}
-										</div>
-										<div>
-											<div class="font-semibold text-slate-800">{u.nome}</div>
-											<div class="text-xs text-slate-400">ID: {u.id.slice(0, 8)}...</div>
+								<tr class={u.ativo ? '' : 'opacity-60'}>
+									<td>
+										<div class="flex items-center gap-3">
+											<Avatar id={u.id} nome={u.nome} cor={u.cor} fotoVersao={u.foto_versao} class="size-9 text-xs" />
+											<span class="font-semibold text-ink">{u.nome}</span>
 										</div>
 									</td>
-									<td class="py-3.5 px-4">
+									<td>
 										{#if u.papel === 'admin'}
-											<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
-												<ShieldCheck class="w-3 h-3" /> Admin
-											</span>
+											<span class="tag tag-accent">Administrador</span>
 										{:else}
-											<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
-												Operador
-											</span>
+											<span class="text-ink-2">Operador</span>
 										{/if}
 									</td>
-									<td class="py-3.5 px-4">
-										{#if u.ativo}
-											<span class="inline-flex items-center gap-1.5 text-emerald-600 font-medium text-xs">
-												<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Ativo
-											</span>
-										{:else}
-											<span class="inline-flex items-center gap-1.5 text-slate-400 font-medium text-xs">
-												<span class="w-2 h-2 rounded-full bg-slate-300"></span> Inativo
-											</span>
-										{/if}
+									<td>
+										<span class="inline-flex items-center gap-2 {u.ativo ? 'text-ink-2' : 'text-ink-3'}">
+											<span class="size-2 rounded-full {u.ativo ? 'bg-ok' : 'bg-line-strong'}"></span>
+											{u.ativo ? 'Ativo' : 'Inativo'}
+										</span>
 									</td>
-									<td class="py-3.5 px-4">
+									<td>
 										{#if u.bloqueado_ate}
-											<span class="inline-flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-md">
-												<AlertCircle class="w-3 h-3" /> Bloqueado
-											</span>
+											<span class="tag tag-danger"><AlertCircle class="size-3" /> Bloqueado</span>
 										{:else if u.tentativas_falhas > 0}
-											<span class="text-xs text-amber-600 font-medium">
-												{u.tentativas_falhas} erro(s)
+											<span class="text-warn font-semibold tabular">
+												{u.tentativas_falhas} {u.tentativas_falhas === 1 ? 'tentativa errada' : 'tentativas erradas'}
 											</span>
 										{:else}
-											<span class="text-xs text-slate-400">Regular</span>
+											<span class="text-ink-3">Normal</span>
 										{/if}
 									</td>
-									<td class="py-3.5 px-4 text-right space-x-1">
-										{#if u.bloqueado_ate || u.tentativas_falhas > 0}
-											<button
-												onclick={() => desbloquear(u)}
-												class="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-												title="Desbloquear operador"
-											>
-												<Unlock class="w-4 h-4" />
+									<td class="text-right whitespace-nowrap">
+										<div class="inline-flex items-center gap-0.5">
+											{#if u.bloqueado_ate || u.tentativas_falhas > 0}
+												<button onclick={() => desbloquear(u)} class="btn btn-sm btn-soft mr-1" title="Zerar tentativas e desbloquear">
+													<Unlock class="size-3.5" />
+													Desbloquear
+												</button>
+											{/if}
+											<button onclick={() => abrirRedefinirPin(u)} class="icon-btn" title="Redefinir PIN" aria-label="Redefinir PIN">
+												<KeyRound class="size-4" />
 											</button>
-										{/if}
-										<button
-											onclick={() => abrirRedefinirPin(u)}
-											class="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition"
-											title="Redefinir PIN"
-										>
-											<KeyRound class="w-4 h-4" />
-										</button>
-										<button
-											onclick={() => abrirEditar(u)}
-											class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-											title="Editar cadastro"
-										>
-											<Edit3 class="w-4 h-4" />
-										</button>
+											<button onclick={() => abrirEditar(u)} class="icon-btn" title="Editar cadastro" aria-label="Editar cadastro">
+												<Edit3 class="size-4" />
+											</button>
+										</div>
 									</td>
 								</tr>
 							{/each}
@@ -316,208 +390,158 @@
 		{/if}
 	</div>
 
-	<!-- Modal Novo Usuário -->
+	<!-- Modal novo operador -->
 	{#if modalCriarAberto}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
-				<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-					<h3 class="font-bold text-slate-800 text-lg">Novo Operador</h3>
-					<button onclick={() => modalCriarAberto = false} class="text-slate-400 hover:text-slate-600">
-						<X class="w-5 h-5" />
+		<div class="modal-backdrop">
+			<div class="modal max-w-md" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<h3 class="modal-title">Cadastrar operador</h3>
+					<button onclick={() => { definirFotoNova(null); modalCriarAberto = false; }} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<div class="space-y-3">
-					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Nome completo</label>
-						<input 
-							type="text" 
-							bind:value={formNome} 
-							placeholder="Ex: Carlos Silva"
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-						/>
-					</div>
+				<div class="modal-body">
+					{#snippet previaNova()}
+						{#if formFotoPreview}
+							<img src={formFotoPreview} alt="" class="size-16 rounded-full object-cover" />
+						{:else}
+							<Avatar id="" nome={formNome || '?'} cor={formCor} class="size-16 text-lg" />
+						{/if}
+					{/snippet}
+					{@render campoFoto(previaNova, !!formFoto, false, definirFotoNova, () => definirFotoNova(null))}
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">PIN Inicial (4 a 6 dígitos)</label>
-						<input 
-							type="password" 
-							bind:value={formPin} 
-							maxlength="6"
-							placeholder="••••"
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500 font-mono tracking-widest" 
-						/>
+						<label class="label" for="u-nome">Nome</label>
+						<input id="u-nome" type="text" bind:value={formNome} placeholder="Como aparece no terminal" class="field" />
 					</div>
 
-					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Papel</label>
-						<select 
-							bind:value={formPapel}
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500"
-						>
-							<option value="usuario">Operador Padrão</option>
-							<option value="admin">Administrador do Sistema</option>
-						</select>
-					</div>
-
-					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1.5">Cor do Avatar e Calendário</label>
-						<div class="flex flex-wrap gap-2">
-							{#each paletaCores as c}
-								<button
-									type="button"
-									onclick={() => formCor = c}
-									class="w-8 h-8 rounded-full border-2 transition cursor-pointer flex items-center justify-center text-white"
-									style="background-color: {c}; border-color: {formCor === c ? '#0f172a' : 'transparent'};"
-								>
-									{#if formCor === c}
-										<Check class="w-4 h-4" />
-									{/if}
-								</button>
-							{/each}
+					<div class="grid grid-cols-2 gap-4">
+						<div>
+							<label class="label" for="u-pin">PIN inicial</label>
+							<input
+								id="u-pin"
+								type="password"
+								inputmode="numeric"
+								bind:value={formPin}
+								maxlength="6"
+								placeholder="4 a 6 dígitos"
+								class="field tracking-[0.3em] placeholder:tracking-normal"
+							/>
+						</div>
+						<div>
+							<label class="label" for="u-papel">Papel</label>
+							<select id="u-papel" bind:value={formPapel} class="field">
+								<option value="usuario">Operador</option>
+								<option value="admin">Administrador</option>
+							</select>
 						</div>
 					</div>
+
+					<div>
+						<span class="label">Cor no terminal e no calendário</span>
+						{@render seletorCor(formCor, (c) => formCor = c)}
+					</div>
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-					<button 
-						onclick={() => modalCriarAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium"
-					>
-						Cancelar
-					</button>
-					<button 
-						onclick={salvarCriar}
-						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
-					>
-						Salvar Operador
-					</button>
+				<div class="modal-foot">
+					<button onclick={() => { definirFotoNova(null); modalCriarAberto = false; }} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarCriar} class="btn btn-primary">Cadastrar</button>
 				</div>
 			</div>
 		</div>
 	{/if}
 
-	<!-- Modal Editar Usuário -->
+	<!-- Modal editar operador -->
 	{#if modalEditarAberto && usuarioSelecionado}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
-				<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-					<h3 class="font-bold text-slate-800 text-lg">Editar Operador</h3>
-					<button onclick={() => modalEditarAberto = false} class="text-slate-400 hover:text-slate-600">
-						<X class="w-5 h-5" />
+		<div class="modal-backdrop">
+			<div class="modal max-w-md" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<h3 class="modal-title">Editar operador</h3>
+					<button onclick={() => modalEditarAberto = false} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<div class="space-y-3">
-					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Nome completo</label>
-						<input 
-							type="text" 
-							bind:value={editNome} 
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
+				<div class="modal-body">
+					{#snippet previaEditar()}
+						<Avatar
+							id={usuarioSelecionado!.id}
+							nome={editNome || usuarioSelecionado!.nome}
+							cor={editCor}
+							fotoVersao={usuarioSelecionado!.foto_versao}
+							class="size-16 text-lg"
 						/>
+					{/snippet}
+					{@render campoFoto(previaEditar, !!usuarioSelecionado.foto_versao, enviandoFoto, trocarFotoEditar, removerFotoEditar)}
+
+					<div>
+						<label class="label" for="e-nome">Nome</label>
+						<input id="e-nome" type="text" bind:value={editNome} class="field" />
 					</div>
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Papel</label>
-						<select 
-							bind:value={editPapel}
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500"
-						>
-							<option value="usuario">Operador Padrão</option>
-							<option value="admin">Administrador do Sistema</option>
+						<label class="label" for="e-papel">Papel</label>
+						<select id="e-papel" bind:value={editPapel} class="field">
+							<option value="usuario">Operador</option>
+							<option value="admin">Administrador</option>
 						</select>
 					</div>
 
-					<div class="flex items-center gap-2 pt-1">
-						<input 
-							type="checkbox" 
-							id="editAtivo"
-							bind:checked={editAtivo}
-							class="w-4 h-4 rounded text-blue-600"
-						/>
-						<label for="editAtivo" class="text-xs font-semibold text-slate-700 cursor-pointer">
-							Usuário Ativo (desmarcar encerra as sessões e desativa o login)
-						</label>
+					<div>
+						<span class="label">Cor</span>
+						{@render seletorCor(editCor, (c) => editCor = c)}
 					</div>
 
-					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1.5">Cor</label>
-						<div class="flex flex-wrap gap-2">
-							{#each paletaCores as c}
-								<button
-									type="button"
-									onclick={() => editCor = c}
-									class="w-8 h-8 rounded-full border-2 transition cursor-pointer flex items-center justify-center text-white"
-									style="background-color: {c}; border-color: {editCor === c ? '#0f172a' : 'transparent'};"
-								>
-									{#if editCor === c}
-										<Check class="w-4 h-4" />
-									{/if}
-								</button>
-							{/each}
-						</div>
-					</div>
+					<label class="flex items-start gap-2.5 text-sm text-ink cursor-pointer pt-1">
+						<input type="checkbox" bind:checked={editAtivo} class="check mt-0.5" />
+						<span>
+							Ativo
+							<span class="block text-[13px] text-ink-3">Desmarcar encerra as sessões e impede o login.</span>
+						</span>
+					</label>
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-					<button 
-						onclick={() => modalEditarAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium"
-					>
-						Cancelar
-					</button>
-					<button 
-						onclick={salvarEditar}
-						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
-					>
-						Atualizar
-					</button>
+				<div class="modal-foot">
+					<button onclick={() => modalEditarAberto = false} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarEditar} class="btn btn-primary">Salvar alterações</button>
 				</div>
 			</div>
 		</div>
 	{/if}
 
-	<!-- Modal Redefinir PIN -->
+	<!-- Modal redefinir PIN -->
 	{#if modalPinAberto && usuarioSelecionado}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
-				<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-					<h3 class="font-bold text-slate-800 text-base">Redefinir PIN</h3>
-					<button onclick={() => modalPinAberto = false} class="text-slate-400 hover:text-slate-600">
-						<X class="w-5 h-5" />
+		<div class="modal-backdrop">
+			<div class="modal max-w-sm" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<div>
+						<h3 class="modal-title">Redefinir PIN</h3>
+						<p class="mt-0.5 text-sm text-ink-3">{usuarioSelecionado.nome}</p>
+					</div>
+					<button onclick={() => modalPinAberto = false} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<p class="text-xs text-slate-500">
-					Defina um novo PIN numérico de 4 a 6 dígitos para <strong>{usuarioSelecionado.nome}</strong>.
-				</p>
-
-				<div>
-					<label class="block text-xs font-semibold text-slate-700 mb-1">Novo PIN</label>
-					<input 
-						type="password" 
-						bind:value={novoPin} 
-						maxlength="6"
-						placeholder="••••"
-						class="w-full px-3 py-2 border border-slate-200 rounded-xl text-center text-lg font-mono tracking-widest focus:outline-blue-500" 
-					/>
+				<div class="modal-body">
+					<div>
+						<label class="label" for="p-novo">Novo PIN</label>
+						<input
+							id="p-novo"
+							type="password"
+							inputmode="numeric"
+							bind:value={novoPin}
+							maxlength="6"
+							placeholder="4 a 6 dígitos"
+							class="field h-12 text-center text-xl tracking-[0.4em] placeholder:text-sm placeholder:tracking-normal"
+						/>
+					</div>
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-					<button 
-						onclick={() => modalPinAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium"
-					>
-						Cancelar
-					</button>
-					<button 
-						onclick={salvarPin}
-						disabled={novoPin.length < 4}
-						class="px-5 py-2 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-xs disabled:opacity-40"
-					>
-						Salvar PIN
-					</button>
+				<div class="modal-foot">
+					<button onclick={() => modalPinAberto = false} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarPin} disabled={novoPin.length < 4} class="btn btn-primary">Salvar PIN</button>
 				</div>
 			</div>
 		</div>

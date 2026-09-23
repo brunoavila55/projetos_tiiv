@@ -4,37 +4,37 @@
 </script>
 
 {#if toast.toasts.length > 0}
-	<div class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0">
+	<div
+		class="fixed bottom-4 right-4 left-4 sm:left-auto z-[60] flex flex-col gap-2 sm:w-96 pointer-events-none"
+		role="status"
+		aria-live="polite"
+	>
 		{#each toast.toasts as t (t.id)}
 			<div
-				class="pointer-events-auto flex items-start gap-3 p-4 rounded-xl shadow-lg border text-sm backdrop-blur-xs transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 {
-					t.tipo === 'erro' 
-						? 'bg-red-50/95 border-red-200 text-red-800' 
-						: t.tipo === 'sucesso' 
-							? 'bg-emerald-50/95 border-emerald-200 text-emerald-800' 
-							: 'bg-slate-900/95 border-slate-700 text-white'
-				}"
+				class="pointer-events-auto flex items-start gap-3 pl-4 pr-2 py-3 rounded-xl bg-surface border border-line shadow-float text-sm text-ink border-l-4 {t.tipo ===
+				'erro'
+					? 'border-l-danger'
+					: t.tipo === 'sucesso'
+						? 'border-l-ok'
+						: 'border-l-accent'}"
+				style="animation: modal-in 160ms ease-out;"
 			>
-				<div class="shrink-0 mt-0.5">
+				<div class="shrink-0 mt-px">
 					{#if t.tipo === 'erro'}
-						<AlertCircle class="w-5 h-5 text-red-600" />
+						<AlertCircle class="size-[18px] text-danger" />
 					{:else if t.tipo === 'sucesso'}
-						<CheckCircle2 class="w-5 h-5 text-emerald-600" />
+						<CheckCircle2 class="size-[18px] text-ok" />
 					{:else}
-						<Info class="w-5 h-5 text-blue-400" />
+						<Info class="size-[18px] text-accent" />
 					{/if}
 				</div>
 
-				<div class="flex-1 font-medium break-words leading-tight">
+				<div class="flex-1 font-medium break-words leading-snug pt-px">
 					{t.mensagem}
 				</div>
 
-				<button
-					onclick={() => toast.remove(t.id)}
-					class="shrink-0 p-1 rounded-lg hover:bg-black/5 transition cursor-pointer"
-					aria-label="Fechar notificação"
-				>
-					<X class="w-4 h-4 opacity-70" />
+				<button onclick={() => toast.remove(t.id)} class="icon-btn size-7 -my-0.5" aria-label="Fechar notificação">
+					<X class="size-4" />
 				</button>
 			</div>
 		{/each}

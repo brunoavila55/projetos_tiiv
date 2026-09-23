@@ -52,6 +52,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 		api.Route("/auth", func(auth chi.Router) {
 			auth.Get("/usuarios", authHandler.ListarUsuariosPublico)
+			auth.Get("/usuarios/{id}/foto", authHandler.ObterFoto)
 			auth.Post("/login", authHandler.Login)
 			auth.Post("/logout", authHandler.Logout)
 
@@ -126,6 +127,8 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 				u.Put("/{id}", usuarioHandler.Atualizar)
 				u.Post("/{id}/pin", usuarioHandler.RedefinirPIN)
 				u.Post("/{id}/desbloquear", usuarioHandler.Desbloquear)
+				u.Put("/{id}/foto", usuarioHandler.EnviarFoto)
+				u.Delete("/{id}/foto", usuarioHandler.RemoverFoto)
 			})
 		})
 

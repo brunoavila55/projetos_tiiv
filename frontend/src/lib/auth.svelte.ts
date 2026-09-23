@@ -7,12 +7,14 @@ export interface UserProfile {
 	cor: string;
 	papel: 'admin' | 'usuario';
 	tema?: 'claro' | 'escuro' | 'sistema';
+	foto_versao?: number | null;
 }
 
 export interface UsuarioPublico {
 	id: string;
 	nome: string;
 	cor: string;
+	foto_versao?: number | null;
 }
 
 class AuthStore {

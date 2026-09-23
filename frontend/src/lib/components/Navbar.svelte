@@ -1,13 +1,15 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { auth } from '$lib/auth.svelte';
-	import { themeStore, type Tema } from '$lib/theme.svelte';
-	import { 
-		LayoutDashboard, 
-		Calendar, 
-		Headphones, 
-		CheckSquare, 
-		Package, 
-		Users, 
+	import { themeStore } from '$lib/theme.svelte';
+	import Avatar from './Avatar.svelte';
+	import {
+		LayoutDashboard,
+		Calendar,
+		Headphones,
+		CheckSquare,
+		Package,
+		Users,
 		LogOut,
 		Menu,
 		X,
@@ -20,11 +22,18 @@
 
 	const links = [
 		{ href: '/', label: 'Painel', icon: LayoutDashboard },
-		{ href: '/calendario', label: 'Calendário', icon: Calendar },
 		{ href: '/atendimentos', label: 'Atendimentos', icon: Headphones },
 		{ href: '/tarefas', label: 'Tarefas', icon: CheckSquare },
+		{ href: '/calendario', label: 'Calendário', icon: Calendar },
 		{ href: '/estoque', label: 'Estoque', icon: Package }
 	];
+
+	const temaLabel = { claro: 'Claro', escuro: 'Escuro', sistema: 'Automático' } as const;
+
+	function isActive(href: string): boolean {
+		const path = page.url.pathname;
+		return href === '/' ? path === '/' : path.startsWith(href);
+	}
 
 	function toggleTheme() {
 		if (themeStore.tema === 'claro') {
@@ -35,132 +44,119 @@
 			themeStore.setTema('claro');
 		}
 	}
-
-	function getIniciais(nome: string): string {
-		const partes = nome.trim().split(/\s+/);
-		if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
-		return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
-	}
 </script>
 
-<header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40 transition-colors">
-	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-		<div class="flex items-center justify-between h-16">
-			<!-- Logo e Links Desktop -->
-			<div class="flex items-center gap-6">
-				<a href="/" class="flex items-center gap-2 font-black text-xl text-blue-600 dark:text-blue-400 tracking-tight">
-					<span class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-base shadow-sm">T</span>
-					<span>TIIV</span>
-				</a>
+{#snippet marca()}
+	<a href="/" class="flex items-center gap-2.5 text-ink" onclick={() => (mobileMenuOpen = false)}>
+		<svg viewBox="0 0 28 28" class="size-7" aria-hidden="true">
+			<rect width="28" height="28" rx="7" fill="var(--accent)" />
+			<path d="M8 9h12M14 9v11" stroke="var(--on-accent)" stroke-width="2.6" stroke-linecap="round" />
+		</svg>
+		<span class="text-[17px] font-bold tracking-[-0.01em]">TIIV</span>
+	</a>
+{/snippet}
 
-				<nav class="hidden md:flex items-center gap-1">
-					{#each links as item}
-						{@const Icon = item.icon}
-						<a
-							href={item.href}
-							class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-						>
-							<Icon class="w-4 h-4" />
-							<span>{item.label}</span>
-						</a>
-					{/each}
+{#snippet navegacao()}
+	<nav class="flex flex-col gap-0.5" aria-label="Principal">
+		{#each links as item}
+			{@const Icon = item.icon}
+			{@const ativo = isActive(item.href)}
+			<a
+				href={item.href}
+				onclick={() => (mobileMenuOpen = false)}
+				aria-current={ativo ? 'page' : undefined}
+				class="flex items-center gap-3 h-10 px-3 rounded-lg text-[15px] font-semibold transition-colors {ativo
+					? 'bg-surface text-ink shadow-[0_1px_2px_rgb(0_0_0/0.06)] ring-1 ring-line'
+					: 'text-ink-2 hover:bg-muted hover:text-ink'}"
+			>
+				<Icon class="size-[18px] {ativo ? 'text-accent' : 'text-ink-3'}" strokeWidth={ativo ? 2.25 : 2} />
+				<span>{item.label}</span>
+			</a>
+		{/each}
 
-					{#if auth.user?.papel === 'admin'}
-						<a
-							href="/usuarios"
-							class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition"
-						>
-							<Users class="w-4 h-4" />
-							<span>Usuários</span>
-						</a>
-					{/if}
-				</nav>
-			</div>
+		{#if auth.user?.papel === 'admin'}
+			{@const ativo = isActive('/usuarios')}
+			<div class="mt-4 mb-1 px-3 text-[13px] font-semibold text-ink-3">Administração</div>
+			<a
+				href="/usuarios"
+				onclick={() => (mobileMenuOpen = false)}
+				aria-current={ativo ? 'page' : undefined}
+				class="flex items-center gap-3 h-10 px-3 rounded-lg text-[15px] font-semibold transition-colors {ativo
+					? 'bg-surface text-ink shadow-[0_1px_2px_rgb(0_0_0/0.06)] ring-1 ring-line'
+					: 'text-ink-2 hover:bg-muted hover:text-ink'}"
+			>
+				<Users class="size-[18px] {ativo ? 'text-accent' : 'text-ink-3'}" />
+				<span>Operadores</span>
+			</a>
+		{/if}
+	</nav>
+{/snippet}
 
-			<!-- Controles da direita: Tema, Usuário, Sair -->
-			{#if auth.user}
-				<div class="flex items-center gap-2 sm:gap-3">
-					<!-- Alternador de Tema -->
-					<button
-						onclick={toggleTheme}
-						class="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-						title="Tema: {themeStore.tema} (clique para alternar)"
-						aria-label="Alternar tema visual"
-					>
-						{#if themeStore.tema === 'claro'}
-							<Sun class="w-4 h-4 text-amber-500" />
-						{:else if themeStore.tema === 'escuro'}
-							<Moon class="w-4 h-4 text-blue-400" />
-						{:else}
-							<Monitor class="w-4 h-4 text-slate-500 dark:text-slate-400" />
-						{/if}
-					</button>
+{#snippet rodape()}
+	{#if auth.user}
+		<div class="space-y-1">
+			<button
+				onclick={toggleTheme}
+				class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium text-ink-2 hover:bg-muted hover:text-ink transition-colors cursor-pointer"
+				aria-label="Alternar tema (atual: {temaLabel[themeStore.tema]})"
+			>
+				{#if themeStore.tema === 'claro'}
+					<Sun class="size-4 text-ink-3" />
+				{:else if themeStore.tema === 'escuro'}
+					<Moon class="size-4 text-ink-3" />
+				{:else}
+					<Monitor class="size-4 text-ink-3" />
+				{/if}
+				<span>Tema: {temaLabel[themeStore.tema]}</span>
+			</button>
 
-					<div class="flex items-center gap-2.5">
-						<div
-							class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-xs"
-							style="background-color: {auth.user.cor || '#2563EB'};"
-						>
-							{getIniciais(auth.user.nome)}
-						</div>
-						<div class="hidden sm:block text-left">
-							<div class="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight">{auth.user.nome}</div>
-							<div class="text-[11px] text-slate-400 dark:text-slate-500 capitalize">{auth.user.papel}</div>
-						</div>
-					</div>
-
-					<!-- Botão Sair Sempre Visível -->
-					<button
-						onclick={() => auth.logout()}
-						class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs sm:text-sm font-medium transition cursor-pointer"
-						title="Sair do terminal"
-					>
-						<LogOut class="w-4 h-4" />
-						<span class="hidden sm:inline">Sair</span>
-					</button>
-
-					<!-- Botão Menu Mobile -->
-					<button
-						onclick={() => (mobileMenuOpen = !mobileMenuOpen)}
-						class="md:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-						aria-label="Abrir menu"
-					>
-						{#if mobileMenuOpen}
-							<X class="w-6 h-6" />
-						{:else}
-							<Menu class="w-6 h-6" />
-						{/if}
-					</button>
+			<div class="flex items-center gap-2.5 pt-3 mt-2 border-t border-line">
+				<Avatar id={auth.user.id} nome={auth.user.nome} cor={auth.user.cor} fotoVersao={auth.user.foto_versao} class="size-9 text-xs" />
+				<div class="min-w-0 flex-1">
+					<div class="text-sm font-semibold text-ink leading-tight truncate">{auth.user.nome}</div>
+					<div class="text-xs text-ink-3">{auth.user.papel === 'admin' ? 'Administrador' : 'Operador'}</div>
 				</div>
-			{/if}
-		</div>
-	</div>
-
-	<!-- Menu Mobile -->
-	{#if mobileMenuOpen}
-		<div class="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 pt-2 pb-4 space-y-1">
-			{#each links as item}
-				{@const Icon = item.icon}
-				<a
-					href={item.href}
-					onclick={() => (mobileMenuOpen = false)}
-					class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+				<button
+					onclick={() => auth.logout()}
+					class="icon-btn icon-btn-danger"
+					title="Sair do terminal"
+					aria-label="Sair do terminal"
 				>
-					<Icon class="w-5 h-5 text-slate-500 dark:text-slate-400" />
-					<span>{item.label}</span>
-				</a>
-			{/each}
-
-			{#if auth.user?.papel === 'admin'}
-				<a
-					href="/usuarios"
-					onclick={() => (mobileMenuOpen = false)}
-					class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-base font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40"
-				>
-					<Users class="w-5 h-5 text-purple-600 dark:text-purple-400" />
-					<span>Gestão de Usuários</span>
-				</a>
-			{/if}
+					<LogOut class="size-[18px]" />
+				</button>
+			</div>
 		</div>
 	{/if}
+{/snippet}
+
+<!-- Barra lateral (desktop) -->
+<aside class="hidden lg:flex fixed inset-y-0 left-0 z-30 w-60 flex-col border-r border-line bg-paper px-3 py-5">
+	<div class="px-3 mb-7">{@render marca()}</div>
+	<div class="flex-1 overflow-y-auto">{@render navegacao()}</div>
+	{@render rodape()}
+</aside>
+
+<!-- Barra superior (celular / tablet) -->
+<header class="lg:hidden sticky top-0 z-40 flex items-center justify-between h-14 px-4 border-b border-line bg-surface/95 backdrop-blur">
+	{@render marca()}
+	<button
+		onclick={() => (mobileMenuOpen = !mobileMenuOpen)}
+		class="icon-btn size-10"
+		aria-label={mobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+		aria-expanded={mobileMenuOpen}
+	>
+		{#if mobileMenuOpen}
+			<X class="size-5" />
+		{:else}
+			<Menu class="size-5" />
+		{/if}
+	</button>
 </header>
+
+{#if mobileMenuOpen}
+	<div class="lg:hidden fixed inset-0 top-14 z-30 bg-overlay" onclick={() => (mobileMenuOpen = false)} aria-hidden="true"></div>
+	<div class="lg:hidden fixed top-14 inset-x-0 z-40 border-b border-line bg-paper px-3 pt-3 pb-4 shadow-float">
+		{@render navegacao()}
+		<div class="mt-3">{@render rodape()}</div>
+	</div>
+{/if}

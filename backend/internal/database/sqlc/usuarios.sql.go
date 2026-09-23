@@ -297,9 +297,11 @@ func (q *Queries) IncrementarTentativasFalhas(ctx context.Context, id pgtype.UUI
 }
 
 const listarTodosUsuarios = `-- name: ListarTodosUsuarios :many
-SELECT id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
-FROM usuarios
-ORDER BY nome ASC
+SELECT u.id, u.nome, u.cor, u.papel, u.ativo, u.tentativas_falhas, u.bloqueado_ate, u.criado_em, u.tema,
+       f.atualizado_em AS foto_atualizada_em
+FROM usuarios u
+LEFT JOIN usuario_fotos f ON f.usuario_id = u.id
+ORDER BY u.nome ASC
 `
 
 type ListarTodosUsuariosRow struct {
@@ -312,6 +314,7 @@ type ListarTodosUsuariosRow struct {
 	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
 	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
 	Tema             string             `json:"tema"`
+	FotoAtualizadaEm pgtype.Timestamptz `json:"foto_atualizada_em"`
 }
 
 func (q *Queries) ListarTodosUsuarios(ctx context.Context) ([]ListarTodosUsuariosRow, error) {
@@ -333,6 +336,7 @@ func (q *Queries) ListarTodosUsuarios(ctx context.Context) ([]ListarTodosUsuario
 			&i.BloqueadoAte,
 			&i.CriadoEm,
 			&i.Tema,
+			&i.FotoAtualizadaEm,
 		); err != nil {
 			return nil, err
 		}
@@ -345,16 +349,18 @@ func (q *Queries) ListarTodosUsuarios(ctx context.Context) ([]ListarTodosUsuario
 }
 
 const listarUsuariosAtivos = `-- name: ListarUsuariosAtivos :many
-SELECT id, nome, cor
-FROM usuarios
-WHERE ativo = true
-ORDER BY nome ASC
+SELECT u.id, u.nome, u.cor, f.atualizado_em AS foto_atualizada_em
+FROM usuarios u
+LEFT JOIN usuario_fotos f ON f.usuario_id = u.id
+WHERE u.ativo = true
+ORDER BY u.nome ASC
 `
 
 type ListarUsuariosAtivosRow struct {
-	ID   pgtype.UUID `json:"id"`
-	Nome string      `json:"nome"`
-	Cor  string      `json:"cor"`
+	ID               pgtype.UUID        `json:"id"`
+	Nome             string             `json:"nome"`
+	Cor              string             `json:"cor"`
+	FotoAtualizadaEm pgtype.Timestamptz `json:"foto_atualizada_em"`
 }
 
 func (q *Queries) ListarUsuariosAtivos(ctx context.Context) ([]ListarUsuariosAtivosRow, error) {
@@ -366,7 +372,12 @@ func (q *Queries) ListarUsuariosAtivos(ctx context.Context) ([]ListarUsuariosAti
 	var items []ListarUsuariosAtivosRow
 	for rows.Next() {
 		var i ListarUsuariosAtivosRow
-		if err := rows.Scan(&i.ID, &i.Nome, &i.Cor); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Nome,
+			&i.Cor,
+			&i.FotoAtualizadaEm,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -375,6 +386,69 @@ func (q *Queries) ListarUsuariosAtivos(ctx context.Context) ([]ListarUsuariosAti
 		return nil, err
 	}
 	return items, nil
+}
+
+const obterFotoUsuario = `-- name: ObterFotoUsuario :one
+SELECT conteudo, mime, atualizado_em
+FROM usuario_fotos
+WHERE usuario_id = $1
+`
+
+type ObterFotoUsuarioRow struct {
+	Conteudo     []byte             `json:"conteudo"`
+	Mime         string             `json:"mime"`
+	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
+}
+
+func (q *Queries) ObterFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (ObterFotoUsuarioRow, error) {
+	row := q.db.QueryRow(ctx, obterFotoUsuario, usuarioID)
+	var i ObterFotoUsuarioRow
+	err := row.Scan(&i.Conteudo, &i.Mime, &i.AtualizadoEm)
+	return i, err
+}
+
+const obterVersaoFotoUsuario = `-- name: ObterVersaoFotoUsuario :one
+SELECT atualizado_em
+FROM usuario_fotos
+WHERE usuario_id = $1
+`
+
+func (q *Queries) ObterVersaoFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, obterVersaoFotoUsuario, usuarioID)
+	var atualizado_em pgtype.Timestamptz
+	err := row.Scan(&atualizado_em)
+	return atualizado_em, err
+}
+
+const removerFotoUsuario = `-- name: RemoverFotoUsuario :exec
+DELETE FROM usuario_fotos
+WHERE usuario_id = $1
+`
+
+func (q *Queries) RemoverFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, removerFotoUsuario, usuarioID)
+	return err
+}
+
+const salvarFotoUsuario = `-- name: SalvarFotoUsuario :one
+INSERT INTO usuario_fotos (usuario_id, conteudo, mime, atualizado_em)
+VALUES ($1, $2, $3, now())
+ON CONFLICT (usuario_id) DO UPDATE
+SET conteudo = EXCLUDED.conteudo, mime = EXCLUDED.mime, atualizado_em = now()
+RETURNING atualizado_em
+`
+
+type SalvarFotoUsuarioParams struct {
+	UsuarioID pgtype.UUID `json:"usuario_id"`
+	Conteudo  []byte      `json:"conteudo"`
+	Mime      string      `json:"mime"`
+}
+
+func (q *Queries) SalvarFotoUsuario(ctx context.Context, arg SalvarFotoUsuarioParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, salvarFotoUsuario, arg.UsuarioID, arg.Conteudo, arg.Mime)
+	var atualizado_em pgtype.Timestamptz
+	err := row.Scan(&atualizado_em)
+	return atualizado_em, err
 }
 
 const zerarTentativasFalhas = `-- name: ZerarTentativasFalhas :exec

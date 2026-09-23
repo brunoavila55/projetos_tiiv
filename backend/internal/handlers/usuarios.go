@@ -35,6 +35,7 @@ type UsuarioItemResponse struct {
 	TentativasFalhas int32   `json:"tentativas_falhas"`
 	BloqueadoAte     *string `json:"bloqueado_ate"`
 	CriadoEm         string  `json:"criado_em"`
+	FotoVersao       *int64  `json:"foto_versao"`
 }
 
 // Listar: GET /api/usuarios (Admin)
@@ -62,6 +63,7 @@ func (h *UsuarioHandler) Listar(w http.ResponseWriter, r *http.Request) {
 			TentativasFalhas: u.TentativasFalhas,
 			BloqueadoAte:     bloqueadoAte,
 			CriadoEm:         u.CriadoEm.Time.Format("2006-01-02T15:04:05Z07:00"),
+			FotoVersao:       fotoVersao(u.FotoAtualizadaEm),
 		})
 	}
 

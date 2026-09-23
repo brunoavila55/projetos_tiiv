@@ -248,256 +248,185 @@
 </script>
 
 <div class="space-y-6">
-	<!-- Topo com Abas de Visão e Botão Nova Tarefa -->
-	<div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+	<div class="page-head">
 		<div>
-			<h1 class="text-2xl font-bold text-slate-800">Quadro de Tarefas</h1>
-			<p class="text-sm text-slate-500">Acompanhamento com prioridades, prazos e alertas visuais de atraso</p>
+			<h1 class="page-title">Tarefas</h1>
+			<p class="page-sub">Pendências da equipe, com prioridade, prazo e responsável.</p>
 		</div>
-
-		<button
-			onclick={abrirCriar}
-			class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition active:scale-95 cursor-pointer"
-		>
-			<Plus class="w-4 h-4" />
-			<span>Nova Tarefa</span>
+		<button onclick={abrirCriar} class="btn btn-primary">
+			<Plus class="size-4" />
+			<span>Nova tarefa</span>
 		</button>
 	</div>
 
-	<!-- Barra de Abas e Filtro de Status -->
-	<div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
-		<!-- Abas -->
-		<div class="flex items-center bg-slate-100 p-1 rounded-xl w-full sm:w-auto text-xs font-semibold">
-			<button
-				onclick={() => visao = 'minhas'}
-				class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg transition {visao === 'minhas' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-700'}"
-			>
-				Minhas tarefas
-			</button>
-			<button
-				onclick={() => visao = 'criadas'}
-				class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg transition {visao === 'criadas' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-700'}"
-			>
-				Criadas por mim
-			</button>
-			<button
-				onclick={() => visao = 'todas'}
-				class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg transition {visao === 'todas' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-700'}"
-			>
-				Todas as tarefas
-			</button>
+	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+		<div class="segmented w-full sm:w-auto" role="group" aria-label="Visão">
+			<button class="flex-1 sm:flex-none" aria-pressed={visao === 'minhas'} onclick={() => visao = 'minhas'}>Comigo</button>
+			<button class="flex-1 sm:flex-none" aria-pressed={visao === 'criadas'} onclick={() => visao = 'criadas'}>Criadas por mim</button>
+			<button class="flex-1 sm:flex-none" aria-pressed={visao === 'todas'} onclick={() => visao = 'todas'}>Todas</button>
 		</div>
 
-		<!-- Filtro Status -->
-		<div class="flex items-center gap-2 w-full sm:w-auto">
-			<select
-				bind:value={filtroStatus}
-				class="w-full sm:w-40 px-3 py-2 border border-slate-200 rounded-xl text-xs font-medium bg-slate-50/50 focus:outline-blue-500"
-			>
-				<option value="">Todos os status</option>
-				<option value="pendente">Apenas Pendentes</option>
-				<option value="em_andamento">Em Andamento</option>
-				<option value="concluida">Concluídas</option>
-			</select>
-		</div>
+		<select bind:value={filtroStatus} class="field w-full sm:w-48" aria-label="Status">
+			<option value="">Qualquer status</option>
+			<option value="pendente">Pendentes</option>
+			<option value="em_andamento">Em andamento</option>
+			<option value="concluida">Concluídas</option>
+		</select>
 	</div>
 
-	<!-- Lista de Tarefas -->
 	{#if loading}
-		<div class="flex justify-center py-20">
-			<div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-		</div>
+		<div class="flex justify-center py-20"><div class="spinner"></div></div>
 	{:else if tarefas.length === 0}
-		<div class="bg-white rounded-2xl border border-slate-200 p-12 text-center max-w-md mx-auto shadow-xs">
-			<CheckSquare class="w-12 h-12 text-slate-300 mx-auto mb-3" />
-			<h3 class="text-base font-bold text-slate-800">Nenhuma tarefa nesta visualização</h3>
-			<p class="text-xs text-slate-500 mt-1">Crie uma nova tarefa ou alterne entre as abas acima.</p>
+		<div class="panel empty">
+			<CheckSquare class="size-9 text-ink-3" strokeWidth={1.5} />
+			<h3 class="empty-title">Nenhuma tarefa aqui</h3>
+			<p class="empty-text">Troque a visão acima ou crie uma nova tarefa.</p>
+			<button onclick={abrirCriar} class="btn btn-secondary mt-5">
+				<Plus class="size-4" />
+				<span>Nova tarefa</span>
+			</button>
 		</div>
 	{:else}
-		<div class="space-y-3">
+		<ul class="panel divide-y divide-line overflow-hidden">
 			{#each tarefas as t (t.id)}
-				<div 
-					class="bg-white rounded-2xl p-4 sm:p-5 border transition-all duration-150 shadow-xs flex items-start gap-3.5 {t.atrasada ? 'border-red-300 bg-red-50/30' : 'border-slate-200 hover:border-slate-300'} {t.status === 'concluida' ? 'opacity-60 bg-slate-50/70' : ''}"
+				<li
+					class="relative flex items-start gap-3 px-4 sm:px-5 py-4 transition-colors hover:bg-sunken {t.status === 'concluida' ? 'bg-sunken/60' : ''}"
 				>
-					<!-- Botão de Conclusão com 1 Clique -->
+					{#if t.atrasada && t.status !== 'concluida'}
+						<span class="absolute left-0 inset-y-0 w-[3px] bg-danger" aria-hidden="true"></span>
+					{/if}
+
+					<!-- Concluir com um clique -->
 					<button
 						type="button"
 						onclick={() => alternarStatus(t)}
-						class="mt-1 flex-shrink-0 text-slate-400 hover:text-blue-600 transition cursor-pointer"
-						title={t.status === 'concluida' ? 'Reabrir tarefa' : 'Marcar como concluída'}
+						class="shrink-0 -m-1 p-1 rounded-full cursor-pointer text-ink-3 hover:text-accent transition-colors"
+						title={t.status === 'concluida' ? 'Reabrir tarefa' : 'Concluir tarefa'}
+						aria-label={t.status === 'concluida' ? 'Reabrir tarefa' : 'Concluir tarefa'}
 					>
 						{#if t.status === 'concluida'}
-							<CheckCircle2 class="w-6 h-6 text-emerald-600" />
+							<CheckCircle2 class="size-[22px] text-ok" />
 						{:else if t.status === 'em_andamento'}
-							<PlayCircle class="w-6 h-6 text-amber-500" />
+							<PlayCircle class="size-[22px] text-warn" />
 						{:else}
-							<Circle class="w-6 h-6 text-slate-300 hover:text-blue-500" />
+							<Circle class="size-[22px]" />
 						{/if}
 					</button>
 
-					<!-- Conteúdo da Tarefa -->
-					<div class="flex-1 min-w-0 space-y-1.5">
-						<div class="flex flex-wrap items-center gap-2">
-							<span class="font-bold text-slate-800 text-base {t.status === 'concluida' ? 'line-through text-slate-500' : ''}">
+					<div class="flex-1 min-w-0">
+						<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+							<span class="font-semibold text-[15px] {t.status === 'concluida' ? 'line-through decoration-ink-3/60 text-ink-3' : 'text-ink'}">
 								{t.titulo}
 							</span>
-
-							<!-- Badge Atrasada Destacada -->
 							{#if t.atrasada}
-								<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-red-100 text-red-700 animate-pulse">
-									<AlertTriangle class="w-3 h-3" />
-									<span>Atrasada</span>
-								</span>
+								<span class="tag tag-danger">Atrasada</span>
 							{/if}
-
-							<!-- Prioridade -->
-							{#if t.prioridade === 'alta'}
-								<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-red-100 text-red-700">
-									<Flag class="w-3 h-3" /> Alta
-								</span>
-							{:else if t.prioridade === 'media'}
-								<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-700">
-									Média
-								</span>
-							{:else}
-								<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600">
-									Baixa
-								</span>
-							{/if}
-
-							<!-- Status tag se em andamento -->
 							{#if t.status === 'em_andamento'}
-								<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-									Em andamento
-								</span>
+								<span class="tag tag-warn">Em andamento</span>
+							{/if}
+							{#if t.prioridade === 'alta'}
+								<span class="tag tag-danger bg-transparent px-0"><Flag class="size-3" /> Alta</span>
 							{/if}
 						</div>
 
 						{#if t.descricao}
-							<p class="text-sm text-slate-600 line-clamp-2">{t.descricao}</p>
+							<p class="mt-1 text-sm text-ink-2 line-clamp-2 max-w-[75ch]">{t.descricao}</p>
 						{/if}
 
-						<!-- Rodapé do Card: Responsável, Prazo e Criador -->
-						<div class="flex flex-wrap items-center gap-3 pt-1 text-xs text-slate-400">
+						<div class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-3">
 							{#if t.responsavel_nome}
-								<div class="flex items-center gap-1.5 text-slate-600 font-medium">
-									<span class="w-2.5 h-2.5 rounded-full" style="background-color: {t.responsavel_cor};"></span>
-									<span>Responsável: {t.responsavel_nome}</span>
-								</div>
+								<span class="inline-flex items-center gap-1.5">
+									<span class="dot size-2" style="background-color: {t.responsavel_cor};"></span>
+									{t.responsavel_nome}
+								</span>
 							{:else}
-								<span class="italic text-slate-400">Sem responsável</span>
+								<span>Sem responsável</span>
 							{/if}
 
 							{#if t.prazo}
-								<div class="flex items-center gap-1 {t.atrasada ? 'text-red-600 font-bold' : 'text-slate-500'}">
-									<Clock class="w-3.5 h-3.5" />
-									<span>Prazo: {new Date(t.prazo).toLocaleDateString('pt-BR')}</span>
-								</div>
+								<span class="inline-flex items-center gap-1 tabular {t.atrasada ? 'text-danger font-semibold' : ''}">
+									<Clock class="size-3.5" />
+									{new Date(t.prazo).toLocaleDateString('pt-BR')}
+								</span>
+							{/if}
+
+							{#if t.prioridade === 'media'}
+								<span>Prioridade média</span>
+							{:else if t.prioridade === 'baixa'}
+								<span>Prioridade baixa</span>
 							{/if}
 
 							{#if t.concluida_em}
-								<div class="text-emerald-600">
-									Concluída em {new Date(t.concluida_em).toLocaleDateString('pt-BR')}
-								</div>
+								<span class="text-ok">Concluída em {new Date(t.concluida_em).toLocaleDateString('pt-BR')}</span>
 							{/if}
 						</div>
 					</div>
 
-					<!-- Ações Rápidas -->
-					<div class="flex items-center gap-1 self-center">
+					<div class="flex items-center gap-0.5 shrink-0">
 						{#if t.status === 'pendente'}
-							<button
-								type="button"
-								onclick={(e) => definirEmAndamento(t, e)}
-								class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition"
-								title="Iniciar tarefa"
-							>
+							<button type="button" onclick={(e) => definirEmAndamento(t, e)} class="btn btn-sm btn-soft mr-1">
 								Iniciar
 							</button>
 						{/if}
-
 						{#if t.pode_editar}
-							<button
-								type="button"
-								onclick={() => abrirEditar(t)}
-								class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-								title="Editar tarefa"
-							>
-								<Edit3 class="w-4 h-4" />
+							<button type="button" onclick={() => abrirEditar(t)} class="icon-btn" title="Editar" aria-label="Editar tarefa">
+								<Edit3 class="size-4" />
 							</button>
 						{/if}
-
 						{#if t.pode_excluir}
-							<button
-								type="button"
-								onclick={(e) => excluirTarefa(t.id, e)}
-								class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-								title="Excluir tarefa"
-							>
-								<Trash2 class="w-4 h-4" />
+							<button type="button" onclick={(e) => excluirTarefa(t.id, e)} class="icon-btn icon-btn-danger" title="Excluir" aria-label="Excluir tarefa">
+								<Trash2 class="size-4" />
 							</button>
 						{/if}
 					</div>
-				</div>
+				</li>
 			{/each}
-		</div>
+		</ul>
 	{/if}
 
-	<!-- Modal Criar / Editar Tarefa -->
+	<!-- Modal criar / editar -->
 	{#if modalAberto}
-		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150 text-slate-800 dark:text-slate-100">
-				<div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-					<h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">
-						{formId ? 'Editar Tarefa' : 'Nova Tarefa'}
-					</h3>
-					<button onclick={() => modalAberto = false} class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer">
-						<X class="w-5 h-5" />
+		<div class="modal-backdrop">
+			<div class="modal max-w-lg" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<h3 class="modal-title">{formId ? 'Editar tarefa' : 'Nova tarefa'}</h3>
+					<button onclick={() => modalAberto = false} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
 					</button>
 				</div>
 
-				<div class="space-y-3.5">
+				<div class="modal-body">
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Título da Tarefa *</label>
-						<input 
-							type="text" 
-							bind:value={formTitulo} 
-							placeholder="Ex: Verificar suprimentos de informática"
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
+						<label class="label" for="tf-titulo">Título</label>
+						<input
+							id="tf-titulo"
+							type="text"
+							bind:value={formTitulo}
+							placeholder="Ex.: Repor toner da impressora do 2º andar"
+							class="field"
 							autofocus
 						/>
 					</div>
 
-					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div>
-							<label class="block text-xs font-semibold text-slate-700 mb-1">Prioridade</label>
-							<select 
-								bind:value={formPrioridade}
-								class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500"
-							>
+							<label class="label" for="tf-prioridade">Prioridade</label>
+							<select id="tf-prioridade" bind:value={formPrioridade} class="field">
 								<option value="baixa">Baixa</option>
 								<option value="media">Média</option>
 								<option value="alta">Alta</option>
 							</select>
 						</div>
-
 						<div>
-							<label class="block text-xs font-semibold text-slate-700 mb-1">Prazo (opcional)</label>
-							<input 
-								type="date" 
-								bind:value={formPrazo}
-								class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500" 
-							/>
+							<label class="label" for="tf-prazo">Prazo <span class="font-normal text-ink-3">(opcional)</span></label>
+							<input id="tf-prazo" type="date" bind:value={formPrazo} class="field" />
 						</div>
 					</div>
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Responsável (opcional)</label>
-						<select 
-							bind:value={formResponsavel}
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500"
-						>
-							<option value="">Sem responsável definido</option>
+						<label class="label" for="tf-resp">Responsável <span class="font-normal text-ink-3">(opcional)</span></label>
+						<select id="tf-resp" bind:value={formResponsavel} class="field">
+							<option value="">Ninguém ainda</option>
 							{#each usuarios as u}
 								<option value={u.id}>{u.nome}</option>
 							{/each}
@@ -505,76 +434,75 @@
 					</div>
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Descrição</label>
-						<textarea 
+						<label class="label" for="tf-desc">Descrição</label>
+						<textarea
+							id="tf-desc"
 							bind:value={formDescricao}
 							rows="3"
-							placeholder="Instruções e detalhes adicionais da tarefa..."
-							class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-blue-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+							placeholder="Detalhes e instruções"
+							class="field"
 						></textarea>
 					</div>
 
 					{#if formId}
-						<!-- Seção de Comentários -->
-						<div class="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
-							<div class="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-								<MessageSquare class="w-4 h-4 text-blue-500" />
-								<span>Comentários ({comentarios.length})</span>
-							</div>
+						<!-- Comentários -->
+						<div class="pt-4 border-t border-line space-y-3">
+							<h4 class="flex items-center gap-2 text-sm font-bold text-ink">
+								<MessageSquare class="size-4 text-ink-3" />
+								Comentários
+								<span class="font-semibold text-ink-3 tabular">{comentarios.length}</span>
+							</h4>
 
-							<!-- Lista de Comentários -->
-							<div class="max-h-44 overflow-y-auto space-y-2 pr-1">
+							<div class="max-h-52 overflow-y-auto space-y-3 pr-1">
 								{#if carregandoComentarios}
-									<p class="text-xs text-slate-400">Carregando comentários...</p>
+									<p class="text-sm text-ink-3">Carregando comentários…</p>
 								{:else if comentarios.length === 0}
-									<p class="text-xs text-slate-400 italic">Nenhum comentário nesta tarefa ainda.</p>
+									<p class="text-sm text-ink-3">Nenhum comentário ainda.</p>
 								{:else}
 									{#each comentarios as c (c.id)}
-										<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700/60 text-xs space-y-1">
-											<div class="flex items-center justify-between">
-												<div class="flex items-center gap-2">
-													<div
-														class="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-2xs"
-														style="background-color: {c.usuario_cor || '#2563EB'};"
-													>
-														{c.usuario_nome.slice(0, 1).toUpperCase()}
-													</div>
-													<span class="font-semibold text-slate-800 dark:text-slate-200">{c.usuario_nome}</span>
-													<span class="text-[10px] text-slate-400">
-														{new Date(c.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-													</span>
-												</div>
-												{#if c.pode_excluir}
-													<button
-														onclick={() => excluirComentario(c.id)}
-														class="text-slate-400 hover:text-red-500 transition cursor-pointer"
-														title="Excluir comentário"
-													>
-														<Trash2 class="w-3.5 h-3.5" />
-													</button>
-												{/if}
+										<div class="group flex gap-2.5">
+											<div class="avatar size-7 text-[11px] mt-0.5" style="background-color: {c.usuario_cor || '#1f5c5a'};">
+												{c.usuario_nome.slice(0, 1).toUpperCase()}
 											</div>
-											<p class="text-slate-700 dark:text-slate-300 pl-7 whitespace-pre-wrap">{c.conteudo}</p>
+											<div class="flex-1 min-w-0">
+												<div class="flex items-baseline gap-2">
+													<span class="text-sm font-semibold text-ink">{c.usuario_nome}</span>
+													<time class="text-xs text-ink-3">
+														{new Date(c.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+													</time>
+													{#if c.pode_excluir}
+														<button
+															onclick={() => excluirComentario(c.id)}
+															class="ml-auto icon-btn icon-btn-danger size-6 opacity-0 group-hover:opacity-100 focus:opacity-100"
+															title="Excluir comentário"
+															aria-label="Excluir comentário"
+														>
+															<Trash2 class="size-3.5" />
+														</button>
+													{/if}
+												</div>
+												<p class="text-sm text-ink-2 whitespace-pre-wrap">{c.conteudo}</p>
+											</div>
 										</div>
 									{/each}
 								{/if}
 							</div>
 
-							<!-- Input de novo comentário -->
 							<div class="flex items-center gap-2">
 								<input
 									type="text"
 									bind:value={novoComentario}
 									onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionarComentario(); }}}
-									placeholder="Escreva um comentário..."
-									class="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-xl text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-blue-500"
+									placeholder="Escreva um comentário"
+									class="field"
+									aria-label="Novo comentário"
 								/>
 								<button
 									onclick={adicionarComentario}
 									disabled={!novoComentario.trim() || enviandoComentario}
-									class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition"
+									class="btn btn-secondary h-10"
 								>
-									<Send class="w-3.5 h-3.5" />
+									<Send class="size-4" />
 									<span>Enviar</span>
 								</button>
 							</div>
@@ -582,18 +510,10 @@
 					{/if}
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-					<button 
-						onclick={() => modalAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium cursor-pointer"
-					>
-						Cancelar
-					</button>
-					<button 
-						onclick={salvarTarefa}
-						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs cursor-pointer"
-					>
-						{formId ? 'Salvar Alterações' : 'Criar Tarefa'}
+				<div class="modal-foot">
+					<button onclick={() => modalAberto = false} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarTarefa} class="btn btn-primary">
+						{formId ? 'Salvar alterações' : 'Criar tarefa'}
 					</button>
 				</div>
 			</div>

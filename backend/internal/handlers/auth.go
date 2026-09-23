@@ -34,9 +34,10 @@ func NewAuthHandler(db *database.DB, cfg *config.Config) *AuthHandler {
 }
 
 type UsuarioPublico struct {
-	ID   string `json:"id"`
-	Nome string `json:"nome"`
-	Cor  string `json:"cor"`
+	ID         string `json:"id"`
+	Nome       string `json:"nome"`
+	Cor        string `json:"cor"`
+	FotoVersao *int64 `json:"foto_versao"`
 }
 
 // ListarUsuariosPublico: GET /api/auth/usuarios (pública)
@@ -50,9 +51,10 @@ func (h *AuthHandler) ListarUsuariosPublico(w http.ResponseWriter, r *http.Reque
 	result := make([]UsuarioPublico, 0, len(usuarios))
 	for _, u := range usuarios {
 		result = append(result, UsuarioPublico{
-			ID:   database.UUIDToString(u.ID),
-			Nome: u.Nome,
-			Cor:  u.Cor,
+			ID:         database.UUIDToString(u.ID),
+			Nome:       u.Nome,
+			Cor:        u.Cor,
+			FotoVersao: fotoVersao(u.FotoAtualizadaEm),
 		})
 	}
 
@@ -65,11 +67,12 @@ type LoginRequest struct {
 }
 
 type UserProfileResponse struct {
-	ID    string `json:"id"`
-	Nome  string `json:"nome"`
-	Cor   string `json:"cor"`
-	Papel string `json:"papel"`
-	Tema  string `json:"tema"`
+	ID         string `json:"id"`
+	Nome       string `json:"nome"`
+	Cor        string `json:"cor"`
+	Papel      string `json:"papel"`
+	Tema       string `json:"tema"`
+	FotoVersao *int64 `json:"foto_versao"`
 }
 
 // Login: POST /api/auth/login
@@ -163,11 +166,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 
 	response.JSON(w, http.StatusOK, UserProfileResponse{
-		ID:    database.UUIDToString(user.ID),
-		Nome:  user.Nome,
-		Cor:   user.Cor,
-		Papel: user.Papel,
-		Tema:  user.Tema,
+		ID:         database.UUIDToString(user.ID),
+		Nome:       user.Nome,
+		Cor:        user.Cor,
+		Papel:      user.Papel,
+		Tema:       user.Tema,
+		FotoVersao: buscarFotoVersao(r.Context(), h.db.Queries, user.ID),
 	})
 }
 
@@ -202,12 +206,18 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var fotoV *int64
+	if uID, err := database.StringToUUID(user.ID); err == nil {
+		fotoV = buscarFotoVersao(r.Context(), h.db.Queries, uID)
+	}
+
 	response.JSON(w, http.StatusOK, UserProfileResponse{
-		ID:    user.ID,
-		Nome:  user.Nome,
-		Cor:   user.Cor,
-		Papel: user.Papel,
-		Tema:  user.Tema,
+		ID:         user.ID,
+		Nome:       user.Nome,
+		Cor:        user.Cor,
+		Papel:      user.Papel,
+		Tema:       user.Tema,
+		FotoVersao: fotoV,
 	})
 }
 

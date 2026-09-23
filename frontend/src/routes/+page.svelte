@@ -2,17 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { 
-		Calendar, 
-		CheckSquare, 
-		AlertTriangle, 
-		Headphones, 
-		Package, 
-		ArrowRight,
-		Clock,
-		Flag,
-		AlertCircle
-	} from 'lucide-svelte';
+	import { Calendar, CheckSquare, Package, Headphones, Plus, Flag } from 'lucide-svelte';
 
 	interface PainelDados {
 		proximos_eventos: {
@@ -59,200 +49,176 @@
 	onMount(() => {
 		carregarPainel();
 	});
+
+	const hoje = new Date();
+
+	function saudacao(): string {
+		const h = hoje.getHours();
+		if (h < 12) return 'Bom dia';
+		if (h < 18) return 'Boa tarde';
+		return 'Boa noite';
+	}
+
+	function primeiroNome(nome?: string): string {
+		return nome?.trim().split(/\s+/)[0] ?? '';
+	}
+
+	function rotuloDia(iso: string): string {
+		const d = new Date(iso);
+		return d.toDateString() === hoje.toDateString() ? 'Hoje' : 'Amanhã';
+	}
+
+	function hora(iso: string): string {
+		return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+	}
 </script>
 
-<div class="space-y-6">
-	<!-- Banner de Boas-vindas -->
-	<div class="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+{#snippet cabecalho(titulo: string, total: number | null, href: string, linkTexto: string)}
+	<div class="flex items-baseline justify-between gap-3 px-5 pt-4 pb-3 border-b border-line">
+		<h2 class="text-[15px] font-bold text-ink">
+			{titulo}
+			{#if total}
+				<span class="ml-1 font-semibold text-ink-3 tabular">{total}</span>
+			{/if}
+		</h2>
+		<a href={href} class="text-[13px] font-semibold text-accent hover:underline underline-offset-2">{linkTexto}</a>
+	</div>
+{/snippet}
+
+{#snippet vazio(texto: string)}
+	<p class="px-5 py-10 text-sm text-ink-3 text-center">{texto}</p>
+{/snippet}
+
+<div class="space-y-8">
+	<div class="page-head">
 		<div>
-			<h1 class="text-2xl font-bold text-slate-800">Olá, {auth.user?.nome}!</h1>
-			<p class="text-sm text-slate-500 mt-1">Terminal de atendimento e controle interno do setor.</p>
+			<p class="text-sm text-ink-3 first-letter:uppercase">
+				{hoje.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+			</p>
+			<h1 class="page-title mt-0.5">{saudacao()}, {primeiroNome(auth.user?.nome)}</h1>
 		</div>
-		<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold">
-			<Clock class="w-3.5 h-3.5" />
-			<span>Rede Interna Ativa</span>
+		<div class="flex flex-wrap gap-2">
+			<a href="/atendimentos" class="btn btn-primary">
+				<Headphones class="size-4" />
+				<span>Registrar atendimento</span>
+			</a>
+			<a href="/tarefas" class="btn btn-secondary">
+				<Plus class="size-4" />
+				<span>Nova tarefa</span>
+			</a>
 		</div>
 	</div>
 
 	{#if loading}
-		<div class="flex justify-center py-20">
-			<div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-		</div>
+		<div class="flex justify-center py-20"><div class="spinner"></div></div>
 	{:else if dados}
-		<!-- Grade dos 3 Blocos Principais -->
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-			<!-- 1. Próximos Eventos (Hoje e Amanhã) -->
-			<div class="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 flex flex-col justify-between">
-				<div class="space-y-4">
-					<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-						<div class="flex items-center gap-2 font-bold text-slate-800">
-							<div class="p-2 rounded-xl bg-blue-50 text-blue-600">
-								<Calendar class="w-5 h-5" />
-							</div>
-							<span>Próximos Eventos</span>
-						</div>
-						<span class="text-xs font-semibold text-slate-400">Hoje e Amanhã</span>
-					</div>
-
-					{#if dados.proximos_eventos.length === 0}
-						<div class="text-xs text-slate-400 py-8 text-center border border-dashed border-slate-200 rounded-xl">
-							Nenhum evento agendado para hoje ou amanhã.
-						</div>
-					{:else}
-						<div class="space-y-2.5">
-							{#each dados.proximos_eventos as ev (ev.id)}
-								<div class="p-3 rounded-xl bg-slate-50/80 border border-slate-100 flex items-start gap-2.5">
-									<span class="w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0" style="background-color: {ev.criador_cor};"></span>
-									<div class="min-w-0 flex-1">
-										<div class="font-semibold text-slate-800 text-sm truncate">{ev.titulo}</div>
-										<div class="text-xs text-slate-500 mt-0.5">
-											{new Date(ev.inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - {new Date(ev.fim).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-										</div>
+		<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+			<!-- Agenda -->
+			<section class="panel">
+				{@render cabecalho('Agenda', dados.proximos_eventos.length, '/calendario', 'Calendário')}
+				{#if dados.proximos_eventos.length === 0}
+					{@render vazio('Nada marcado para hoje ou amanhã.')}
+				{:else}
+					<ul class="divide-y divide-line">
+						{#each dados.proximos_eventos.slice(0, 6) as ev (ev.id)}
+							<li class="flex gap-4 px-5 py-3">
+								<div class="w-14 shrink-0 tabular">
+									<div class="text-[13px] font-semibold text-ink-3">{rotuloDia(ev.inicio)}</div>
+									<div class="text-[15px] font-bold text-ink">{ev.dia_inteiro ? 'Dia todo' : hora(ev.inicio)}</div>
+								</div>
+								<div class="min-w-0 flex-1 border-l-[3px] pl-3" style="border-color: {ev.criador_cor};">
+									<div class="font-semibold text-ink text-sm leading-snug">{ev.titulo}</div>
+									<div class="flex gap-3 text-[13px] text-ink-3 mt-0.5 min-w-0">
+										{#if !ev.dia_inteiro}<span class="shrink-0">até {hora(ev.fim)}</span>{/if}
+										<span class="truncate">{ev.criador_nome}</span>
 									</div>
 								</div>
-							{/each}
-						</div>
+							</li>
+						{/each}
+					</ul>
+					{#if dados.proximos_eventos.length > 6}
+						<a href="/calendario" class="block px-5 py-3 border-t border-line text-[13px] font-semibold text-ink-3 hover:text-accent">
+							Mais {dados.proximos_eventos.length - 6} no calendário
+						</a>
 					{/if}
-				</div>
+				{/if}
+			</section>
 
-				<a href="/calendario" class="mt-4 flex items-center justify-between text-sm font-semibold text-blue-600 hover:text-blue-700 pt-3 border-t border-slate-100">
-					<span>Abrir calendário</span>
-					<ArrowRight class="w-4 h-4" />
-				</a>
-			</div>
-
-			<!-- 2. Minhas Tarefas Pendentes (Atrasadas Primeiro) -->
-			<div class="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 flex flex-col justify-between">
-				<div class="space-y-4">
-					<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-						<div class="flex items-center gap-2 font-bold text-slate-800">
-							<div class="p-2 rounded-xl bg-amber-50 text-amber-600">
-								<CheckSquare class="w-5 h-5" />
-							</div>
-							<span>Minhas Tarefas</span>
-						</div>
-						<span class="text-xs font-semibold text-slate-400">Pendentes</span>
-					</div>
-
-					{#if dados.tarefas_pendentes.length === 0}
-						<div class="text-xs text-slate-400 py-8 text-center border border-dashed border-slate-200 rounded-xl">
-							Você não possui tarefas pendentes atribuídas.
-						</div>
-					{:else}
-						<div class="space-y-2.5">
-							{#each dados.tarefas_pendentes as t (t.id)}
-								<div class="p-3 rounded-xl border flex items-start justify-between gap-2 {t.atrasada ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/80 border-slate-100'}">
-									<div class="min-w-0 flex-1">
-										<div class="font-semibold text-slate-800 text-sm truncate flex items-center gap-1.5">
-											<span>{t.titulo}</span>
-											{#if t.atrasada}
-												<span class="inline-flex text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.2 rounded">Atrasada</span>
-											{/if}
-										</div>
-										<div class="text-xs text-slate-400 mt-0.5">
-											{t.prazo ? `Prazo: ${new Date(t.prazo).toLocaleDateString('pt-BR')}` : 'Sem prazo'}
-										</div>
-									</div>
-									{#if t.prioridade === 'alta'}
-										<span class="text-xs text-red-600 font-bold flex items-center gap-0.5">
-											<Flag class="w-3 h-3" />
-										</span>
-									{/if}
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
-
-				<a href="/tarefas" class="mt-4 flex items-center justify-between text-sm font-semibold text-amber-600 hover:text-amber-700 pt-3 border-t border-slate-100">
-					<span>Ver todas as tarefas</span>
-					<ArrowRight class="w-4 h-4" />
-				</a>
-			</div>
-
-			<!-- 3. Itens Abaixo do Estoque Mínimo -->
-			<div class="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 flex flex-col justify-between">
-				<div class="space-y-4">
-					<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-						<div class="flex items-center gap-2 font-bold text-slate-800">
-							<div class="p-2 rounded-xl bg-red-50 text-red-600">
-								<AlertTriangle class="w-5 h-5" />
-							</div>
-							<span>Estoque Crítico</span>
-						</div>
-						<span class="text-xs font-semibold text-red-500">Abaixo do mín.</span>
-					</div>
-
-					{#if dados.itens_abaixo_do_minimo.length === 0}
-						<div class="text-xs text-slate-400 py-8 text-center border border-dashed border-slate-200 rounded-xl">
-							Todos os itens estão com saldo regular.
-						</div>
-					{:else}
-						<div class="space-y-2.5">
-							{#each dados.itens_abaixo_do_minimo as it (it.id)}
-								<div class="p-3 rounded-xl bg-red-50/40 border border-red-200 flex items-center justify-between gap-2">
-									<div class="min-w-0 flex-1">
-										<div class="font-semibold text-slate-800 text-sm truncate">{it.nome}</div>
-										<div class="text-xs text-slate-500 mt-0.5">Mínimo: {it.estoque_minimo} {it.unidade}</div>
-									</div>
-									<div class="text-right">
-										<div class="text-base font-extrabold text-red-600">{it.saldo}</div>
-										<div class="text-[10px] text-slate-400">{it.unidade}</div>
+			<!-- Minhas tarefas -->
+			<section class="panel">
+				{@render cabecalho('Minhas tarefas', dados.tarefas_pendentes.length, '/tarefas', 'Ver todas')}
+				{#if dados.tarefas_pendentes.length === 0}
+					{@render vazio('Nenhuma tarefa pendente com você.')}
+				{:else}
+					<ul class="divide-y divide-line">
+						{#each dados.tarefas_pendentes as t (t.id)}
+							<li class="flex items-start gap-3 px-5 py-3">
+								<span
+									class="mt-1.5 size-2 shrink-0 rounded-full {t.atrasada ? 'bg-danger' : t.prioridade === 'alta' ? 'bg-warn' : 'bg-line-strong'}"
+									aria-hidden="true"
+								></span>
+								<div class="min-w-0 flex-1">
+									<div class="font-semibold text-ink text-sm leading-snug">{t.titulo}</div>
+									<div class="text-[13px] mt-0.5 {t.atrasada ? 'text-danger font-semibold' : 'text-ink-3'}">
+										{t.atrasada ? 'Atrasada, prazo' : t.prazo ? 'Prazo' : 'Sem prazo'}
+										{#if t.prazo}{new Date(t.prazo).toLocaleDateString('pt-BR')}{/if}
 									</div>
 								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
+								{#if t.prioridade === 'alta'}
+									<Flag class="size-3.5 mt-1 text-warn shrink-0" aria-label="Prioridade alta" />
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
 
-				<a href="/estoque" class="mt-4 flex items-center justify-between text-sm font-semibold text-red-600 hover:text-red-700 pt-3 border-t border-slate-100">
-					<span>Acessar estoque</span>
-					<ArrowRight class="w-4 h-4" />
-				</a>
-			</div>
+			<!-- Estoque abaixo do mínimo -->
+			<section class="panel">
+				{@render cabecalho('Estoque baixo', dados.itens_abaixo_do_minimo.length, '/estoque', 'Estoque')}
+				{#if dados.itens_abaixo_do_minimo.length === 0}
+					{@render vazio('Todos os itens estão acima do mínimo.')}
+				{:else}
+					<ul class="divide-y divide-line">
+						{#each dados.itens_abaixo_do_minimo as it (it.id)}
+							{@const pct = it.estoque_minimo > 0 ? Math.max(0, Math.min(100, (it.saldo / it.estoque_minimo) * 100)) : 0}
+							<li class="px-5 py-3">
+								<div class="flex items-baseline justify-between gap-3">
+									<span class="font-semibold text-ink text-sm truncate">{it.nome}</span>
+									<span class="text-sm tabular whitespace-nowrap">
+										<strong class="text-danger">{it.saldo}</strong>
+										<span class="text-ink-3">/ {it.estoque_minimo} {it.unidade}</span>
+									</span>
+								</div>
+								<div class="mt-2 h-1.5 rounded-full bg-muted overflow-hidden" aria-hidden="true">
+									<div class="h-full rounded-full bg-danger" style="width: {pct}%"></div>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
 		</div>
 
-		<!-- Atalhos Rápidos -->
-		<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
-			<a href="/atendimentos" class="p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-400 shadow-xs flex items-center gap-3 transition">
-				<div class="p-2 rounded-lg bg-emerald-50 text-emerald-600">
-					<Headphones class="w-5 h-5" />
-				</div>
-				<div>
-					<div class="text-sm font-bold text-slate-800">Atendimentos</div>
-					<div class="text-xs text-slate-400">Registrar novo</div>
-				</div>
-			</a>
-
-			<a href="/calendario" class="p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-400 shadow-xs flex items-center gap-3 transition">
-				<div class="p-2 rounded-lg bg-blue-50 text-blue-600">
-					<Calendar class="w-5 h-5" />
-				</div>
-				<div>
-					<div class="text-sm font-bold text-slate-800">Reuniões</div>
-					<div class="text-xs text-slate-400">Ver agenda</div>
-				</div>
-			</a>
-
-			<a href="/tarefas" class="p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-400 shadow-xs flex items-center gap-3 transition">
-				<div class="p-2 rounded-lg bg-amber-50 text-amber-600">
-					<CheckSquare class="w-5 h-5" />
-				</div>
-				<div>
-					<div class="text-sm font-bold text-slate-800">Tarefas</div>
-					<div class="text-xs text-slate-400">Criar demanda</div>
-				</div>
-			</a>
-
-			<a href="/estoque" class="p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-400 shadow-xs flex items-center gap-3 transition">
-				<div class="p-2 rounded-lg bg-indigo-50 text-indigo-600">
-					<Package class="w-5 h-5" />
-				</div>
-				<div>
-					<div class="text-sm font-bold text-slate-800">Estoque</div>
-					<div class="text-xs text-slate-400">Movimentar item</div>
-				</div>
-			</a>
-		</div>
+		<!-- Atalhos -->
+		<nav class="grid grid-cols-2 md:grid-cols-4 gap-3" aria-label="Atalhos">
+			{#each [
+				{ href: '/atendimentos', label: 'Atendimentos', desc: 'Histórico e busca', icon: Headphones },
+				{ href: '/tarefas', label: 'Tarefas', desc: 'Quadro da equipe', icon: CheckSquare },
+				{ href: '/calendario', label: 'Calendário', desc: 'Reuniões da semana', icon: Calendar },
+				{ href: '/estoque', label: 'Estoque', desc: 'Saldos e movimentações', icon: Package }
+			] as atalho}
+				{@const Icon = atalho.icon}
+				<a href={atalho.href} class="group flex items-center gap-3 px-4 py-3.5 rounded-xl border border-line hover:bg-surface hover:border-line-strong transition-colors">
+					<Icon class="size-5 text-ink-3 group-hover:text-accent transition-colors" />
+					<div class="min-w-0">
+						<div class="text-sm font-semibold text-ink">{atalho.label}</div>
+						<div class="text-[13px] text-ink-3 truncate">{atalho.desc}</div>
+					</div>
+				</a>
+			{/each}
+		</nav>
+	{:else}
+		<div class="alert bg-danger-soft text-danger">Não foi possível carregar o painel. Recarregue a página para tentar de novo.</div>
 	{/if}
 </div>
