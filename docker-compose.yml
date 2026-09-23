@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tiiv_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-tiiv}
+      TZ: America/Sao_Paulo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tiiv"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tiiv_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/tiiv?sslmode=disable}
+      LISTEN_ADDR: ":8080"
+      SESSION_TTL: ${SESSION_TTL:-30m}
+      SESSION_MAX_TTL: ${SESSION_MAX_TTL:-12h}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ADMIN_NOME: ${ADMIN_NOME:-Administrador}
+      ADMIN_PIN: ${ADMIN_PIN:-1234}
+      TZ: America/Sao_Paulo
+
+  backup:
+    image: postgres:16-alpine
+    container_name: tiiv_backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGDATABASE: ${POSTGRES_DB:-tiiv}
+      TZ: America/Sao_Paulo
+    volumes:
+      - backup_data:/backups
+    entrypoint: >
+      /bin/sh -c '
+        echo "Serviço de backup do PostgreSQL iniciado. Retenção: 7 dias."
+        while true; do
+          DATA=$$(date +%Y-%m-%d_%H-%M-%S)
+          ARQUIVO="/backups/tiiv_backup_$$DATA.dump"
+          echo "[$$DATA] Gerando backup do banco em $$ARQUIVO..."
+          pg_dump -Fc -f "$$ARQUIVO" && echo "[$$DATA] Backup gerado com sucesso!"
+          echo "[$$DATA] Removendo backups com mais de 7 dias..."
+          find /backups -name "tiiv_backup_*.dump" -mtime +7 -delete
+          sleep 86400
+        done
+      '
+
+volumes:
+  postgres_data:
+  backup_data:
