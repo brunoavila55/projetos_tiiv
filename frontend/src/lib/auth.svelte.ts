@@ -28,7 +28,7 @@ class AuthStore {
 	async checkAuth(): Promise<UserProfile | null> {
 		this.loading = true;
 		try {
-			const u = await apiFetch<UserProfile>('/api/auth/me');
+			const u = await apiFetch<UserProfile>('/api/auth/me', { silent: true });
 			this.user = u;
 			this.lastActivity = Date.now();
 			return u;

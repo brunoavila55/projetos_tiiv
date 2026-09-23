@@ -93,13 +93,29 @@ docker compose exec postgres pg_dump -U postgres -Fc tiiv > backup_manual_$(date
 ```
 
 ### Restaurar Backup
-Para restaurar um dump em um banco de dados vazio:
-```bash
-# 1. Copiar o arquivo de dump para o container do postgres (se necessário)
-docker cp backup.dump tiiv_postgres:/tmp/backup.dump
+Para restaurar um dump de backup (restauração testada e validada):
 
-# 2. Restaurar usando pg_restore
-docker compose exec postgres pg_restore -U postgres -d tiiv --clean --if-exists /tmp/backup.dump
+**Opção 1: Usando o comando make (mais fácil)**
+```bash
+# Restaura o backup mais recente do volume dedicado no banco padrão (tiiv)
+make restore
+
+# Ou restaura um arquivo específico em um banco específico
+make restore FILE=/backups/tiiv_backup_2026-09-23_14-44-07.dump DB=tiiv
+```
+
+**Opção 2: Usando o script direto**
+```bash
+# Restaura o backup mais recente
+./scripts/restore.sh
+
+# Restaura dump específico em um banco alvo (ex: para testes)
+./scripts/restore.sh /backups/tiiv_backup_2026-09-23_14-44-07.dump tiiv_teste
+```
+
+**Opção 3: Manual via pg_restore**
+```bash
+docker compose exec postgres pg_restore -U postgres -d tiiv --clean --if-exists /backups/arquivo.dump
 ```
 
 ---

@@ -1,4 +1,4 @@
-.PHONY: dev build sqlc migrate migrate-down test docker-up docker-down docker-logs
+.PHONY: dev build sqlc migrate migrate-down test restore docker-up docker-down docker-logs
 
 DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/tiiv?sslmode=disable
 
@@ -40,6 +40,10 @@ migrate-down:
 test:
 	@echo "Executando suíte de testes..."
 	@cd backend && go test -v -race ./...
+
+restore:
+	@echo "Executando restauração de backup..."
+	@./scripts/restore.sh $(FILE) $(DB)
 
 docker-up:
 	@echo "Subindo containers com Docker Compose..."

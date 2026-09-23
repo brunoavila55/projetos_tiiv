@@ -1,3 +1,5 @@
+import { toast } from './toast.svelte';
+
 export interface ApiErrorResponse {
 	error: string;
 }
@@ -12,9 +14,13 @@ export class ApiError extends Error {
 	}
 }
 
+export interface ApiFetchOptions extends RequestInit {
+	silent?: boolean;
+}
+
 export async function apiFetch<T>(
 	url: string,
-	options: RequestInit = {}
+	options: ApiFetchOptions = {}
 ): Promise<T> {
 	const defaultHeaders: Record<string, string> = {
 		Accept: 'application/json'
@@ -45,6 +51,11 @@ export async function apiFetch<T>(
 			(typeof data === 'object' && data?.error) ||
 			(typeof data === 'string' && data) ||
 			`Erro ${response.status}: ${response.statusText}`;
+
+		if (!options.silent) {
+			toast.error(message);
+		}
+
 		throw new ApiError(response.status, message);
 	}
 

@@ -4,6 +4,7 @@
 	import { auth } from '$lib/auth.svelte';
 	import PdvLogin from '$lib/components/PdvLogin.svelte';
 	import Navbar from '$lib/components/Navbar.svelte';
+	import ToastContainer from '$lib/components/ToastContainer.svelte';
 
 	let { children } = $props();
 
@@ -33,3 +34,5 @@
 		</main>
 	</div>
 {/if}
+
+<ToastContainer />
