@@ -13,23 +13,23 @@ import (
 
 const atualizarStatusTarefa = `-- name: AtualizarStatusTarefa :one
 UPDATE tarefas
-SET status = $2,
+SET status = $1::varchar,
     concluida_em = CASE 
-        WHEN $2 = 'concluida' THEN now() 
+        WHEN $1::varchar = 'concluida' THEN now() 
         ELSE NULL 
     END,
     atualizado_em = now()
-WHERE id = $1
+WHERE id = $2::uuid
 RETURNING id, titulo, descricao, status, prioridade, prazo, criado_por, responsavel_id, concluida_em, criado_em, atualizado_em
 `
 
 type AtualizarStatusTarefaParams struct {
-	ID     pgtype.UUID `json:"id"`
 	Status string      `json:"status"`
+	ID     pgtype.UUID `json:"id"`
 }
 
 func (q *Queries) AtualizarStatusTarefa(ctx context.Context, arg AtualizarStatusTarefaParams) (Tarefas, error) {
-	row := q.db.QueryRow(ctx, atualizarStatusTarefa, arg.ID, arg.Status)
+	row := q.db.QueryRow(ctx, atualizarStatusTarefa, arg.Status, arg.ID)
 	var i Tarefas
 	err := row.Scan(
 		&i.ID,

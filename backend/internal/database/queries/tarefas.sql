@@ -65,13 +65,13 @@ RETURNING *;
 
 -- name: AtualizarStatusTarefa :one
 UPDATE tarefas
-SET status = $2,
+SET status = sqlc.arg('status')::varchar,
     concluida_em = CASE 
-        WHEN $2 = 'concluida' THEN now() 
+        WHEN sqlc.arg('status')::varchar = 'concluida' THEN now() 
         ELSE NULL 
     END,
     atualizado_em = now()
-WHERE id = $1
+WHERE id = sqlc.arg('id')::uuid
 RETURNING *;
 
 -- name: DeletarTarefa :exec

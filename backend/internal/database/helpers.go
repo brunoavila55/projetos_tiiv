@@ -40,3 +40,28 @@ func TimestamptzToTime(ts pgtype.Timestamptz) *time.Time {
 	t := ts.Time
 	return &t
 }
+
+func StringToText(s string) pgtype.Text {
+	return pgtype.Text{
+		String: s,
+		Valid:  s != "",
+	}
+}
+
+func TextToString(t pgtype.Text) *string {
+	if !t.Valid {
+		return nil
+	}
+	s := t.String
+	return &s
+}
+
+func BoolToPgtypeBool(b *bool) pgtype.Bool {
+	if b == nil {
+		return pgtype.Bool{Valid: false}
+	}
+	return pgtype.Bool{
+		Bool:  *b,
+		Valid: true,
+	}
+}
