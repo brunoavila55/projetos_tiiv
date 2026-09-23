@@ -76,6 +76,7 @@ func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 			Nome:     sessao.UsuarioNome,
 			Cor:      sessao.UsuarioCor,
 			Papel:    sessao.UsuarioPapel,
+			Tema:     sessao.UsuarioTema,
 			SessaoID: database.UUIDToString(sessao.ID),
 		}
 

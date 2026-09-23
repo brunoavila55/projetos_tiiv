@@ -17,7 +17,9 @@
 		X, 
 		ArrowDown, 
 		ArrowUp,
-		Flag
+		Flag,
+		MessageSquare,
+		Send
 	} from 'lucide-svelte';
 
 	interface TarefaItem {
@@ -49,6 +51,17 @@
 	let visao = $state<'minhas' | 'criadas' | 'todas'>('minhas');
 	let filtroStatus = $state<string>('');
 
+	interface ComentarioItem {
+		id: string;
+		tarefa_id: string;
+		usuario_id: string;
+		usuario_nome: string;
+		usuario_cor: string;
+		conteudo: string;
+		criado_em: string;
+		pode_excluir: boolean;
+	}
+
 	// Modal Criar / Editar
 	let modalAberto = $state(false);
 	let formId = $state<string | null>(null);
@@ -57,6 +70,53 @@
 	let formPrioridade = $state<'baixa' | 'media' | 'alta'>('media');
 	let formPrazo = $state('');
 	let formResponsavel = $state('');
+
+	// Comentários da Tarefa selecionada
+	let comentarios = $state<ComentarioItem[]>([]);
+	let novoComentario = $state('');
+	let enviandoComentario = $state(false);
+	let carregandoComentarios = $state(false);
+
+	async function carregarComentarios(tarefaId: string) {
+		carregandoComentarios = true;
+		try {
+			comentarios = await apiFetch<ComentarioItem[]>(`/api/tarefas/${tarefaId}/comentarios`);
+		} catch (err) {
+			console.error('Erro ao carregar comentários:', err);
+			comentarios = [];
+		} finally {
+			carregandoComentarios = false;
+		}
+	}
+
+	async function adicionarComentario() {
+		if (!formId || !novoComentario.trim()) return;
+		enviandoComentario = true;
+		try {
+			const res = await apiFetch<ComentarioItem>(`/api/tarefas/${formId}/comentarios`, {
+				method: 'POST',
+				body: JSON.stringify({ conteudo: novoComentario.trim() })
+			});
+			comentarios = [...comentarios, res];
+			novoComentario = '';
+		} catch (err) {
+			console.error('Erro ao adicionar comentário:', err);
+		} finally {
+			enviandoComentario = false;
+		}
+	}
+
+	async function excluirComentario(cid: string) {
+		if (!formId || !confirm('Excluir este comentário?')) return;
+		try {
+			await apiFetch(`/api/tarefas/${formId}/comentarios/${cid}`, {
+				method: 'DELETE'
+			});
+			comentarios = comentarios.filter(c => c.id !== cid);
+		} catch (err) {
+			console.error('Erro ao excluir comentário:', err);
+		}
+	}
 
 	async function carregar() {
 		loading = true;
@@ -86,6 +146,8 @@
 		formPrioridade = 'media';
 		formPrazo = '';
 		formResponsavel = auth.user ? auth.user.id : '';
+		comentarios = [];
+		novoComentario = '';
 		modalAberto = true;
 	}
 
@@ -96,6 +158,9 @@
 		formPrioridade = t.prioridade;
 		formPrazo = t.prazo ? t.prazo.split('T')[0] : '';
 		formResponsavel = t.responsavel_id || '';
+		comentarios = [];
+		novoComentario = '';
+		carregarComentarios(t.id);
 		modalAberto = true;
 	}
 
@@ -381,12 +446,12 @@
 	<!-- Modal Criar / Editar Tarefa -->
 	{#if modalAberto}
 		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-				<div class="flex items-center justify-between border-b border-slate-100 pb-3">
-					<h3 class="font-bold text-slate-800 text-lg">
+			<div class="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150 text-slate-800 dark:text-slate-100">
+				<div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+					<h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg">
 						{formId ? 'Editar Tarefa' : 'Nova Tarefa'}
 					</h3>
-					<button onclick={() => modalAberto = false} class="text-slate-400 hover:text-slate-600">
+					<button onclick={() => modalAberto = false} class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer">
 						<X class="w-5 h-5" />
 					</button>
 				</div>
@@ -440,26 +505,93 @@
 					</div>
 
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Descrição</label>
+						<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Descrição</label>
 						<textarea 
 							bind:value={formDescricao}
 							rows="3"
 							placeholder="Instruções e detalhes adicionais da tarefa..."
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500"
+							class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-blue-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
 						></textarea>
 					</div>
+
+					{#if formId}
+						<!-- Seção de Comentários -->
+						<div class="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+							<div class="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+								<MessageSquare class="w-4 h-4 text-blue-500" />
+								<span>Comentários ({comentarios.length})</span>
+							</div>
+
+							<!-- Lista de Comentários -->
+							<div class="max-h-44 overflow-y-auto space-y-2 pr-1">
+								{#if carregandoComentarios}
+									<p class="text-xs text-slate-400">Carregando comentários...</p>
+								{:else if comentarios.length === 0}
+									<p class="text-xs text-slate-400 italic">Nenhum comentário nesta tarefa ainda.</p>
+								{:else}
+									{#each comentarios as c (c.id)}
+										<div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700/60 text-xs space-y-1">
+											<div class="flex items-center justify-between">
+												<div class="flex items-center gap-2">
+													<div
+														class="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-2xs"
+														style="background-color: {c.usuario_cor || '#2563EB'};"
+													>
+														{c.usuario_nome.slice(0, 1).toUpperCase()}
+													</div>
+													<span class="font-semibold text-slate-800 dark:text-slate-200">{c.usuario_nome}</span>
+													<span class="text-[10px] text-slate-400">
+														{new Date(c.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+													</span>
+												</div>
+												{#if c.pode_excluir}
+													<button
+														onclick={() => excluirComentario(c.id)}
+														class="text-slate-400 hover:text-red-500 transition cursor-pointer"
+														title="Excluir comentário"
+													>
+														<Trash2 class="w-3.5 h-3.5" />
+													</button>
+												{/if}
+											</div>
+											<p class="text-slate-700 dark:text-slate-300 pl-7 whitespace-pre-wrap">{c.conteudo}</p>
+										</div>
+									{/each}
+								{/if}
+							</div>
+
+							<!-- Input de novo comentário -->
+							<div class="flex items-center gap-2">
+								<input
+									type="text"
+									bind:value={novoComentario}
+									onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionarComentario(); }}}
+									placeholder="Escreva um comentário..."
+									class="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-xl text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-blue-500"
+								/>
+								<button
+									onclick={adicionarComentario}
+									disabled={!novoComentario.trim() || enviandoComentario}
+									class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition"
+								>
+									<Send class="w-3.5 h-3.5" />
+									<span>Enviar</span>
+								</button>
+							</div>
+						</div>
+					{/if}
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
 					<button 
 						onclick={() => modalAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium"
+						class="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium cursor-pointer"
 					>
 						Cancelar
 					</button>
 					<button 
 						onclick={salvarTarefa}
-						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
+						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs cursor-pointer"
 					>
 						{formId ? 'Salvar Alterações' : 'Criar Tarefa'}
 					</button>

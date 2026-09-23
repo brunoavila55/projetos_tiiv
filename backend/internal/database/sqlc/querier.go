@@ -19,10 +19,12 @@ type Querier interface {
 	AtualizarSaldoItemEstoque(ctx context.Context, arg AtualizarSaldoItemEstoqueParams) (ItensEstoque, error)
 	AtualizarStatusTarefa(ctx context.Context, arg AtualizarStatusTarefaParams) (Tarefas, error)
 	AtualizarTarefa(ctx context.Context, arg AtualizarTarefaParams) (Tarefas, error)
+	AtualizarTemaUsuario(ctx context.Context, arg AtualizarTemaUsuarioParams) (AtualizarTemaUsuarioRow, error)
 	AtualizarUltimoUsoSessao(ctx context.Context, arg AtualizarUltimoUsoSessaoParams) error
 	AtualizarUsuario(ctx context.Context, arg AtualizarUsuarioParams) (AtualizarUsuarioRow, error)
 	BloquearItemEstoqueParaAtualizacao(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
 	BuscarAtendimentoPorID(ctx context.Context, id pgtype.UUID) (BuscarAtendimentoPorIDRow, error)
+	BuscarComentarioPorID(ctx context.Context, id pgtype.UUID) (TarefaComentarios, error)
 	BuscarEventoPorID(ctx context.Context, id pgtype.UUID) (Eventos, error)
 	BuscarItemEstoquePorID(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
 	BuscarSessaoPorHash(ctx context.Context, tokenHash string) (BuscarSessaoPorHashRow, error)
@@ -33,6 +35,7 @@ type Querier interface {
 	ContarAtendimentos(ctx context.Context, arg ContarAtendimentosParams) (int64, error)
 	ContarUsuarios(ctx context.Context) (int64, error)
 	CriarAtendimento(ctx context.Context, arg CriarAtendimentoParams) (Atendimentos, error)
+	CriarComentarioTarefa(ctx context.Context, arg CriarComentarioTarefaParams) (TarefaComentarios, error)
 	CriarEvento(ctx context.Context, arg CriarEventoParams) (Eventos, error)
 	CriarItemEstoque(ctx context.Context, arg CriarItemEstoqueParams) (ItensEstoque, error)
 	CriarMovimentacaoEstoque(ctx context.Context, arg CriarMovimentacaoEstoqueParams) (MovimentacoesEstoque, error)
@@ -40,6 +43,7 @@ type Querier interface {
 	CriarTarefa(ctx context.Context, arg CriarTarefaParams) (Tarefas, error)
 	CriarUsuario(ctx context.Context, arg CriarUsuarioParams) (CriarUsuarioRow, error)
 	DeletarAtendimento(ctx context.Context, id pgtype.UUID) error
+	DeletarComentarioTarefa(ctx context.Context, id pgtype.UUID) error
 	DeletarEvento(ctx context.Context, id pgtype.UUID) error
 	DeletarSessaoPorHash(ctx context.Context, tokenHash string) error
 	DeletarSessoesExpiradas(ctx context.Context) error
@@ -49,6 +53,7 @@ type Querier interface {
 	IncrementarTentativasFalhas(ctx context.Context, id pgtype.UUID) (IncrementarTentativasFalhasRow, error)
 	ListarAtendimentos(ctx context.Context, arg ListarAtendimentosParams) ([]ListarAtendimentosRow, error)
 	ListarCategoriasEstoque(ctx context.Context) ([]string, error)
+	ListarComentariosTarefa(ctx context.Context, tarefaID pgtype.UUID) ([]ListarComentariosTarefaRow, error)
 	ListarEventosIntervalo(ctx context.Context, arg ListarEventosIntervaloParams) ([]ListarEventosIntervaloRow, error)
 	ListarItensAbaixoDoMinimo(ctx context.Context) ([]ItensEstoque, error)
 	ListarItensEstoque(ctx context.Context, arg ListarItensEstoqueParams) ([]ListarItensEstoqueRow, error)

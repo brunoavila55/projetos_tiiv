@@ -30,11 +30,35 @@ func (q *Queries) AtualizarPin(ctx context.Context, arg AtualizarPinParams) (pgt
 	return id, err
 }
 
+const atualizarTemaUsuario = `-- name: AtualizarTemaUsuario :one
+UPDATE usuarios
+SET tema = $2
+WHERE id = $1
+RETURNING id, tema
+`
+
+type AtualizarTemaUsuarioParams struct {
+	ID   pgtype.UUID `json:"id"`
+	Tema string      `json:"tema"`
+}
+
+type AtualizarTemaUsuarioRow struct {
+	ID   pgtype.UUID `json:"id"`
+	Tema string      `json:"tema"`
+}
+
+func (q *Queries) AtualizarTemaUsuario(ctx context.Context, arg AtualizarTemaUsuarioParams) (AtualizarTemaUsuarioRow, error) {
+	row := q.db.QueryRow(ctx, atualizarTemaUsuario, arg.ID, arg.Tema)
+	var i AtualizarTemaUsuarioRow
+	err := row.Scan(&i.ID, &i.Tema)
+	return i, err
+}
+
 const atualizarUsuario = `-- name: AtualizarUsuario :one
 UPDATE usuarios
 SET nome = $2, cor = $3, papel = $4, ativo = $5
 WHERE id = $1
-RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em
+RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 `
 
 type AtualizarUsuarioParams struct {
@@ -54,6 +78,7 @@ type AtualizarUsuarioRow struct {
 	TentativasFalhas int32              `json:"tentativas_falhas"`
 	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
 	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
+	Tema             string             `json:"tema"`
 }
 
 func (q *Queries) AtualizarUsuario(ctx context.Context, arg AtualizarUsuarioParams) (AtualizarUsuarioRow, error) {
@@ -74,12 +99,13 @@ func (q *Queries) AtualizarUsuario(ctx context.Context, arg AtualizarUsuarioPara
 		&i.TentativasFalhas,
 		&i.BloqueadoAte,
 		&i.CriadoEm,
+		&i.Tema,
 	)
 	return i, err
 }
 
 const buscarUsuarioPorID = `-- name: BuscarUsuarioPorID :one
-SELECT id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em
+SELECT id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 FROM usuarios
 WHERE id = $1
 `
@@ -93,6 +119,7 @@ type BuscarUsuarioPorIDRow struct {
 	TentativasFalhas int32              `json:"tentativas_falhas"`
 	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
 	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
+	Tema             string             `json:"tema"`
 }
 
 func (q *Queries) BuscarUsuarioPorID(ctx context.Context, id pgtype.UUID) (BuscarUsuarioPorIDRow, error) {
@@ -107,12 +134,13 @@ func (q *Queries) BuscarUsuarioPorID(ctx context.Context, id pgtype.UUID) (Busca
 		&i.TentativasFalhas,
 		&i.BloqueadoAte,
 		&i.CriadoEm,
+		&i.Tema,
 	)
 	return i, err
 }
 
 const buscarUsuarioPorIDComPin = `-- name: BuscarUsuarioPorIDComPin :one
-SELECT id, nome, cor, pin_hash, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em
+SELECT id, nome, cor, pin_hash, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 FROM usuarios
 WHERE id = $1
 `
@@ -130,6 +158,7 @@ func (q *Queries) BuscarUsuarioPorIDComPin(ctx context.Context, id pgtype.UUID) 
 		&i.TentativasFalhas,
 		&i.BloqueadoAte,
 		&i.CriadoEm,
+		&i.Tema,
 	)
 	return i, err
 }
@@ -162,7 +191,7 @@ func (q *Queries) ContarUsuarios(ctx context.Context) (int64, error) {
 const criarUsuario = `-- name: CriarUsuario :one
 INSERT INTO usuarios (nome, cor, pin_hash, papel, ativo)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em
+RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 `
 
 type CriarUsuarioParams struct {
@@ -182,6 +211,7 @@ type CriarUsuarioRow struct {
 	TentativasFalhas int32              `json:"tentativas_falhas"`
 	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
 	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
+	Tema             string             `json:"tema"`
 }
 
 func (q *Queries) CriarUsuario(ctx context.Context, arg CriarUsuarioParams) (CriarUsuarioRow, error) {
@@ -202,6 +232,7 @@ func (q *Queries) CriarUsuario(ctx context.Context, arg CriarUsuarioParams) (Cri
 		&i.TentativasFalhas,
 		&i.BloqueadoAte,
 		&i.CriadoEm,
+		&i.Tema,
 	)
 	return i, err
 }
@@ -210,7 +241,7 @@ const desbloquearUsuario = `-- name: DesbloquearUsuario :one
 UPDATE usuarios
 SET tentativas_falhas = 0, bloqueado_ate = NULL
 WHERE id = $1
-RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em
+RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 `
 
 type DesbloquearUsuarioRow struct {
@@ -222,6 +253,7 @@ type DesbloquearUsuarioRow struct {
 	TentativasFalhas int32              `json:"tentativas_falhas"`
 	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
 	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
+	Tema             string             `json:"tema"`
 }
 
 func (q *Queries) DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (DesbloquearUsuarioRow, error) {
@@ -236,6 +268,7 @@ func (q *Queries) DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (Desbl
 		&i.TentativasFalhas,
 		&i.BloqueadoAte,
 		&i.CriadoEm,
+		&i.Tema,
 	)
 	return i, err
 }
@@ -264,7 +297,7 @@ func (q *Queries) IncrementarTentativasFalhas(ctx context.Context, id pgtype.UUI
 }
 
 const listarTodosUsuarios = `-- name: ListarTodosUsuarios :many
-SELECT id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em
+SELECT id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 FROM usuarios
 ORDER BY nome ASC
 `
@@ -278,6 +311,7 @@ type ListarTodosUsuariosRow struct {
 	TentativasFalhas int32              `json:"tentativas_falhas"`
 	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
 	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
+	Tema             string             `json:"tema"`
 }
 
 func (q *Queries) ListarTodosUsuarios(ctx context.Context) ([]ListarTodosUsuariosRow, error) {
@@ -298,6 +332,7 @@ func (q *Queries) ListarTodosUsuarios(ctx context.Context) ([]ListarTodosUsuario
 			&i.TentativasFalhas,
 			&i.BloqueadoAte,
 			&i.CriadoEm,
+			&i.Tema,
 		); err != nil {
 			return nil, err
 		}

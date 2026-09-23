@@ -14,7 +14,8 @@ SELECT
     u.nome AS usuario_nome,
     u.cor AS usuario_cor,
     u.papel AS usuario_papel,
-    u.ativo AS usuario_ativo
+    u.ativo AS usuario_ativo,
+    u.tema AS usuario_tema
 FROM sessoes s
 JOIN usuarios u ON u.id = s.usuario_id
 WHERE s.token_hash = $1 AND u.ativo = true;

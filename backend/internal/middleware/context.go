@@ -13,6 +13,7 @@ type AuthUser struct {
 	Nome     string `json:"nome"`
 	Cor      string `json:"cor"`
 	Papel    string `json:"papel"`
+	Tema     string `json:"tema"`
 	SessaoID string `json:"sessao_id"`
 }
 

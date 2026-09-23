@@ -89,6 +89,25 @@ func (q *Queries) AtualizarTarefa(ctx context.Context, arg AtualizarTarefaParams
 	return i, err
 }
 
+const buscarComentarioPorID = `-- name: BuscarComentarioPorID :one
+SELECT id, tarefa_id, usuario_id, conteudo, criado_em
+FROM tarefa_comentarios
+WHERE id = $1
+`
+
+func (q *Queries) BuscarComentarioPorID(ctx context.Context, id pgtype.UUID) (TarefaComentarios, error) {
+	row := q.db.QueryRow(ctx, buscarComentarioPorID, id)
+	var i TarefaComentarios
+	err := row.Scan(
+		&i.ID,
+		&i.TarefaID,
+		&i.UsuarioID,
+		&i.Conteudo,
+		&i.CriadoEm,
+	)
+	return i, err
+}
+
 const buscarTarefaPorID = `-- name: BuscarTarefaPorID :one
 SELECT 
     t.id, t.titulo, t.descricao, t.status, t.prioridade, t.prazo, 
@@ -142,6 +161,31 @@ func (q *Queries) BuscarTarefaPorID(ctx context.Context, id pgtype.UUID) (Buscar
 	return i, err
 }
 
+const criarComentarioTarefa = `-- name: CriarComentarioTarefa :one
+INSERT INTO tarefa_comentarios (tarefa_id, usuario_id, conteudo)
+VALUES ($1, $2, $3)
+RETURNING id, tarefa_id, usuario_id, conteudo, criado_em
+`
+
+type CriarComentarioTarefaParams struct {
+	TarefaID  pgtype.UUID `json:"tarefa_id"`
+	UsuarioID pgtype.UUID `json:"usuario_id"`
+	Conteudo  string      `json:"conteudo"`
+}
+
+func (q *Queries) CriarComentarioTarefa(ctx context.Context, arg CriarComentarioTarefaParams) (TarefaComentarios, error) {
+	row := q.db.QueryRow(ctx, criarComentarioTarefa, arg.TarefaID, arg.UsuarioID, arg.Conteudo)
+	var i TarefaComentarios
+	err := row.Scan(
+		&i.ID,
+		&i.TarefaID,
+		&i.UsuarioID,
+		&i.Conteudo,
+		&i.CriadoEm,
+	)
+	return i, err
+}
+
 const criarTarefa = `-- name: CriarTarefa :one
 INSERT INTO tarefas (titulo, descricao, prioridade, prazo, criado_por, responsavel_id)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -183,6 +227,16 @@ func (q *Queries) CriarTarefa(ctx context.Context, arg CriarTarefaParams) (Taref
 	return i, err
 }
 
+const deletarComentarioTarefa = `-- name: DeletarComentarioTarefa :exec
+DELETE FROM tarefa_comentarios
+WHERE id = $1
+`
+
+func (q *Queries) DeletarComentarioTarefa(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deletarComentarioTarefa, id)
+	return err
+}
+
 const deletarTarefa = `-- name: DeletarTarefa :exec
 DELETE FROM tarefas
 WHERE id = $1
@@ -191,6 +245,54 @@ WHERE id = $1
 func (q *Queries) DeletarTarefa(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deletarTarefa, id)
 	return err
+}
+
+const listarComentariosTarefa = `-- name: ListarComentariosTarefa :many
+SELECT 
+    c.id, c.tarefa_id, c.usuario_id, c.conteudo, c.criado_em,
+    u.nome AS usuario_nome, u.cor AS usuario_cor
+FROM tarefa_comentarios c
+JOIN usuarios u ON u.id = c.usuario_id
+WHERE c.tarefa_id = $1
+ORDER BY c.criado_em ASC
+`
+
+type ListarComentariosTarefaRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	TarefaID    pgtype.UUID        `json:"tarefa_id"`
+	UsuarioID   pgtype.UUID        `json:"usuario_id"`
+	Conteudo    string             `json:"conteudo"`
+	CriadoEm    pgtype.Timestamptz `json:"criado_em"`
+	UsuarioNome string             `json:"usuario_nome"`
+	UsuarioCor  string             `json:"usuario_cor"`
+}
+
+func (q *Queries) ListarComentariosTarefa(ctx context.Context, tarefaID pgtype.UUID) ([]ListarComentariosTarefaRow, error) {
+	rows, err := q.db.Query(ctx, listarComentariosTarefa, tarefaID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListarComentariosTarefaRow
+	for rows.Next() {
+		var i ListarComentariosTarefaRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TarefaID,
+			&i.UsuarioID,
+			&i.Conteudo,
+			&i.CriadoEm,
+			&i.UsuarioNome,
+			&i.UsuarioCor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listarTarefas = `-- name: ListarTarefas :many

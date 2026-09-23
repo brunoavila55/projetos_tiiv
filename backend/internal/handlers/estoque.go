@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -466,4 +467,84 @@ func (h *EstoqueHandler) ListarMovimentacoes(w http.ResponseWriter, r *http.Requ
 	}
 
 	response.JSON(w, http.StatusOK, result)
+}
+
+// ExportarCSV: GET /api/estoque/movimentacoes/exportar.csv
+func (h *EstoqueHandler) ExportarCSV(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	itemIDStr := q.Get("item_id")
+	usuarioIDStr := q.Get("usuario_id")
+	tipoStr := q.Get("tipo")
+	inicioStr := q.Get("inicio")
+	fimStr := q.Get("fim")
+
+	var itemID, usuarioID pgtype.UUID
+	if itemIDStr != "" {
+		itemID, _ = database.StringToUUID(itemIDStr)
+	}
+	if usuarioIDStr != "" {
+		usuarioID, _ = database.StringToUUID(usuarioIDStr)
+	}
+
+	tipoParam := database.StringToText(tipoStr)
+
+	var dataInicio, dataFim pgtype.Timestamptz
+	if inicioStr != "" {
+		if t, err := time.Parse("2006-01-02", inicioStr); err == nil {
+			dataInicio = database.TimeToTimestamptz(t)
+		} else if t, err := time.Parse(time.RFC3339, inicioStr); err == nil {
+			dataInicio = database.TimeToTimestamptz(t)
+		}
+	}
+	if fimStr != "" {
+		if t, err := time.Parse("2006-01-02", fimStr); err == nil {
+			fimDoDia := t.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+			dataFim = database.TimeToTimestamptz(fimDoDia)
+		} else if t, err := time.Parse(time.RFC3339, fimStr); err == nil {
+			dataFim = database.TimeToTimestamptz(t)
+		}
+	}
+
+	movs, err := h.db.Queries.ListarMovimentacoesEstoque(r.Context(), sqlc.ListarMovimentacoesEstoqueParams{
+		Limit:      100000,
+		Offset:     0,
+		ItemID:     itemID,
+		UsuarioID:  usuarioID,
+		Tipo:       tipoParam,
+		DataInicio: dataInicio,
+		DataFim:    dataFim,
+	})
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao consultar movimentações para exportação")
+		return
+	}
+
+	filename := fmt.Sprintf("movimentacoes_estoque_%s.csv", time.Now().Format("20060102_150405"))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+
+	// UTF-8 BOM
+	_, _ = w.Write([]byte{0xEF, 0xBB, 0xBF})
+
+	writer := csv.NewWriter(w)
+	writer.Comma = ';' // Separador padrão compatível com Excel
+
+	_ = writer.Write([]string{"Data/Hora", "Material", "Unidade", "Tipo", "Quantidade", "Saldo Resultante", "Motivo", "Operador"})
+	for _, m := range movs {
+		dataStr := ""
+		if m.CriadoEm.Valid {
+			dataStr = m.CriadoEm.Time.Format("02/01/2006 15:04")
+		}
+		_ = writer.Write([]string{
+			dataStr,
+			m.ItemNome,
+			m.ItemUnidade,
+			m.Tipo,
+			fmt.Sprintf("%d", m.Quantidade),
+			fmt.Sprintf("%d", m.SaldoResultante),
+			m.Motivo,
+			m.UsuarioNome,
+		})
+	}
+	writer.Flush()
 }

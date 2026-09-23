@@ -38,7 +38,8 @@ SELECT
     u.nome AS usuario_nome,
     u.cor AS usuario_cor,
     u.papel AS usuario_papel,
-    u.ativo AS usuario_ativo
+    u.ativo AS usuario_ativo,
+    u.tema AS usuario_tema
 FROM sessoes s
 JOIN usuarios u ON u.id = s.usuario_id
 WHERE s.token_hash = $1 AND u.ativo = true
@@ -55,6 +56,7 @@ type BuscarSessaoPorHashRow struct {
 	UsuarioCor   string             `json:"usuario_cor"`
 	UsuarioPapel string             `json:"usuario_papel"`
 	UsuarioAtivo bool               `json:"usuario_ativo"`
+	UsuarioTema  string             `json:"usuario_tema"`
 }
 
 func (q *Queries) BuscarSessaoPorHash(ctx context.Context, tokenHash string) (BuscarSessaoPorHashRow, error) {
@@ -71,6 +73,7 @@ func (q *Queries) BuscarSessaoPorHash(ctx context.Context, tokenHash string) (Bu
 		&i.UsuarioCor,
 		&i.UsuarioPapel,
 		&i.UsuarioAtivo,
+		&i.UsuarioTema,
 	)
 	return i, err
 }

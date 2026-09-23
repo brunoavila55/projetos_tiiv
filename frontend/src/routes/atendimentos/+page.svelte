@@ -16,7 +16,8 @@
 		ChevronLeft, 
 		ChevronRight,
 		CheckCircle2,
-		AlertCircle
+		AlertCircle,
+		Download
 	} from 'lucide-svelte';
 
 	interface AtendimentoItem {
@@ -173,6 +174,17 @@
 		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 	}
 
+	function exportarCSV() {
+		const params = new URLSearchParams();
+		if (filtroBusca.trim()) params.set('busca', filtroBusca.trim());
+		if (filtroUsuario) params.set('usuario_id', filtroUsuario);
+		if (filtroInicio) params.set('inicio', filtroInicio);
+		if (filtroFim) params.set('fim', filtroFim);
+
+		const url = `/api/atendimentos/exportar.csv?${params.toString()}`;
+		window.open(url, '_blank');
+	}
+
 	onMount(() => {
 		carregarUsuarios();
 		carregar();
@@ -183,17 +195,27 @@
 	<!-- Topo com Título e Botão de Ação -->
 	<div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 		<div>
-			<h1 class="text-2xl font-bold text-slate-800">Registro de Atendimentos</h1>
-			<p class="text-sm text-slate-500">Histórico de atendimentos do setor com busca rápida sem diferenciação de acentos</p>
+			<h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Registro de Atendimentos</h1>
+			<p class="text-sm text-slate-500 dark:text-slate-400">Histórico de atendimentos do setor com busca rápida sem diferenciação de acentos</p>
 		</div>
 
-		<button
-			onclick={abrirCriar}
-			class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition active:scale-95 cursor-pointer"
-		>
-			<Plus class="w-4 h-4" />
-			<span>Novo Atendimento</span>
-		</button>
+		<div class="flex items-center gap-2">
+			<button
+				onclick={exportarCSV}
+				class="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 font-semibold text-sm shadow-xs transition active:scale-95 cursor-pointer"
+				title="Exportar atendimentos filtrados em CSV"
+			>
+				<Download class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+				<span>Exportar CSV</span>
+			</button>
+			<button
+				onclick={abrirCriar}
+				class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition active:scale-95 cursor-pointer"
+			>
+				<Plus class="w-4 h-4" />
+				<span>Novo Atendimento</span>
+			</button>
+		</div>
 	</div>
 
 	<!-- Barra de Busca e Filtros -->

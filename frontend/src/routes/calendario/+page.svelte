@@ -12,16 +12,20 @@
 		Trash2, 
 		Edit3, 
 		Check,
-		Filter
+		Filter,
+		Repeat
 	} from 'lucide-svelte';
 
 	interface EventoItem {
 		id: string;
+		original_id?: string;
 		titulo: string;
 		descricao: string;
 		inicio: string;
 		fim: string;
 		dia_inteiro: boolean;
+		recorrencia?: 'nenhuma' | 'semanal' | 'mensal';
+		recorrencia_fim?: string | null;
 		criado_por: string;
 		criador_nome: string;
 		criador_cor: string;
@@ -47,6 +51,8 @@
 	let formInicio = $state<string>('');
 	let formFim = $state<string>('');
 	let formDiaInteiro = $state<boolean>(false);
+	let formRecorrencia = $state<'nenhuma' | 'semanal' | 'mensal'>('nenhuma');
+	let formRecorrenciaFim = $state<string>('');
 	let formParticipantes = $state<string[]>([]);
 
 	let plugins = [TimeGrid, DayGrid, Interaction, List];
@@ -97,7 +103,7 @@
 
 			options.events = res.map(e => ({
 				id: e.id,
-				title: e.titulo,
+				title: e.recorrencia && e.recorrencia !== 'nenhuma' ? `🔄 ${e.titulo}` : e.titulo,
 				start: e.inicio,
 				end: e.fim,
 				allDay: e.dia_inteiro,
@@ -107,7 +113,8 @@
 				extendedProps: {
 					descricao: e.descricao,
 					criadorNome: e.criador_nome,
-					participantes: e.participantes
+					participantes: e.participantes,
+					recorrencia: e.recorrencia
 				}
 			}));
 		} catch (err) {
@@ -130,6 +137,8 @@
 		formTitulo = '';
 		formDescricao = '';
 		formDiaInteiro = diaInteiro;
+		formRecorrencia = 'nenhuma';
+		formRecorrenciaFim = '';
 
 		// Converte para formato local datetime-local "YYYY-MM-DDTHH:mm"
 		formInicio = toDateTimeLocal(new Date(inicioISO));
@@ -152,12 +161,14 @@
 
 	function editarEventoSelecionado() {
 		if (!eventoSelecionado) return;
-		formId = eventoSelecionado.id;
+		formId = eventoSelecionado.original_id || eventoSelecionado.id;
 		formTitulo = eventoSelecionado.titulo;
 		formDescricao = eventoSelecionado.descricao;
 		formInicio = toDateTimeLocal(new Date(eventoSelecionado.inicio));
 		formFim = toDateTimeLocal(new Date(eventoSelecionado.fim));
 		formDiaInteiro = eventoSelecionado.dia_inteiro;
+		formRecorrencia = eventoSelecionado.recorrencia || 'nenhuma';
+		formRecorrenciaFim = eventoSelecionado.recorrencia_fim ? eventoSelecionado.recorrencia_fim.split('T')[0] : '';
 		formParticipantes = eventoSelecionado.participantes.map(p => p.id);
 
 		modalDetalhesAberto = false;
@@ -178,14 +189,19 @@
 			return;
 		}
 
-		const payload = {
+		const payload: any = {
 			titulo: formTitulo,
 			descricao: formDescricao,
 			inicio: inicioDate.toISOString(),
 			fim: fimDate.toISOString(),
 			dia_inteiro: formDiaInteiro,
+			recorrencia: formRecorrencia,
 			participantes: formParticipantes
 		};
+
+		if (formRecorrencia !== 'nenhuma' && formRecorrenciaFim) {
+			payload.recorrencia_fim = new Date(formRecorrenciaFim + 'T23:59:59').toISOString();
+		}
 
 		try {
 			if (formId) {
@@ -208,8 +224,9 @@
 
 	async function excluirEvento() {
 		if (!eventoSelecionado || !confirm('Deseja realmente excluir este evento?')) return;
+		const targetId = eventoSelecionado.original_id || eventoSelecionado.id;
 		try {
-			await apiFetch(`/api/eventos/${eventoSelecionado.id}`, { method: 'DELETE' });
+			await apiFetch(`/api/eventos/${targetId}`, { method: 'DELETE' });
 			modalDetalhesAberto = false;
 			await carregarEventos();
 		} catch (err: any) {
@@ -361,24 +378,50 @@
 							bind:checked={formDiaInteiro}
 							class="w-4 h-4 rounded text-blue-600"
 						/>
-						<label for="diaInteiro" class="text-xs font-medium text-slate-700 cursor-pointer">
+						<label for="diaInteiro" class="text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
 							Evento de dia inteiro
 						</label>
 					</div>
 
+					<!-- Recorrência -->
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+						<div>
+							<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Repetição</label>
+							<select
+								bind:value={formRecorrencia}
+								class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-blue-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+							>
+								<option value="nenhuma">Não se repete</option>
+								<option value="semanal">Semanalmente (a cada 7 dias)</option>
+								<option value="mensal">Mensalmente (mesmo dia do mês)</option>
+							</select>
+						</div>
+
+						{#if formRecorrencia !== 'nenhuma'}
+							<div>
+								<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Repetir até (opcional)</label>
+								<input
+									type="date"
+									bind:value={formRecorrenciaFim}
+									class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-blue-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+								/>
+							</div>
+						{/if}
+					</div>
+
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1">Descrição (opcional)</label>
+						<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Descrição (opcional)</label>
 						<textarea 
 							bind:value={formDescricao}
 							rows="2"
 							placeholder="Pauta da reunião ou observações adicionais..."
-							class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-blue-500"
+							class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-blue-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
 						></textarea>
 					</div>
 
 					<!-- Seleção de Participantes -->
 					<div>
-						<label class="block text-xs font-semibold text-slate-700 mb-1.5">
+						<label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
 							Participantes (Operadores do setor)
 						</label>
 						<div class="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-1">
@@ -388,7 +431,7 @@
 								<button
 									type="button"
 									onclick={() => alternarParticipante(u.id)}
-									class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer {selecionado ? 'bg-blue-50 border-blue-400 text-blue-800' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}"
+									class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer {selecionado ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-400 text-blue-800 dark:text-blue-300' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}"
 								>
 									<span 
 										class="w-2.5 h-2.5 rounded-full" 
@@ -396,10 +439,10 @@
 									></span>
 									<span>{u.nome}</span>
 									{#if ehCriador}
-										<span class="text-[10px] text-blue-600 font-bold">(Você)</span>
+										<span class="text-[10px] text-blue-600 dark:text-blue-400 font-bold">(Você)</span>
 									{/if}
 									{#if selecionado}
-										<Check class="w-3.5 h-3.5 text-blue-600" />
+										<Check class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
 									{/if}
 								</button>
 							{/each}
@@ -407,16 +450,16 @@
 					</div>
 				</div>
 
-				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+				<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
 					<button 
 						onclick={() => modalAberto = false}
-						class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium"
+						class="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium cursor-pointer"
 					>
 						Cancelar
 					</button>
 					<button 
 						onclick={salvarEvento}
-						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs"
+						class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs cursor-pointer"
 					>
 						{formId ? 'Atualizar Evento' : 'Salvar Evento'}
 					</button>
@@ -428,27 +471,34 @@
 	<!-- Modal Detalhes do Evento -->
 	{#if modalDetalhesAberto && eventoSelecionado}
 		<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+			<div class="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-slate-800 dark:text-slate-100">
 				<div class="flex items-start justify-between">
 					<div class="flex items-center gap-2">
 						<span 
 							class="w-4 h-4 rounded-full mt-0.5" 
 							style="background-color: {eventoSelecionado.criador_cor};"
 						></span>
-						<h3 class="font-bold text-slate-800 text-lg leading-snug">{eventoSelecionado.titulo}</h3>
+						<h3 class="font-bold text-slate-800 dark:text-slate-100 text-lg leading-snug">{eventoSelecionado.titulo}</h3>
 					</div>
-					<button onclick={() => modalDetalhesAberto = false} class="text-slate-400 hover:text-slate-600">
+					<button onclick={() => modalDetalhesAberto = false} class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer">
 						<X class="w-5 h-5" />
 					</button>
 				</div>
 
-				<div class="space-y-3 text-sm text-slate-600">
-					<div class="flex items-center gap-2 text-xs text-slate-500">
+				<div class="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+					<div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
 						<Clock class="w-4 h-4" />
 						<span>
 							{new Date(eventoSelecionado.inicio).toLocaleString('pt-BR')} até {new Date(eventoSelecionado.fim).toLocaleTimeString('pt-BR')}
 						</span>
 					</div>
+
+					{#if eventoSelecionado.recorrencia && eventoSelecionado.recorrencia !== 'nenhuma'}
+						<div class="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1.5 rounded-lg border border-blue-100 dark:border-blue-900/50">
+							<Repeat class="w-3.5 h-3.5" />
+							<span>Evento recorrente ({eventoSelecionado.recorrencia === 'semanal' ? 'Semanal' : 'Mensal'})</span>
+						</div>
+					{/if}
 
 					{#if eventoSelecionado.descricao}
 						<div class="p-3 bg-slate-50 rounded-xl text-slate-700 text-xs border border-slate-100 whitespace-pre-wrap">

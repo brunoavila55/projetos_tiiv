@@ -561,3 +561,256 @@ func TestRecoverer_PanicRecovery(t *testing.T) {
 		t.Errorf("healthcheck deveria responder 200, respondeu %d", resp.StatusCode)
 	}
 }
+
+// -------------------------------------------------------------
+// P3.1: Teste 7 - Atualização e persistência de Tema
+// -------------------------------------------------------------
+func TestAuth_TemaUpdate(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	if err != nil || len(users) == 0 {
+		t.Fatalf("usuários não encontrados: %v", err)
+	}
+	adminCookie, status, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
+	if status != http.StatusOK {
+		t.Fatalf("falha ao logar como admin: status %d", status)
+	}
+
+	// 1. Atualizar para escuro
+	resp, res, err := env.doRequest(http.MethodPut, "/api/auth/tema", adminCookie, map[string]string{
+		"tema": "escuro",
+	})
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("falha ao atualizar tema para escuro: status %d, err %v", resp.StatusCode, err)
+	}
+	if res["tema"] != "escuro" {
+		t.Errorf("esperado tema 'escuro', obteve '%v'", res["tema"])
+	}
+
+	// 2. Verificar persistência em /api/auth/me
+	reqMe, _ := http.NewRequest(http.MethodGet, env.server.URL+"/api/auth/me", nil)
+	reqMe.AddCookie(adminCookie)
+	respMe, err := env.client.Do(reqMe)
+	if err != nil || respMe.StatusCode != http.StatusOK {
+		t.Fatalf("falha ao consultar /me: status %d", respMe.StatusCode)
+	}
+	var meData map[string]any
+	_ = json.NewDecoder(respMe.Body).Decode(&meData)
+	respMe.Body.Close()
+
+	if meData["tema"] != "escuro" {
+		t.Errorf("esperado tema 'escuro' no perfil, obteve '%v'", meData["tema"])
+	}
+
+	// 3. Atualizar para valor inválido deve retornar 400
+	respInv, _, _ := env.doRequest(http.MethodPut, "/api/auth/tema", adminCookie, map[string]string{
+		"tema": "azul-neon",
+	})
+	if respInv.StatusCode != http.StatusBadRequest {
+		t.Errorf("esperado status 400 para tema inválido, obteve %d", respInv.StatusCode)
+	}
+}
+
+// -------------------------------------------------------------
+// P3.2: Teste 8 - Exportação CSV com UTF-8 BOM e delimitador ;
+// -------------------------------------------------------------
+func TestCSV_Exports(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	if err != nil || len(users) == 0 {
+		t.Fatalf("usuários não encontrados: %v", err)
+	}
+	adminCookie, status, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
+	if status != http.StatusOK {
+		t.Fatalf("falha ao logar como admin: status %d", status)
+	}
+
+	// 1. Exportar Atendimentos CSV
+	reqAt, _ := http.NewRequest(http.MethodGet, env.server.URL+"/api/atendimentos/exportar.csv", nil)
+	reqAt.AddCookie(adminCookie)
+	respAt, err := env.client.Do(reqAt)
+	if err != nil || respAt.StatusCode != http.StatusOK {
+		t.Fatalf("falha ao exportar atendimentos CSV: status %d, err %v", respAt.StatusCode, err)
+	}
+	defer respAt.Body.Close()
+
+	ct := respAt.Header.Get("Content-Type")
+	if ct != "text/csv; charset=utf-8" {
+		t.Errorf("Content-Type esperado 'text/csv; charset=utf-8', obteve '%s'", ct)
+	}
+
+	buf := new(bytes.Buffer)
+	_, _ = buf.ReadFrom(respAt.Body)
+	bytesAt := buf.Bytes()
+
+	// Checar UTF-8 BOM (0xEF, 0xBB, 0xBF)
+	if len(bytesAt) < 3 || bytesAt[0] != 0xEF || bytesAt[1] != 0xBB || bytesAt[2] != 0xBF {
+		t.Errorf("exportação de atendimentos não possui UTF-8 BOM no início")
+	}
+
+	conteudoAt := string(bytesAt[3:])
+	if !bytes.Contains([]byte(conteudoAt), []byte("Data/Hora;Cliente;Descrição;Técnico Responsável")) {
+		t.Errorf("cabeçalhos com ';' esperados não encontrados em atendimentos CSV: %s", conteudoAt[:min(len(conteudoAt), 100)])
+	}
+
+	// 2. Exportar Movimentações Estoque CSV
+	reqEst, _ := http.NewRequest(http.MethodGet, env.server.URL+"/api/estoque/movimentacoes/exportar.csv", nil)
+	reqEst.AddCookie(adminCookie)
+	respEst, err := env.client.Do(reqEst)
+	if err != nil || respEst.StatusCode != http.StatusOK {
+		t.Fatalf("falha ao exportar estoque CSV: status %d, err %v", respEst.StatusCode, err)
+	}
+	defer respEst.Body.Close()
+
+	bufEst := new(bytes.Buffer)
+	_, _ = bufEst.ReadFrom(respEst.Body)
+	bytesEst := bufEst.Bytes()
+
+	if len(bytesEst) < 3 || bytesEst[0] != 0xEF || bytesEst[1] != 0xBB || bytesEst[2] != 0xBF {
+		t.Errorf("exportação de estoque não possui UTF-8 BOM no início")
+	}
+
+	conteudoEst := string(bytesEst[3:])
+	if !bytes.Contains([]byte(conteudoEst), []byte("Data/Hora;Material;Unidade;Tipo;Quantidade;Saldo Resultante;Motivo;Operador")) {
+		t.Errorf("cabeçalhos com ';' esperados não encontrados em estoque CSV: %s", conteudoEst[:min(len(conteudoEst), 100)])
+	}
+}
+
+// -------------------------------------------------------------
+// P3.3: Teste 9 - Comentários em Tarefas
+// -------------------------------------------------------------
+func TestTarefas_Comentarios(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	if err != nil || len(users) == 0 {
+		t.Fatalf("usuários não encontrados: %v", err)
+	}
+	adminCookie, status, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
+	if status != http.StatusOK {
+		t.Fatalf("falha ao logar como admin: status %d", status)
+	}
+
+	// 1. Criar tarefa
+	_, resT, err := env.doRequest(http.MethodPost, "/api/tarefas", adminCookie, map[string]any{
+		"titulo":       "Tarefa para teste de comentários",
+		"prioridade":   "alta",
+		"status":       "pendente",
+		"responsaveis": []string{database.UUIDToString(users[0].ID)},
+	})
+	if err != nil {
+		t.Fatalf("falha ao criar tarefa: %v", err)
+	}
+	tarefaID := resT["id"].(string)
+
+	// 2. Adicionar comentário
+	respCom, resCom, err := env.doRequest(http.MethodPost, fmt.Sprintf("/api/tarefas/%s/comentarios", tarefaID), adminCookie, map[string]string{
+		"conteudo": "Este é um comentário de teste no chamado",
+	})
+	if err != nil || respCom.StatusCode != http.StatusCreated {
+		t.Fatalf("falha ao criar comentário: status %d, err %v", respCom.StatusCode, err)
+	}
+	comID := resCom["id"].(string)
+
+	// 3. Listar comentários
+	reqList, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/tarefas/%s/comentarios", env.server.URL, tarefaID), nil)
+	reqList.AddCookie(adminCookie)
+	respList, err := env.client.Do(reqList)
+	if err != nil || respList.StatusCode != http.StatusOK {
+		t.Fatalf("falha ao listar comentários: status %d", respList.StatusCode)
+	}
+	var comList []map[string]any
+	_ = json.NewDecoder(respList.Body).Decode(&comList)
+	respList.Body.Close()
+
+	if len(comList) != 1 {
+		t.Fatalf("esperava 1 comentário, obteve %d", len(comList))
+	}
+	if comList[0]["conteudo"] != "Este é um comentário de teste no chamado" {
+		t.Errorf("conteúdo inesperado: %v", comList[0]["conteudo"])
+	}
+
+	// 4. Deletar comentário
+	respDel, _, err := env.doRequest(http.MethodDelete, fmt.Sprintf("/api/tarefas/%s/comentarios/%s", tarefaID, comID), adminCookie, nil)
+	if err != nil || respDel.StatusCode != http.StatusOK {
+		t.Fatalf("falha ao deletar comentário: status %d", respDel.StatusCode)
+	}
+
+	// 5. Verificar lista vazia
+	reqList2, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/tarefas/%s/comentarios", env.server.URL, tarefaID), nil)
+	reqList2.AddCookie(adminCookie)
+	respList2, _ := env.client.Do(reqList2)
+	var comList2 []map[string]any
+	_ = json.NewDecoder(respList2.Body).Decode(&comList2)
+	respList2.Body.Close()
+
+	if len(comList2) != 0 {
+		t.Errorf("esperava 0 comentários após deleção, obteve %d", len(comList2))
+	}
+}
+
+// -------------------------------------------------------------
+// P3.4: Teste 10 - Eventos Recorrentes no Calendário
+// -------------------------------------------------------------
+func TestEventos_Recurrence(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	if err != nil || len(users) == 0 {
+		t.Fatalf("usuários não encontrados: %v", err)
+	}
+	adminCookie, status, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
+	if status != http.StatusOK {
+		t.Fatalf("falha ao logar como admin: status %d", status)
+	}
+
+	now := time.Now().Truncate(time.Hour)
+	inicio := now.Format(time.RFC3339)
+	fim := now.Add(1 * time.Hour).Format(time.RFC3339)
+
+	// Criar evento semanal
+	_, resEv, err := env.doRequest(http.MethodPost, "/api/eventos", adminCookie, map[string]any{
+		"titulo":      "Reunião Semanal TIIV",
+		"descricao":   "Alinhamento de rotina recorrente",
+		"inicio":      inicio,
+		"fim":         fim,
+		"dia_inteiro": false,
+		"recorrencia": "semanal",
+	})
+	if err != nil {
+		t.Fatalf("falha ao criar evento recorrente: %v", err)
+	}
+	eventoID := resEv["id"].(string)
+
+	// Listar eventos abrangendo 3 semanas (deve retornar 3 ou 4 ocorrências)
+	janelaInicio := now.AddDate(0, 0, -1).Format(time.RFC3339)
+	janelaFim := now.AddDate(0, 0, 25).Format(time.RFC3339)
+
+	reqList, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/eventos?inicio=%s&fim=%s", env.server.URL, url.QueryEscape(janelaInicio), url.QueryEscape(janelaFim)), nil)
+	reqList.AddCookie(adminCookie)
+	respList, err := env.client.Do(reqList)
+	if err != nil || respList.StatusCode != http.StatusOK {
+		t.Fatalf("falha ao listar eventos com recorrência: status %d", respList.StatusCode)
+	}
+
+	var eventosRetornados []map[string]any
+	_ = json.NewDecoder(respList.Body).Decode(&eventosRetornados)
+	respList.Body.Close()
+
+	ocorrencias := 0
+	for _, ev := range eventosRetornados {
+		if ev["original_id"] == eventoID || ev["id"] == eventoID {
+			ocorrencias++
+		}
+	}
+
+	if ocorrencias < 3 {
+		t.Errorf("esperava pelo menos 3 ocorrências expandidas do evento semanal, encontrou %d", ocorrencias)
+	}
+}

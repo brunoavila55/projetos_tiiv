@@ -69,6 +69,7 @@ type UserProfileResponse struct {
 	Nome  string `json:"nome"`
 	Cor   string `json:"cor"`
 	Papel string `json:"papel"`
+	Tema  string `json:"tema"`
 }
 
 // Login: POST /api/auth/login
@@ -166,6 +167,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Nome:  user.Nome,
 		Cor:   user.Cor,
 		Papel: user.Papel,
+		Tema:  user.Tema,
 	})
 }
 
@@ -205,5 +207,50 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		Nome:  user.Nome,
 		Cor:   user.Cor,
 		Papel: user.Papel,
+		Tema:  user.Tema,
+	})
+}
+
+type AtualizarTemaRequest struct {
+	Tema string `json:"tema"`
+}
+
+// AtualizarTema: PUT /api/auth/tema
+func (h *AuthHandler) AtualizarTema(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetAuthUser(r.Context())
+	if !ok || user == nil {
+		response.JSONError(w, http.StatusUnauthorized, "não autenticado")
+		return
+	}
+
+	var req AtualizarTemaRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.JSONError(w, http.StatusBadRequest, "corpo da requisição inválido")
+		return
+	}
+
+	if req.Tema != "claro" && req.Tema != "escuro" && req.Tema != "sistema" {
+		response.JSONError(w, http.StatusBadRequest, "tema inválido. Use claro, escuro ou sistema")
+		return
+	}
+
+	uID, err := database.StringToUUID(user.ID)
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "ID de usuário inválido")
+		return
+	}
+
+	res, err := h.db.Queries.AtualizarTemaUsuario(r.Context(), sqlc.AtualizarTemaUsuarioParams{
+		ID:   uID,
+		Tema: req.Tema,
+	})
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao atualizar tema")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{
+		"message": "tema atualizado com sucesso",
+		"tema":    res.Tema,
 	})
 }

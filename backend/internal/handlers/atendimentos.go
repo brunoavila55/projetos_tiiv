@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -335,4 +337,82 @@ func (h *AtendimentoHandler) Deletar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "atendimento excluído com sucesso"})
+}
+
+// ExportarCSV: GET /api/atendimentos/exportar.csv
+func (h *AtendimentoHandler) ExportarCSV(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetAuthUser(r.Context())
+	if !ok || user == nil {
+		response.JSONError(w, http.StatusUnauthorized, "não autenticado")
+		return
+	}
+
+	q := r.URL.Query()
+	busca := q.Get("busca")
+	usuarioIDStr := q.Get("usuario_id")
+	inicioStr := q.Get("inicio")
+	fimStr := q.Get("fim")
+
+	var usuarioID pgtype.UUID
+	if usuarioIDStr != "" {
+		if uid, err := database.StringToUUID(usuarioIDStr); err == nil {
+			usuarioID = uid
+		}
+	}
+
+	var dataInicio, dataFim pgtype.Timestamptz
+	if inicioStr != "" {
+		if t, err := time.Parse("2006-01-02", inicioStr); err == nil {
+			dataInicio = database.TimeToTimestamptz(t)
+		} else if t, err := time.Parse(time.RFC3339, inicioStr); err == nil {
+			dataInicio = database.TimeToTimestamptz(t)
+		}
+	}
+	if fimStr != "" {
+		if t, err := time.Parse("2006-01-02", fimStr); err == nil {
+			fimDoDia := t.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+			dataFim = database.TimeToTimestamptz(fimDoDia)
+		} else if t, err := time.Parse(time.RFC3339, fimStr); err == nil {
+			dataFim = database.TimeToTimestamptz(t)
+		}
+	}
+
+	// Exportar sem paginação (limite grande)
+	itens, err := h.db.Queries.ListarAtendimentos(r.Context(), sqlc.ListarAtendimentosParams{
+		Busca:      database.StringToText(busca),
+		UsuarioID:  usuarioID,
+		DataInicio: dataInicio,
+		DataFim:    dataFim,
+		Limit:      100000,
+		Offset:     0,
+	})
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao consultar atendimentos para exportação")
+		return
+	}
+
+	filename := fmt.Sprintf("atendimentos_%s.csv", time.Now().Format("20060102_150405"))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+
+	// UTF-8 BOM para garantir correta abertura com acentos no Excel e LibreOffice
+	_, _ = w.Write([]byte{0xEF, 0xBB, 0xBF})
+
+	writer := csv.NewWriter(w)
+	writer.Comma = ';' // Separador padrão para compatibilidade em português com Excel
+
+	_ = writer.Write([]string{"Data/Hora", "Cliente", "Descrição", "Técnico Responsável"})
+	for _, it := range itens {
+		dataStr := ""
+		if it.DataAtendimento.Valid {
+			dataStr = it.DataAtendimento.Time.Format("02/01/2006 15:04")
+		}
+		_ = writer.Write([]string{
+			dataStr,
+			it.ClienteNome,
+			it.Descricao,
+			it.UsuarioNome,
+		})
+	}
+	writer.Flush()
 }

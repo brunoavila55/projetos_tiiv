@@ -5,17 +5,17 @@ WHERE ativo = true
 ORDER BY nome ASC;
 
 -- name: ListarTodosUsuarios :many
-SELECT id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em
+SELECT id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 FROM usuarios
 ORDER BY nome ASC;
 
 -- name: BuscarUsuarioPorID :one
-SELECT id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em
+SELECT id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 FROM usuarios
 WHERE id = $1;
 
 -- name: BuscarUsuarioPorIDComPin :one
-SELECT id, nome, cor, pin_hash, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em
+SELECT id, nome, cor, pin_hash, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 FROM usuarios
 WHERE id = $1;
 
@@ -31,13 +31,19 @@ WHERE papel = 'admin' AND ativo = true;
 -- name: CriarUsuario :one
 INSERT INTO usuarios (nome, cor, pin_hash, papel, ativo)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em;
+RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema;
 
 -- name: AtualizarUsuario :one
 UPDATE usuarios
 SET nome = $2, cor = $3, papel = $4, ativo = $5
 WHERE id = $1
-RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em;
+RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema;
+
+-- name: AtualizarTemaUsuario :one
+UPDATE usuarios
+SET tema = $2
+WHERE id = $1
+RETURNING id, tema;
 
 -- name: AtualizarPin :one
 UPDATE usuarios
@@ -64,4 +70,4 @@ WHERE id = $1;
 UPDATE usuarios
 SET tentativas_falhas = 0, bloqueado_ate = NULL
 WHERE id = $1
-RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em;
+RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema;

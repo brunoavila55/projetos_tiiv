@@ -1,10 +1,12 @@
 import { apiFetch, ApiError } from './api';
+import { themeStore } from './theme.svelte';
 
 export interface UserProfile {
 	id: string;
 	nome: string;
 	cor: string;
 	papel: 'admin' | 'usuario';
+	tema?: 'claro' | 'escuro' | 'sistema';
 }
 
 export interface UsuarioPublico {
@@ -31,6 +33,9 @@ class AuthStore {
 			const u = await apiFetch<UserProfile>('/api/auth/me', { silent: true });
 			this.user = u;
 			this.lastActivity = Date.now();
+			if (u?.tema) {
+				themeStore.initFromUser(u.tema);
+			}
 			return u;
 		} catch {
 			this.user = null;
@@ -47,6 +52,9 @@ class AuthStore {
 		});
 		this.user = u;
 		this.lastActivity = Date.now();
+		if (u?.tema) {
+			themeStore.initFromUser(u.tema);
+		}
 		return u;
 	}
 

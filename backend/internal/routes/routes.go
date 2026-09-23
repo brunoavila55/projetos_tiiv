@@ -59,6 +59,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 			auth.Group(func(protected chi.Router) {
 				protected.Use(authMiddleware.RequireAuth)
 				protected.Get("/me", authHandler.Me)
+				protected.Put("/tema", authHandler.AtualizarTema)
 				protected.Post("/trocar-pin", usuarioHandler.TrocarProprioPIN)
 			})
 		})
@@ -80,6 +81,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Atendimentos
 			protected.Route("/atendimentos", func(a chi.Router) {
+				a.Get("/exportar.csv", atendimentoHandler.ExportarCSV)
 				a.Get("/", atendimentoHandler.Listar)
 				a.Post("/", atendimentoHandler.Criar)
 				a.Get("/{id}", atendimentoHandler.Obter)
@@ -94,6 +96,9 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 				t.Put("/{id}", tarefaHandler.Atualizar)
 				t.Patch("/{id}/status", tarefaHandler.AtualizarStatus)
 				t.Delete("/{id}", tarefaHandler.Deletar)
+				t.Get("/{id}/comentarios", tarefaHandler.ListarComentarios)
+				t.Post("/{id}/comentarios", tarefaHandler.CriarComentario)
+				t.Delete("/{id}/comentarios/{cid}", tarefaHandler.DeletarComentario)
 			})
 
 			// Estoque
@@ -103,6 +108,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 				est.Get("/categorias", estoqueHandler.ListarCategorias)
 				est.Post("/movimentacoes", estoqueHandler.RegistrarMovimentacao)
 				est.Get("/movimentacoes", estoqueHandler.ListarMovimentacoes)
+				est.Get("/movimentacoes/exportar.csv", estoqueHandler.ExportarCSV)
 
 				// Gestão de itens de estoque (Apenas Admin)
 				est.Group(func(adminEst chi.Router) {

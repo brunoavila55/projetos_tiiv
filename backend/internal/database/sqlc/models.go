@@ -24,15 +24,17 @@ type EventoParticipantes struct {
 }
 
 type Eventos struct {
-	ID           pgtype.UUID        `json:"id"`
-	Titulo       string             `json:"titulo"`
-	Descricao    string             `json:"descricao"`
-	Inicio       pgtype.Timestamptz `json:"inicio"`
-	Fim          pgtype.Timestamptz `json:"fim"`
-	DiaInteiro   bool               `json:"dia_inteiro"`
-	CriadoPor    pgtype.UUID        `json:"criado_por"`
-	CriadoEm     pgtype.Timestamptz `json:"criado_em"`
-	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
+	ID             pgtype.UUID        `json:"id"`
+	Titulo         string             `json:"titulo"`
+	Descricao      string             `json:"descricao"`
+	Inicio         pgtype.Timestamptz `json:"inicio"`
+	Fim            pgtype.Timestamptz `json:"fim"`
+	DiaInteiro     bool               `json:"dia_inteiro"`
+	CriadoPor      pgtype.UUID        `json:"criado_por"`
+	CriadoEm       pgtype.Timestamptz `json:"criado_em"`
+	AtualizadoEm   pgtype.Timestamptz `json:"atualizado_em"`
+	Recorrencia    string             `json:"recorrencia"`
+	RecorrenciaFim pgtype.Timestamptz `json:"recorrencia_fim"`
 }
 
 type ItensEstoque struct {
@@ -66,6 +68,14 @@ type Sessoes struct {
 	CriadoEm    pgtype.Timestamptz `json:"criado_em"`
 }
 
+type TarefaComentarios struct {
+	ID        pgtype.UUID        `json:"id"`
+	TarefaID  pgtype.UUID        `json:"tarefa_id"`
+	UsuarioID pgtype.UUID        `json:"usuario_id"`
+	Conteudo  string             `json:"conteudo"`
+	CriadoEm  pgtype.Timestamptz `json:"criado_em"`
+}
+
 type Tarefas struct {
 	ID            pgtype.UUID        `json:"id"`
 	Titulo        string             `json:"titulo"`
@@ -90,4 +100,5 @@ type Usuarios struct {
 	TentativasFalhas int32              `json:"tentativas_falhas"`
 	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
 	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
+	Tema             string             `json:"tema"`
 }

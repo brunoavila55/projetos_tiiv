@@ -29,18 +29,20 @@ func (q *Queries) AdicionarParticipanteEvento(ctx context.Context, arg Adicionar
 
 const atualizarEvento = `-- name: AtualizarEvento :one
 UPDATE eventos
-SET titulo = $2, descricao = $3, inicio = $4, fim = $5, dia_inteiro = $6, atualizado_em = now()
+SET titulo = $2, descricao = $3, inicio = $4, fim = $5, dia_inteiro = $6, recorrencia = $7, recorrencia_fim = $8, atualizado_em = now()
 WHERE id = $1
-RETURNING id, titulo, descricao, inicio, fim, dia_inteiro, criado_por, criado_em, atualizado_em
+RETURNING id, titulo, descricao, inicio, fim, dia_inteiro, criado_por, criado_em, atualizado_em, recorrencia, recorrencia_fim
 `
 
 type AtualizarEventoParams struct {
-	ID         pgtype.UUID        `json:"id"`
-	Titulo     string             `json:"titulo"`
-	Descricao  string             `json:"descricao"`
-	Inicio     pgtype.Timestamptz `json:"inicio"`
-	Fim        pgtype.Timestamptz `json:"fim"`
-	DiaInteiro bool               `json:"dia_inteiro"`
+	ID             pgtype.UUID        `json:"id"`
+	Titulo         string             `json:"titulo"`
+	Descricao      string             `json:"descricao"`
+	Inicio         pgtype.Timestamptz `json:"inicio"`
+	Fim            pgtype.Timestamptz `json:"fim"`
+	DiaInteiro     bool               `json:"dia_inteiro"`
+	Recorrencia    string             `json:"recorrencia"`
+	RecorrenciaFim pgtype.Timestamptz `json:"recorrencia_fim"`
 }
 
 func (q *Queries) AtualizarEvento(ctx context.Context, arg AtualizarEventoParams) (Eventos, error) {
@@ -51,6 +53,8 @@ func (q *Queries) AtualizarEvento(ctx context.Context, arg AtualizarEventoParams
 		arg.Inicio,
 		arg.Fim,
 		arg.DiaInteiro,
+		arg.Recorrencia,
+		arg.RecorrenciaFim,
 	)
 	var i Eventos
 	err := row.Scan(
@@ -63,12 +67,14 @@ func (q *Queries) AtualizarEvento(ctx context.Context, arg AtualizarEventoParams
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.Recorrencia,
+		&i.RecorrenciaFim,
 	)
 	return i, err
 }
 
 const buscarEventoPorID = `-- name: BuscarEventoPorID :one
-SELECT e.id, e.titulo, e.descricao, e.inicio, e.fim, e.dia_inteiro, e.criado_por, e.criado_em, e.atualizado_em
+SELECT e.id, e.titulo, e.descricao, e.inicio, e.fim, e.dia_inteiro, e.criado_por, e.criado_em, e.atualizado_em, e.recorrencia, e.recorrencia_fim
 FROM eventos e
 WHERE e.id = $1
 `
@@ -86,23 +92,27 @@ func (q *Queries) BuscarEventoPorID(ctx context.Context, id pgtype.UUID) (Evento
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.Recorrencia,
+		&i.RecorrenciaFim,
 	)
 	return i, err
 }
 
 const criarEvento = `-- name: CriarEvento :one
-INSERT INTO eventos (titulo, descricao, inicio, fim, dia_inteiro, criado_por)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, titulo, descricao, inicio, fim, dia_inteiro, criado_por, criado_em, atualizado_em
+INSERT INTO eventos (titulo, descricao, inicio, fim, dia_inteiro, criado_por, recorrencia, recorrencia_fim)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, titulo, descricao, inicio, fim, dia_inteiro, criado_por, criado_em, atualizado_em, recorrencia, recorrencia_fim
 `
 
 type CriarEventoParams struct {
-	Titulo     string             `json:"titulo"`
-	Descricao  string             `json:"descricao"`
-	Inicio     pgtype.Timestamptz `json:"inicio"`
-	Fim        pgtype.Timestamptz `json:"fim"`
-	DiaInteiro bool               `json:"dia_inteiro"`
-	CriadoPor  pgtype.UUID        `json:"criado_por"`
+	Titulo         string             `json:"titulo"`
+	Descricao      string             `json:"descricao"`
+	Inicio         pgtype.Timestamptz `json:"inicio"`
+	Fim            pgtype.Timestamptz `json:"fim"`
+	DiaInteiro     bool               `json:"dia_inteiro"`
+	CriadoPor      pgtype.UUID        `json:"criado_por"`
+	Recorrencia    string             `json:"recorrencia"`
+	RecorrenciaFim pgtype.Timestamptz `json:"recorrencia_fim"`
 }
 
 func (q *Queries) CriarEvento(ctx context.Context, arg CriarEventoParams) (Eventos, error) {
@@ -113,6 +123,8 @@ func (q *Queries) CriarEvento(ctx context.Context, arg CriarEventoParams) (Event
 		arg.Fim,
 		arg.DiaInteiro,
 		arg.CriadoPor,
+		arg.Recorrencia,
+		arg.RecorrenciaFim,
 	)
 	var i Eventos
 	err := row.Scan(
@@ -125,6 +137,8 @@ func (q *Queries) CriarEvento(ctx context.Context, arg CriarEventoParams) (Event
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.Recorrencia,
+		&i.RecorrenciaFim,
 	)
 	return i, err
 }
@@ -142,10 +156,12 @@ func (q *Queries) DeletarEvento(ctx context.Context, id pgtype.UUID) error {
 const listarEventosIntervalo = `-- name: ListarEventosIntervalo :many
 SELECT 
     e.id, e.titulo, e.descricao, e.inicio, e.fim, e.dia_inteiro, e.criado_por, e.criado_em, e.atualizado_em,
+    e.recorrencia, e.recorrencia_fim,
     u.nome AS criador_nome, u.cor AS criador_cor
 FROM eventos e
 JOIN usuarios u ON u.id = e.criado_por
-WHERE e.fim >= $1 AND e.inicio <= $2
+WHERE (e.fim >= $1 AND e.inicio <= $2)
+   OR (e.recorrencia != 'nenhuma' AND e.inicio <= $2 AND (e.recorrencia_fim IS NULL OR e.recorrencia_fim >= $1))
 ORDER BY e.inicio ASC
 `
 
@@ -155,17 +171,19 @@ type ListarEventosIntervaloParams struct {
 }
 
 type ListarEventosIntervaloRow struct {
-	ID           pgtype.UUID        `json:"id"`
-	Titulo       string             `json:"titulo"`
-	Descricao    string             `json:"descricao"`
-	Inicio       pgtype.Timestamptz `json:"inicio"`
-	Fim          pgtype.Timestamptz `json:"fim"`
-	DiaInteiro   bool               `json:"dia_inteiro"`
-	CriadoPor    pgtype.UUID        `json:"criado_por"`
-	CriadoEm     pgtype.Timestamptz `json:"criado_em"`
-	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
-	CriadorNome  string             `json:"criador_nome"`
-	CriadorCor   string             `json:"criador_cor"`
+	ID             pgtype.UUID        `json:"id"`
+	Titulo         string             `json:"titulo"`
+	Descricao      string             `json:"descricao"`
+	Inicio         pgtype.Timestamptz `json:"inicio"`
+	Fim            pgtype.Timestamptz `json:"fim"`
+	DiaInteiro     bool               `json:"dia_inteiro"`
+	CriadoPor      pgtype.UUID        `json:"criado_por"`
+	CriadoEm       pgtype.Timestamptz `json:"criado_em"`
+	AtualizadoEm   pgtype.Timestamptz `json:"atualizado_em"`
+	Recorrencia    string             `json:"recorrencia"`
+	RecorrenciaFim pgtype.Timestamptz `json:"recorrencia_fim"`
+	CriadorNome    string             `json:"criador_nome"`
+	CriadorCor     string             `json:"criador_cor"`
 }
 
 func (q *Queries) ListarEventosIntervalo(ctx context.Context, arg ListarEventosIntervaloParams) ([]ListarEventosIntervaloRow, error) {
@@ -187,6 +205,8 @@ func (q *Queries) ListarEventosIntervalo(ctx context.Context, arg ListarEventosI
 			&i.CriadoPor,
 			&i.CriadoEm,
 			&i.AtualizadoEm,
+			&i.Recorrencia,
+			&i.RecorrenciaFim,
 			&i.CriadorNome,
 			&i.CriadorCor,
 		); err != nil {

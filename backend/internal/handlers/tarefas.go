@@ -390,3 +390,147 @@ func (h *TarefaHandler) Deletar(w http.ResponseWriter, r *http.Request) {
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "tarefa excluída com sucesso"})
 }
+
+type ComentarioResponse struct {
+	ID          string `json:"id"`
+	TarefaID    string `json:"tarefa_id"`
+	UsuarioID   string `json:"usuario_id"`
+	UsuarioNome string `json:"usuario_nome"`
+	UsuarioCor  string `json:"usuario_cor"`
+	Conteudo    string `json:"conteudo"`
+	CriadoEm    string `json:"criado_em"`
+	PodeExcluir bool   `json:"pode_excluir"`
+}
+
+type CriarComentarioRequest struct {
+	Conteudo string `json:"conteudo"`
+}
+
+// ListarComentarios: GET /api/tarefas/{id}/comentarios
+func (h *TarefaHandler) ListarComentarios(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetAuthUser(r.Context())
+	if !ok || user == nil {
+		response.JSONError(w, http.StatusUnauthorized, "não autenticado")
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	tID, err := database.StringToUUID(idStr)
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	comentarios, err := h.db.Queries.ListarComentariosTarefa(r.Context(), tID)
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao listar comentários")
+		return
+	}
+
+	result := make([]ComentarioResponse, 0, len(comentarios))
+	for _, c := range comentarios {
+		uID := database.UUIDToString(c.UsuarioID)
+		podeExcluir := (user.Papel == "admin") || (uID == user.ID)
+		result = append(result, ComentarioResponse{
+			ID:          database.UUIDToString(c.ID),
+			TarefaID:    database.UUIDToString(c.TarefaID),
+			UsuarioID:   uID,
+			UsuarioNome: c.UsuarioNome,
+			UsuarioCor:  c.UsuarioCor,
+			Conteudo:    c.Conteudo,
+			CriadoEm:    c.CriadoEm.Time.Format(time.RFC3339),
+			PodeExcluir: podeExcluir,
+		})
+	}
+
+	response.JSON(w, http.StatusOK, result)
+}
+
+// CriarComentario: POST /api/tarefas/{id}/comentarios
+func (h *TarefaHandler) CriarComentario(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetAuthUser(r.Context())
+	if !ok || user == nil {
+		response.JSONError(w, http.StatusUnauthorized, "não autenticado")
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	tID, err := database.StringToUUID(idStr)
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	var req CriarComentarioRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.JSONError(w, http.StatusBadRequest, "corpo da requisição inválido")
+		return
+	}
+
+	if req.Conteudo == "" {
+		response.JSONError(w, http.StatusBadRequest, "conteúdo do comentário é obrigatório")
+		return
+	}
+
+	userUUID, err := database.StringToUUID(user.ID)
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "usuário inválido")
+		return
+	}
+
+	comentario, err := h.db.Queries.CriarComentarioTarefa(r.Context(), sqlc.CriarComentarioTarefaParams{
+		TarefaID:  tID,
+		UsuarioID: userUUID,
+		Conteudo:  req.Conteudo,
+	})
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao registrar comentário")
+		return
+	}
+
+	response.JSON(w, http.StatusCreated, ComentarioResponse{
+		ID:          database.UUIDToString(comentario.ID),
+		TarefaID:    database.UUIDToString(comentario.TarefaID),
+		UsuarioID:   user.ID,
+		UsuarioNome: user.Nome,
+		UsuarioCor:  user.Cor,
+		Conteudo:    comentario.Conteudo,
+		CriadoEm:    comentario.CriadoEm.Time.Format(time.RFC3339),
+		PodeExcluir: true,
+	})
+}
+
+// DeletarComentario: DELETE /api/tarefas/{id}/comentarios/{cid}
+func (h *TarefaHandler) DeletarComentario(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetAuthUser(r.Context())
+	if !ok || user == nil {
+		response.JSONError(w, http.StatusUnauthorized, "não autenticado")
+		return
+	}
+
+	cidStr := chi.URLParam(r, "cid")
+	cID, err := database.StringToUUID(cidStr)
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "ID de comentário inválido")
+		return
+	}
+
+	c, err := h.db.Queries.BuscarComentarioPorID(r.Context(), cID)
+	if err != nil {
+		response.JSONError(w, http.StatusNotFound, "comentário não encontrado")
+		return
+	}
+
+	uID := database.UUIDToString(c.UsuarioID)
+	if user.Papel != "admin" && uID != user.ID {
+		response.JSONError(w, http.StatusForbidden, "apenas o autor ou administrador pode excluir este comentário")
+		return
+	}
+
+	if err := h.db.Queries.DeletarComentarioTarefa(r.Context(), cID); err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao excluir comentário")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "comentário excluído com sucesso"})
+}

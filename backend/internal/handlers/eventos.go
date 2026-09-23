@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -29,17 +30,20 @@ type ParticipanteResponse struct {
 }
 
 type EventoResponse struct {
-	ID            string                 `json:"id"`
-	Titulo        string                 `json:"titulo"`
-	Descricao     string                 `json:"descricao"`
-	Inicio        string                 `json:"inicio"`
-	Fim           string                 `json:"fim"`
-	DiaInteiro    bool                   `json:"dia_inteiro"`
-	CriadoPor     string                 `json:"criado_por"`
-	CriadorNome   string                 `json:"criador_nome"`
-	CriadorCor    string                 `json:"criador_cor"`
-	Participantes []ParticipanteResponse `json:"participantes"`
-	PodeEditar    bool                   `json:"pode_editar"`
+	ID             string                 `json:"id"`
+	OriginalID     string                 `json:"original_id"`
+	Titulo         string                 `json:"titulo"`
+	Descricao      string                 `json:"descricao"`
+	Inicio         string                 `json:"inicio"`
+	Fim            string                 `json:"fim"`
+	DiaInteiro     bool                   `json:"dia_inteiro"`
+	Recorrencia    string                 `json:"recorrencia"`
+	RecorrenciaFim *string                `json:"recorrencia_fim,omitempty"`
+	CriadoPor      string                 `json:"criado_por"`
+	CriadorNome    string                 `json:"criador_nome"`
+	CriadorCor     string                 `json:"criador_cor"`
+	Participantes  []ParticipanteResponse `json:"participantes"`
+	PodeEditar     bool                   `json:"pode_editar"`
 }
 
 // Listar: GET /api/eventos?inicio=&fim=&meus=
@@ -135,31 +139,115 @@ func (h *EventoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 
 		podeEditar := (user.Papel == "admin") || (eCriadoPor == user.ID)
 
-		result = append(result, EventoResponse{
-			ID:            eID,
-			Titulo:        e.Titulo,
-			Descricao:     e.Descricao,
-			Inicio:        e.Inicio.Time.Format(time.RFC3339),
-			Fim:           e.Fim.Time.Format(time.RFC3339),
-			DiaInteiro:    e.DiaInteiro,
-			CriadoPor:     eCriadoPor,
-			CriadorNome:   e.CriadorNome,
-			CriadorCor:    e.CriadorCor,
-			Participantes: partList,
-			PodeEditar:    podeEditar,
-		})
+		var recFimStr *string
+		if e.RecorrenciaFim.Valid {
+			s := e.RecorrenciaFim.Time.Format(time.RFC3339)
+			recFimStr = &s
+		}
+
+		recorrencia := e.Recorrencia
+		if recorrencia == "" {
+			recorrencia = "nenhuma"
+		}
+
+		if recorrencia == "nenhuma" {
+			if !e.Fim.Time.Before(inicio) && !e.Inicio.Time.After(fim) {
+				result = append(result, EventoResponse{
+					ID:             eID,
+					OriginalID:     eID,
+					Titulo:         e.Titulo,
+					Descricao:      e.Descricao,
+					Inicio:         e.Inicio.Time.Format(time.RFC3339),
+					Fim:            e.Fim.Time.Format(time.RFC3339),
+					DiaInteiro:     e.DiaInteiro,
+					Recorrencia:    recorrencia,
+					RecorrenciaFim: recFimStr,
+					CriadoPor:      eCriadoPor,
+					CriadorNome:    e.CriadorNome,
+					CriadorCor:     e.CriadorCor,
+					Participantes:  partList,
+					PodeEditar:     podeEditar,
+				})
+			}
+		} else {
+			dur := e.Fim.Time.Sub(e.Inicio.Time)
+			var recFim time.Time
+			if e.RecorrenciaFim.Valid {
+				recFim = e.RecorrenciaFim.Time
+			}
+
+			for step := 0; step < 500; step++ {
+				var occInicio time.Time
+				if recorrencia == "semanal" {
+					occInicio = e.Inicio.Time.AddDate(0, 0, step*7)
+				} else if recorrencia == "mensal" {
+					occInicio = e.Inicio.Time.AddDate(0, step, 0)
+				} else {
+					break
+				}
+
+				if occInicio.After(fim) {
+					break
+				}
+				if !recFim.IsZero() && occInicio.After(recFim) {
+					break
+				}
+
+				occFim := occInicio.Add(dur)
+				if !occFim.Before(inicio) && !occInicio.After(fim) {
+					occID := eID
+					if step > 0 {
+						occID = fmt.Sprintf("%s_rec_%d", eID, occInicio.Unix())
+					}
+					result = append(result, EventoResponse{
+						ID:             occID,
+						OriginalID:     eID,
+						Titulo:         e.Titulo,
+						Descricao:      e.Descricao,
+						Inicio:         occInicio.Format(time.RFC3339),
+						Fim:            occFim.Format(time.RFC3339),
+						DiaInteiro:     e.DiaInteiro,
+						Recorrencia:    recorrencia,
+						RecorrenciaFim: recFimStr,
+						CriadoPor:      eCriadoPor,
+						CriadorNome:    e.CriadorNome,
+						CriadorCor:     e.CriadorCor,
+						Participantes:  partList,
+						PodeEditar:     podeEditar,
+					})
+				}
+			}
+		}
 	}
 
 	response.JSON(w, http.StatusOK, result)
 }
 
+func parseRecorrencia(rec string, recFimStr *string) (string, pgtype.Timestamptz) {
+	recorrencia := "nenhuma"
+	if rec == "semanal" || rec == "mensal" {
+		recorrencia = rec
+	}
+	var recFim pgtype.Timestamptz
+	if recFimStr != nil && *recFimStr != "" {
+		if t, err := time.Parse(time.RFC3339, *recFimStr); err == nil {
+			recFim = database.TimeToTimestamptz(t)
+		} else if t, err := time.Parse("2006-01-02", *recFimStr); err == nil {
+			recFim = database.TimeToTimestamptz(t.Add(23*time.Hour + 59*time.Minute + 59*time.Second))
+		}
+	}
+	return recorrencia, recFim
+}
+
 type EventoRequest struct {
-	Titulo        string   `json:"titulo"`
-	Descricao     string   `json:"descricao"`
-	Inicio        string   `json:"inicio"`
-	Fim           string   `json:"fim"`
-	DiaInteiro    bool     `json:"dia_inteiro"`
-	Participantes []string `json:"participantes"`
+	Titulo         string   `json:"titulo"`
+	Descricao      string   `json:"descricao"`
+	Inicio         string   `json:"inicio"`
+	Fim            string   `json:"fim"`
+	DiaInteiro     bool     `json:"dia_inteiro"`
+	Recorrencia    string   `json:"recorrencia"`
+	RecorrenciaFim *string  `json:"recorrencia_fim"`
+	Participantes  []string `json:"participantes"`
 }
 
 // Criar: POST /api/eventos
@@ -204,13 +292,17 @@ func (h *EventoHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	recorrencia, recFim := parseRecorrencia(req.Recorrencia, req.RecorrenciaFim)
+
 	evento, err := h.db.Queries.CriarEvento(r.Context(), sqlc.CriarEventoParams{
-		Titulo:     req.Titulo,
-		Descricao:  req.Descricao,
-		Inicio:     database.TimeToTimestamptz(inicio),
-		Fim:        database.TimeToTimestamptz(fim),
-		DiaInteiro: req.DiaInteiro,
-		CriadoPor:  criadorUUID,
+		Titulo:         req.Titulo,
+		Descricao:      req.Descricao,
+		Inicio:         database.TimeToTimestamptz(inicio),
+		Fim:            database.TimeToTimestamptz(fim),
+		DiaInteiro:     req.DiaInteiro,
+		CriadoPor:      criadorUUID,
+		Recorrencia:    recorrencia,
+		RecorrenciaFim: recFim,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao criar evento")
@@ -293,13 +385,17 @@ func (h *EventoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	recorrencia, recFim := parseRecorrencia(req.Recorrencia, req.RecorrenciaFim)
+
 	_, err = h.db.Queries.AtualizarEvento(r.Context(), sqlc.AtualizarEventoParams{
-		ID:         eID,
-		Titulo:     req.Titulo,
-		Descricao:  req.Descricao,
-		Inicio:     database.TimeToTimestamptz(inicio),
-		Fim:        database.TimeToTimestamptz(fim),
-		DiaInteiro: req.DiaInteiro,
+		ID:             eID,
+		Titulo:         req.Titulo,
+		Descricao:      req.Descricao,
+		Inicio:         database.TimeToTimestamptz(inicio),
+		Fim:            database.TimeToTimestamptz(fim),
+		DiaInteiro:     req.DiaInteiro,
+		Recorrencia:    recorrencia,
+		RecorrenciaFim: recFim,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao atualizar evento")

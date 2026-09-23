@@ -77,3 +77,26 @@ RETURNING *;
 -- name: DeletarTarefa :exec
 DELETE FROM tarefas
 WHERE id = $1;
+
+-- name: ListarComentariosTarefa :many
+SELECT 
+    c.id, c.tarefa_id, c.usuario_id, c.conteudo, c.criado_em,
+    u.nome AS usuario_nome, u.cor AS usuario_cor
+FROM tarefa_comentarios c
+JOIN usuarios u ON u.id = c.usuario_id
+WHERE c.tarefa_id = $1
+ORDER BY c.criado_em ASC;
+
+-- name: CriarComentarioTarefa :one
+INSERT INTO tarefa_comentarios (tarefa_id, usuario_id, conteudo)
+VALUES ($1, $2, $3)
+RETURNING *;
+
+-- name: BuscarComentarioPorID :one
+SELECT id, tarefa_id, usuario_id, conteudo, criado_em
+FROM tarefa_comentarios
+WHERE id = $1;
+
+-- name: DeletarComentarioTarefa :exec
+DELETE FROM tarefa_comentarios
+WHERE id = $1;
