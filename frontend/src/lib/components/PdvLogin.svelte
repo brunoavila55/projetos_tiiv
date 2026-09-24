@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch, ApiError } from '$lib/api';
 	import { auth, type UsuarioPublico } from '$lib/auth.svelte';
-	import { Delete, AlertCircle, Users } from 'lucide-svelte';
+	import { Delete, AlertCircle, Users, ChevronRight, ArrowLeft } from 'lucide-svelte';
 	import Avatar from './Avatar.svelte';
 
 	let usuarios = $state<UsuarioPublico[]>([]);
@@ -104,12 +104,6 @@
 			window.removeEventListener('keydown', handleKeyDown);
 		};
 	});
-
-	function getIniciais(nome: string): string {
-		const partes = nome.trim().split(/\s+/);
-		if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
-		return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
-	}
 </script>
 
 {#snippet tecla(conteudo: string, acao: () => void)}
@@ -117,186 +111,170 @@
 		type="button"
 		onclick={acao}
 		disabled={submitting}
-		class="h-[3.75rem] rounded-xl bg-surface border border-line-strong border-b-[3px] text-[26px] font-semibold text-ink tabular flex items-center justify-center cursor-pointer select-none transition-[transform,background-color] hover:bg-sunken active:translate-y-[2px] active:border-b active:bg-muted disabled:opacity-50"
+		class="h-14 rounded-lg bg-sunken border border-line text-2xl font-semibold text-ink tabular flex items-center justify-center cursor-pointer select-none transition-[transform,background-color] hover:bg-muted active:scale-[0.97] disabled:opacity-50"
 	>
 		{conteudo}
 	</button>
 {/snippet}
 
-{#snippet teclado(u: UsuarioPublico)}
-	<div class="flex flex-col items-center text-center">
-		<Avatar id={u.id} nome={u.nome} cor={u.cor} fotoVersao={u.foto_versao} class="size-20 text-2xl" />
-		<h2 class="mt-3 text-xl font-bold text-ink leading-tight">{u.nome}</h2>
-
-		<div
-			class="mt-5 flex items-center gap-3 h-5 {pinError ? 'animate-shake' : ''}"
-			aria-live="polite"
-			aria-label="{pin.length} dígitos digitados"
-		>
-			{#each Array(6) as _, i}
-				<span
-					class="size-3.5 rounded-full transition-colors duration-75 {i < pin.length
-						? pinError ? 'bg-danger' : 'bg-ink'
-						: i < 4
-							? 'border-2 border-line-strong'
-							: 'border-2 border-dashed border-line-strong'}"
-				></span>
-			{/each}
-		</div>
-		<p class="h-5 mt-2.5 text-sm font-medium {pinError ? 'text-danger' : 'text-ink-3'}" role={pinError ? 'alert' : undefined}>
-			{pinError ?? 'Digite seu PIN'}
+<div class="min-h-dvh bg-surface text-ink lg:grid lg:grid-cols-[minmax(0,1fr)_34rem] select-none">
+	<!-- Foto -->
+	<div class="relative h-40 sm:h-56 lg:h-dvh lg:sticky lg:top-0 overflow-hidden bg-[#6f8fa8]">
+		<img
+			src="/login-bg.jpg"
+			alt="Baía calma entre montanhas ao entardecer"
+			class="absolute inset-0 size-full object-cover"
+			draggable="false"
+		/>
+		<div class="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/35 to-transparent"></div>
+		<p class="absolute left-5 bottom-4 lg:left-12 lg:bottom-10 text-[13px] text-white/90 [text-shadow:0_1px_2px_rgb(0_0_0/0.35)]">
+			Foto de
+			<a
+				href="https://www.pexels.com/photo/photo-of-sea-and-mountain-906961/"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="underline underline-offset-2 hover:text-white">Stefanos Martimianakis</a
+			>
+			no Pexels
 		</p>
 	</div>
 
-	<div class="mt-5 grid grid-cols-3 gap-2.5">
-		{#each ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as digit}
-			{@render tecla(digit, () => adicionarDigito(digit))}
-		{/each}
-		<div></div>
-		{@render tecla('0', () => adicionarDigito('0'))}
-		<button
-			type="button"
-			onclick={apagarDigito}
-			disabled={submitting || pin.length === 0}
-			class="h-[3.75rem] rounded-xl text-ink-2 hover:bg-muted flex items-center justify-center cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-default"
-			aria-label="Apagar dígito"
-		>
-			<Delete class="size-7" />
-		</button>
-	</div>
-
-	<button
-		type="button"
-		onclick={submeterPin}
-		disabled={pin.length < 4 || submitting}
-		class="btn btn-primary w-full h-13 mt-4 text-base"
-	>
-		{#if submitting}
-			<span class="size-4 rounded-full border-2 border-on-accent/40 border-t-on-accent animate-spin"></span>
-			<span>Verificando…</span>
-		{:else}
-			Entrar
-		{/if}
-	</button>
-	<button type="button" onclick={fecharTeclado} class="btn btn-ghost w-full mt-1.5">Não sou eu</button>
-{/snippet}
-
-<div class="min-h-dvh bg-paper text-ink lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] select-none">
-	<!-- Mural de operadores -->
-	<main class="flex flex-col min-w-0 px-5 sm:px-10 lg:px-14 pt-6 sm:pt-10 pb-10">
-		<header class="flex items-center justify-between gap-4">
-			<div class="flex items-center gap-2.5">
-				<svg viewBox="0 0 28 28" class="size-8" aria-hidden="true">
-					<rect width="28" height="28" rx="7" fill="var(--accent)" />
-					<path d="M8 9h12M14 9v11" stroke="var(--on-accent)" stroke-width="2.6" stroke-linecap="round" />
-				</svg>
-				<span class="text-lg font-bold tracking-[-0.01em]">TIIV</span>
-			</div>
-			<time class="lg:hidden text-2xl font-bold tracking-[-0.02em] tabular">
-				{agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-			</time>
+	<!-- Painel de acesso -->
+	<main class="flex flex-col min-h-[calc(100dvh-10rem)] sm:min-h-[calc(100dvh-14rem)] lg:min-h-dvh px-6 sm:px-12 lg:px-16 pt-8 lg:pt-14 pb-8">
+		<header class="flex items-center gap-3">
+			<svg viewBox="0 0 28 28" class="size-11" aria-hidden="true">
+				<rect width="28" height="28" rx="8" fill="var(--accent)" />
+				<path d="M8 9h12M14 9v11" stroke="var(--on-accent)" stroke-width="2.6" stroke-linecap="round" />
+			</svg>
+			<span class="text-[22px] font-bold tracking-[-0.01em]">TIIV</span>
 		</header>
 
-		<div class="w-full max-w-4xl mt-10 sm:mt-16 lg:mt-[10vh]">
-			<h1 class="text-[2rem] sm:text-[2.75rem] font-bold leading-[1.05] tracking-[-0.025em]">Quem está no terminal?</h1>
+		<div class="w-full max-w-sm mx-auto lg:mx-0 flex-1 mt-10 lg:mt-[9vh]">
+			{#if selectedUser}
+				<div style="animation: modal-in 160ms ease-out;">
+					<button
+						type="button"
+						onclick={fecharTeclado}
+						class="inline-flex items-center gap-1.5 -ml-1 px-1 py-1 rounded text-sm font-semibold text-accent hover:underline underline-offset-2 cursor-pointer"
+					>
+						<ArrowLeft class="size-4" />
+						Trocar operador
+					</button>
 
-			<div class="mt-8 sm:mt-10">
-				{#if loading}
-					<div class="flex items-center gap-3 text-sm text-ink-3 py-10">
-						<div class="spinner size-5"></div>
-						<span>Carregando operadores…</span>
-					</div>
-				{:else if errorMsg}
-					<div class="alert bg-danger-soft text-danger max-w-lg justify-between">
-						<div class="flex items-center gap-2">
-							<AlertCircle class="size-5 shrink-0" />
-							<span>{errorMsg}</span>
+					<div class="mt-5 flex items-center gap-3.5">
+						<Avatar id={selectedUser.id} nome={selectedUser.nome} cor={selectedUser.cor} fotoVersao={selectedUser.foto_versao} class="size-14 text-lg" />
+						<div class="min-w-0">
+							<p class="text-sm text-ink-3">Olá,</p>
+							<h1 class="text-2xl font-bold leading-tight tracking-[-0.015em] truncate">{selectedUser.nome}</h1>
 						</div>
-						<button onclick={carregarUsuarios} class="btn btn-sm btn-danger underline underline-offset-2">Tentar de novo</button>
 					</div>
-				{:else if usuarios.length === 0}
-					<div class="max-w-md">
+
+					<p class="mt-7 mb-2 text-sm font-medium text-ink-2">PIN</p>
+					<div
+						class="h-14 rounded-lg bg-sunken border flex items-center justify-center gap-3.5 {pinError
+							? 'border-danger animate-shake'
+							: 'border-line'}"
+						aria-live="polite"
+						aria-label="{pin.length} dígitos digitados"
+					>
+						{#each Array(6) as _, i}
+							<span
+								class="size-3 rounded-full transition-colors duration-75 {i < pin.length
+									? pinError ? 'bg-danger' : 'bg-ink'
+									: i < 4
+										? 'border-2 border-line-strong'
+										: 'border-2 border-dashed border-line-strong'}"
+							></span>
+						{/each}
+					</div>
+					<p class="h-5 mt-2 text-sm {pinError ? 'text-danger font-medium' : 'text-ink-3'}" role={pinError ? 'alert' : undefined}>
+						{pinError ?? 'De 4 a 6 dígitos. O teclado físico também funciona.'}
+					</p>
+
+					<div class="mt-4 grid grid-cols-3 gap-2">
+						{#each ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as digit}
+							{@render tecla(digit, () => adicionarDigito(digit))}
+						{/each}
+						<div></div>
+						{@render tecla('0', () => adicionarDigito('0'))}
+						<button
+							type="button"
+							onclick={apagarDigito}
+							disabled={submitting || pin.length === 0}
+							class="h-14 rounded-lg text-ink-2 hover:bg-muted flex items-center justify-center cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-default"
+							aria-label="Apagar dígito"
+						>
+							<Delete class="size-6" />
+						</button>
+					</div>
+
+					<button
+						type="button"
+						onclick={submeterPin}
+						disabled={pin.length < 4 || submitting}
+						class="btn btn-primary w-full h-13 mt-5 text-base"
+					>
+						{#if submitting}
+							<span class="size-4 rounded-full border-2 border-on-accent/40 border-t-on-accent animate-spin"></span>
+							<span>Verificando…</span>
+						{:else}
+							Entrar
+						{/if}
+					</button>
+				</div>
+			{:else}
+				<h1 class="text-[1.75rem] font-bold leading-tight tracking-[-0.02em]">Que bom te ver de novo</h1>
+				<p class="mt-1.5 text-ink-3">Escolha seu nome para entrar com o PIN.</p>
+
+				<div class="mt-8">
+					{#if loading}
+						<div class="flex items-center gap-3 text-sm text-ink-3 py-6">
+							<div class="spinner size-5"></div>
+							<span>Carregando operadores…</span>
+						</div>
+					{:else if errorMsg}
+						<div class="alert bg-danger-soft text-danger justify-between">
+							<div class="flex items-center gap-2">
+								<AlertCircle class="size-5 shrink-0" />
+								<span>{errorMsg}</span>
+							</div>
+							<button onclick={carregarUsuarios} class="btn btn-sm btn-danger underline underline-offset-2">Tentar de novo</button>
+						</div>
+					{:else if usuarios.length === 0}
 						<Users class="size-9 text-ink-3" strokeWidth={1.5} />
 						<h2 class="mt-3 text-lg font-bold">Nenhum operador ativo</h2>
 						<p class="mt-1 text-ink-3">Peça a um administrador para cadastrar ou reativar operadores.</p>
-					</div>
-				{:else}
-					<ul class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-6 sm:gap-x-6 sm:gap-y-8">
-						{#each usuarios as u (u.id)}
-							{@const selecionado = selectedUser?.id === u.id}
-							<li>
-								<button
-									onclick={() => abrirTeclado(u)}
-									aria-pressed={selecionado}
-									class="group w-full text-left cursor-pointer transition-opacity {selectedUser && !selecionado ? 'opacity-45 hover:opacity-80' : ''}"
-								>
-									<div
-										class="relative aspect-square overflow-hidden rounded-2xl transition-[box-shadow,transform] group-active:scale-[0.97] {selecionado
-											? 'ring-[3px] ring-accent ring-offset-[3px] ring-offset-paper'
-											: 'group-hover:shadow-float'}"
-										style="background-color: {u.cor || '#1f5c5a'};"
+					{:else}
+						<p class="mb-2 text-sm font-medium text-ink-2">Operador</p>
+						<ul class="space-y-2 max-h-[52vh] overflow-y-auto -mx-1 px-1 pb-1">
+							{#each usuarios as u (u.id)}
+								<li>
+									<button
+										onclick={() => abrirTeclado(u)}
+										class="group w-full h-16 flex items-center gap-3.5 px-3.5 rounded-lg bg-sunken border border-line text-left cursor-pointer transition-colors hover:border-accent hover:bg-surface active:scale-[0.99]"
 									>
-										{#if u.foto_versao}
-											<img
-												src="/api/auth/usuarios/{u.id}/foto?v={u.foto_versao}"
-												alt=""
-												class="absolute inset-0 size-full object-cover"
-												draggable="false"
-											/>
-										{:else}
-											<span class="absolute left-4 bottom-3 text-white/95 text-4xl sm:text-5xl font-bold tracking-[-0.03em] leading-none [text-shadow:0_1px_2px_rgb(0_0_0/0.2)]">
-												{getIniciais(u.nome)}
-											</span>
-										{/if}
-									</div>
-									<span class="block mt-2.5 px-0.5 text-[15px] sm:text-base font-semibold leading-snug text-ink line-clamp-2">{u.nome}</span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</div>
-		</div>
-	</main>
-
-	<!-- Painel do terminal (desktop) -->
-	<aside class="hidden lg:flex flex-col h-dvh sticky top-0 bg-surface border-l border-line px-9 py-10">
-		<div>
-			<time class="block text-[3.5rem] font-bold leading-none tracking-[-0.035em] tabular">
-				{agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-			</time>
-			<p class="mt-2 text-ink-3 first-letter:uppercase">
-				{agora.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-			</p>
-		</div>
-
-		<div class="flex-1 flex flex-col justify-center py-8">
-			{#if selectedUser}
-				<div style="animation: modal-in 160ms ease-out;">
-					{@render teclado(selectedUser)}
-				</div>
-			{:else}
-				<div class="text-center">
-					<div class="mx-auto size-20 rounded-full border-2 border-dashed border-line-strong"></div>
-					<p class="mt-4 text-lg font-semibold text-ink">Toque no seu nome</p>
-					<p class="mt-1 text-sm text-ink-3">Depois, digite o PIN no teclado que aparece aqui.</p>
+										<Avatar id={u.id} nome={u.nome} cor={u.cor} fotoVersao={u.foto_versao} class="size-10 text-sm" />
+										<span class="flex-1 min-w-0 text-base font-semibold text-ink truncate">{u.nome}</span>
+										<ChevronRight class="size-5 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				</div>
 			{/if}
 		</div>
 
-		<p class="text-[13px] text-ink-3">A sessão termina sozinha após 30 minutos sem uso.</p>
-	</aside>
-
-	<!-- Teclado em folha inferior (celular e tablet) -->
-	{#if selectedUser}
-		<div
-			class="lg:hidden modal-backdrop"
-			onclick={(e) => { if (e.target === e.currentTarget) fecharTeclado(); }}
-			aria-hidden="true"
-		>
-			<div class="modal max-w-sm px-5 pt-6 pb-5" role="dialog" aria-modal="true" aria-label="Digite o PIN de {selectedUser.nome}">
-				{@render teclado(selectedUser)}
+		<footer class="mt-10 pt-5 border-t border-line flex items-end justify-between gap-4 text-[13px] text-ink-3">
+			<div>
+				<time class="block text-lg font-bold text-ink tabular leading-none">
+					{agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+				</time>
+				<span class="first-letter:uppercase inline-block mt-1">
+					{agora.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+				</span>
 			</div>
-		</div>
-	{/if}
+			<p class="text-right">Sessão encerra após<br />30 min sem uso</p>
+		</footer>
+	</main>
 </div>
