@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
+	"regexp"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -76,6 +77,9 @@ func (db *DB) ensureInitialAdmin(ctx context.Context, cfg *config.Config) error 
 	}
 
 	if count == 0 {
+		if !regexp.MustCompile(`^[0-9]{4}$`).MatchString(cfg.AdminPIN) {
+			return fmt.Errorf("ADMIN_PIN deve conter exatamente 4 dígitos numéricos")
+		}
 		slog.Info("Nenhum usuário cadastrado. Criando primeiro admin configurado...", "nome", cfg.AdminNome)
 		hash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPIN), bcrypt.DefaultCost)
 		if err != nil {

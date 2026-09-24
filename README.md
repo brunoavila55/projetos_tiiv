@@ -5,7 +5,7 @@ Aplicação web interna para uso de equipe em rede local (LAN), englobando:
 2. **Atendimentos**: Registro ágil de atendimentos (nome de cliente texto livre + descrição).
 3. **Tarefas**: Gestão de pendências com status, prioridade e responsáveis.
 4. **Estoque**: Controle material baseado em movimentações transacionais (entrada/saída/ajuste).
-5. **Acesso PDV**: Terminal com seleção visual de operador e PIN numérico de 4 a 6 dígitos.
+5. **Acesso PDV**: Terminal com seleção visual de operador e PIN numérico de 4 dígitos.
 
 ---
 
@@ -77,7 +77,7 @@ make test
 | `SESSION_MAX_TTL` | `12h` | Tempo de vida máximo absoluto da sessão |
 | `COOKIE_SECURE` | `false` | Se `true`, exige HTTPS para o cookie de sessão (manter `false` em LAN HTTP) |
 | `ADMIN_NOME` | `Administrador` | Nome do primeiro admin criado na inicialização |
-| `ADMIN_PIN` | `1234` | PIN numérico do primeiro admin (4 a 6 dígitos) |
+| `ADMIN_PIN` | `1234` | PIN numérico do primeiro admin (exatamente 4 dígitos) |
 | `TZ` | `America/Sao_Paulo` | Fuso horário padrão da aplicação |
 
 ---

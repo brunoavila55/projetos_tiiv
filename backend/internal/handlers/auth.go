@@ -19,7 +19,8 @@ import (
 	"tiiv/backend/internal/response"
 )
 
-var pinRegex = regexp.MustCompile(`^[0-9]{4,6}$`)
+// PIN de acesso: exatamente 4 dígitos numéricos
+var pinRegex = regexp.MustCompile(`^[0-9]{4}$`)
 
 type AuthHandler struct {
 	db  *database.DB
@@ -89,7 +90,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !pinRegex.MatchString(req.PIN) {
-		response.JSONError(w, http.StatusBadRequest, "PIN deve conter de 4 a 6 dígitos numéricos")
+		response.JSONError(w, http.StatusBadRequest, "PIN deve conter exatamente 4 dígitos numéricos")
 		return
 	}
 

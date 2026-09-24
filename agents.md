@@ -69,7 +69,7 @@ Criar as tabelas (via migrations):
 
 - `GET /api/auth/usuarios`: pública, retorna apenas `id`, `nome`, `cor` dos usuários ativos.
 - `POST /api/auth/login` com `{ usuario_id, pin }`.
-- PIN numérico de 4 a 6 dígitos, armazenado com bcrypt. PINs **não** precisam ser únicos entre usuários.
+- PIN numérico de exatamente 4 dígitos, armazenado com bcrypt. PINs **não** precisam ser únicos entre usuários.
 - Após 5 tentativas erradas, o usuário fica bloqueado por 5 minutos; login bem-sucedido zera o contador.
 - Sessão em cookie `HttpOnly`, `SameSite=Strict`, `Secure` configurável por env (LAN pode rodar em HTTP). No banco guarda-se apenas o hash do token.
 - Expiração por inatividade (padrão 30 min) e absoluta (padrão 12 h).

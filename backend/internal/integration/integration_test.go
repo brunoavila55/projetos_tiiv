@@ -1202,3 +1202,34 @@ func TestEstoque_ExcluirItem(t *testing.T) {
 	}
 	env.doRequest(http.MethodDelete, "/api/estoque/itens/"+outro, adminCookie, nil)
 }
+
+// -------------------------------------------------------------
+// PIN: exatamente 4 dígitos no cadastro, redefinição e login
+// -------------------------------------------------------------
+func TestPIN_ExatamenteQuatroDigitos(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	if err != nil || len(users) == 0 {
+		t.Fatalf("nenhum usuário no banco")
+	}
+	adminID := database.UUIDToString(users[0].ID)
+	adminCookie, _, _ := env.login(t, adminID, env.cfg.AdminPIN)
+
+	for _, pin := range []string{"123", "12345", "123456", "12a4"} {
+		resp, _, _ := env.doRequest(http.MethodPost, "/api/usuarios", adminCookie, map[string]any{
+			"nome": fmt.Sprintf("PIN inválido %d", time.Now().UnixNano()), "cor": "#10B981", "pin": pin, "papel": "usuario",
+		})
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("cadastro com PIN %q: esperado 400, obteve %d", pin, resp.StatusCode)
+		}
+		resp, _, _ = env.doRequest(http.MethodPost, "/api/usuarios/"+adminID+"/pin", adminCookie, map[string]any{"novo_pin": pin})
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("redefinição com PIN %q: esperado 400, obteve %d", pin, resp.StatusCode)
+		}
+		if _, status, _ := env.login(t, adminID, pin); status != http.StatusBadRequest {
+			t.Errorf("login com PIN %q: esperado 400, obteve %d", pin, status)
+		}
+	}
+}

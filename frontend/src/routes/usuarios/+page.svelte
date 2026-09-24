@@ -424,8 +424,8 @@
 								type="password"
 								inputmode="numeric"
 								bind:value={formPin}
-								maxlength="6"
-								placeholder="4 a 6 dígitos"
+								maxlength="4"
+								placeholder="4 dígitos"
 								class="field tracking-[0.3em] placeholder:tracking-normal"
 							/>
 						</div>
@@ -532,8 +532,8 @@
 							type="password"
 							inputmode="numeric"
 							bind:value={novoPin}
-							maxlength="6"
-							placeholder="4 a 6 dígitos"
+							maxlength="4"
+							placeholder="4 dígitos"
 							class="field h-12 text-center text-xl tracking-[0.4em] placeholder:text-sm placeholder:tracking-normal"
 						/>
 					</div>
@@ -541,7 +541,7 @@
 
 				<div class="modal-foot">
 					<button onclick={() => modalPinAberto = false} class="btn btn-ghost">Cancelar</button>
-					<button onclick={salvarPin} disabled={novoPin.length < 4} class="btn btn-primary">Salvar PIN</button>
+					<button onclick={salvarPin} disabled={!/^[0-9]{4}$/.test(novoPin)} class="btn btn-primary">Salvar PIN</button>
 				</div>
 			</div>
 		</div>

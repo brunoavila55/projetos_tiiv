@@ -91,7 +91,7 @@ func (h *UsuarioHandler) Criar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !pinRegex.MatchString(req.PIN) {
-		response.JSONError(w, http.StatusBadRequest, "PIN deve conter entre 4 e 6 dígitos numéricos")
+		response.JSONError(w, http.StatusBadRequest, "PIN deve conter exatamente 4 dígitos numéricos")
 		return
 	}
 
@@ -222,7 +222,7 @@ func (h *UsuarioHandler) RedefinirPIN(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !pinRegex.MatchString(req.NovoPIN) {
-		response.JSONError(w, http.StatusBadRequest, "PIN deve conter entre 4 e 6 dígitos numéricos")
+		response.JSONError(w, http.StatusBadRequest, "PIN deve conter exatamente 4 dígitos numéricos")
 		return
 	}
 
@@ -293,7 +293,7 @@ func (h *UsuarioHandler) TrocarProprioPIN(w http.ResponseWriter, r *http.Request
 	}
 
 	if !pinRegex.MatchString(req.NovoPin) {
-		response.JSONError(w, http.StatusBadRequest, "Novo PIN deve conter entre 4 e 6 dígitos numéricos")
+		response.JSONError(w, http.StatusBadRequest, "Novo PIN deve conter exatamente 4 dígitos numéricos")
 		return
 	}
 

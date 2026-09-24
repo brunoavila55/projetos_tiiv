@@ -40,10 +40,11 @@
 	}
 
 	function adicionarDigito(d: string) {
-		if (pin.length < 6) {
+		if (pin.length < 4 && !submitting) {
 			pin += d;
 			pinError = null;
-			// Se atingir 4 a 6 dígitos, o usuário pode clicar em Entrar ou digitar Enter
+			// PIN tem sempre 4 dígitos: entra assim que o último é digitado
+			if (pin.length === 4) submeterPin();
 		}
 	}
 
@@ -55,7 +56,7 @@
 	}
 
 	async function submeterPin() {
-		if (!selectedUser || pin.length < 4 || submitting) return;
+		if (!selectedUser || pin.length !== 4 || submitting) return;
 
 		submitting = true;
 		pinError = null;
@@ -83,7 +84,7 @@
 			apagarDigito();
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
-			if (pin.length >= 4) {
+			if (pin.length === 4) {
 				submeterPin();
 			}
 		} else if (e.key === 'Escape') {
@@ -177,18 +178,16 @@
 						aria-live="polite"
 						aria-label="{pin.length} dígitos digitados"
 					>
-						{#each Array(6) as _, i}
+						{#each Array(4) as _, i}
 							<span
-								class="size-3 rounded-full transition-colors duration-75 {i < pin.length
+								class="size-3.5 rounded-full transition-colors duration-75 {i < pin.length
 									? pinError ? 'bg-danger' : 'bg-ink'
-									: i < 4
-										? 'border-2 border-line-strong'
-										: 'border-2 border-dashed border-line-strong'}"
+									: 'border-2 border-line-strong'}"
 							></span>
 						{/each}
 					</div>
 					<p class="h-5 mt-2 text-sm {pinError ? 'text-danger font-medium' : 'text-ink-3'}" role={pinError ? 'alert' : undefined}>
-						{pinError ?? 'De 4 a 6 dígitos. O teclado físico também funciona.'}
+						{pinError ?? '4 dígitos. O teclado físico também funciona.'}
 					</p>
 
 					<div class="mt-4 grid grid-cols-3 gap-2">
@@ -211,7 +210,7 @@
 					<button
 						type="button"
 						onclick={submeterPin}
-						disabled={pin.length < 4 || submitting}
+						disabled={pin.length !== 4 || submitting}
 						class="btn btn-primary w-full h-13 mt-5 text-base"
 					>
 						{#if submitting}
