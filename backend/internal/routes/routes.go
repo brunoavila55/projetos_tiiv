@@ -44,6 +44,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	tarefaHandler := handlers.NewTarefaHandler(db)
 	estoqueHandler := handlers.NewEstoqueHandler(db)
 	painelHandler := handlers.NewPainelHandler(db)
+	tecnicoHandler := handlers.NewTecnicoHandler(db)
 
 	// Rotas sob /api
 	r.Route("/api", func(api chi.Router) {
@@ -116,6 +117,26 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 					adminEst.Use(authMiddleware.RequireAdmin)
 					adminEst.Post("/itens", estoqueHandler.CriarItem)
 					adminEst.Put("/itens/{id}", estoqueHandler.AtualizarItem)
+				})
+			})
+
+			// Técnicos: cadastro, entrada/saída e relatórios
+			protected.Route("/tecnicos", func(tec chi.Router) {
+				tec.Get("/", tecnicoHandler.Listar)
+				tec.Post("/", tecnicoHandler.Criar)
+				tec.Put("/{id}", tecnicoHandler.Atualizar)
+				tec.Post("/{id}/entrada", tecnicoHandler.RegistrarEntrada)
+				tec.Post("/{id}/saida", tecnicoHandler.RegistrarSaida)
+				tec.Get("/registros", tecnicoHandler.ListarRegistros)
+				tec.Get("/registros/exportar.csv", tecnicoHandler.ExportarRegistrosCSV)
+				tec.Get("/relatorio", tecnicoHandler.Relatorio)
+				tec.Get("/relatorio/exportar.csv", tecnicoHandler.ExportarRelatorioCSV)
+
+				// Correção de marcações (Apenas Admin)
+				tec.Group(func(adminTec chi.Router) {
+					adminTec.Use(authMiddleware.RequireAdmin)
+					adminTec.Put("/registros/{id}", tecnicoHandler.AtualizarRegistro)
+					adminTec.Delete("/registros/{id}", tecnicoHandler.DeletarRegistro)
 				})
 			})
 

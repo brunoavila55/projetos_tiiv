@@ -90,6 +90,26 @@ type Tarefas struct {
 	AtualizadoEm  pgtype.Timestamptz `json:"atualizado_em"`
 }
 
+type TecnicoRegistros struct {
+	ID                   pgtype.UUID        `json:"id"`
+	TecnicoID            pgtype.UUID        `json:"tecnico_id"`
+	Entrada              pgtype.Timestamptz `json:"entrada"`
+	Saida                pgtype.Timestamptz `json:"saida"`
+	Observacao           string             `json:"observacao"`
+	EntradaRegistradaPor pgtype.UUID        `json:"entrada_registrada_por"`
+	SaidaRegistradaPor   pgtype.UUID        `json:"saida_registrada_por"`
+	CriadoEm             pgtype.Timestamptz `json:"criado_em"`
+	AtualizadoEm         pgtype.Timestamptz `json:"atualizado_em"`
+}
+
+type Tecnicos struct {
+	ID       pgtype.UUID        `json:"id"`
+	Nome     string             `json:"nome"`
+	Empresa  string             `json:"empresa"`
+	Ativo    bool               `json:"ativo"`
+	CriadoEm pgtype.Timestamptz `json:"criado_em"`
+}
+
 type UsuarioFotos struct {
 	UsuarioID    pgtype.UUID        `json:"usuario_id"`
 	Conteudo     []byte             `json:"conteudo"`

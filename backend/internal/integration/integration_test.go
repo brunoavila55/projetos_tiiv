@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -923,3 +924,105 @@ func TestUsuarios_Foto(t *testing.T) {
 		t.Errorf("esperado 404 após remover foto, obteve %d", respFoto2.StatusCode)
 	}
 }
+
+// -------------------------------------------------------------
+// Técnicos: cadastro, entrada/saída e relatório
+// -------------------------------------------------------------
+func TestTecnicos_EntradaSaidaRelatorio(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	if err != nil || len(users) == 0 {
+		t.Fatalf("usuários não encontrados: %v", err)
+	}
+	cookie, status, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
+	if status != http.StatusOK {
+		t.Fatalf("falha ao logar como admin: status %d", status)
+	}
+
+	nome := fmt.Sprintf("Técnico Teste %d", time.Now().UnixNano())
+	resp, res, _ := env.doRequest(http.MethodPost, "/api/tecnicos", cookie, map[string]string{"nome": nome, "empresa": "ACME"})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("esperado 201 ao cadastrar técnico, obteve %d: %v", resp.StatusCode, res)
+	}
+	tecID := res["id"].(string)
+	// defer (e não t.Cleanup) para rodar antes do teardown fechar o pool
+	defer func() {
+		ctx := context.Background()
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM tecnico_registros WHERE tecnico_id = $1", tecID)
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM tecnicos WHERE id = $1", tecID)
+	}()
+
+	// Nome duplicado (sem diferenciar maiúsculas) é recusado
+	resp, _, _ = env.doRequest(http.MethodPost, "/api/tecnicos", cookie, map[string]string{"nome": strings.ToUpper(nome)})
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("esperado 409 para nome duplicado, obteve %d", resp.StatusCode)
+	}
+
+	// Saída sem entrada aberta
+	resp, _, _ = env.doRequest(http.MethodPost, "/api/tecnicos/"+tecID+"/saida", cookie, nil)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("esperado 409 para saída sem entrada, obteve %d", resp.StatusCode)
+	}
+
+	entrada := time.Now().Add(-2*time.Hour - 30*time.Minute).Truncate(time.Second)
+	resp, res, _ = env.doRequest(http.MethodPost, "/api/tecnicos/"+tecID+"/entrada", cookie, map[string]string{"horario": entrada.Format(time.RFC3339)})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("esperado 201 na entrada, obteve %d: %v", resp.StatusCode, res)
+	}
+
+	// Segunda entrada com a primeira em aberto
+	resp, _, _ = env.doRequest(http.MethodPost, "/api/tecnicos/"+tecID+"/entrada", cookie, nil)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("esperado 409 para entrada duplicada, obteve %d", resp.StatusCode)
+	}
+
+	// Saída anterior à entrada
+	resp, _, _ = env.doRequest(http.MethodPost, "/api/tecnicos/"+tecID+"/saida", cookie, map[string]string{"horario": entrada.Add(-time.Hour).Format(time.RFC3339)})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("esperado 400 para saída antes da entrada, obteve %d", resp.StatusCode)
+	}
+
+	saida := entrada.Add(2*time.Hour + 30*time.Minute)
+	resp, res, _ = env.doRequest(http.MethodPost, "/api/tecnicos/"+tecID+"/saida", cookie, map[string]string{"horario": saida.Format(time.RFC3339)})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("esperado 200 na saída, obteve %d: %v", resp.StatusCode, res)
+	}
+	if res["duracao_segundos"].(float64) != 9000 {
+		t.Errorf("duração esperada 9000s, obteve %v", res["duracao_segundos"])
+	}
+
+	hoje := time.Now().Format("2006-01-02")
+	ontem := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	req, _ := http.NewRequest(http.MethodGet, env.server.URL+"/api/tecnicos/relatorio?tecnico_id="+tecID+"&inicio="+ontem+"&fim="+hoje, nil)
+	req.AddCookie(cookie)
+	httpResp, err := env.client.Do(req)
+	if err != nil || httpResp.StatusCode != http.StatusOK {
+		t.Fatalf("falha ao gerar relatório: %v", err)
+	}
+	defer httpResp.Body.Close()
+	var relatorio []map[string]any
+	_ = json.NewDecoder(httpResp.Body).Decode(&relatorio)
+	if len(relatorio) != 1 {
+		t.Fatalf("esperada 1 linha no relatório, obteve %d", len(relatorio))
+	}
+	if relatorio[0]["segundos_totais"].(float64) != 9000 || relatorio[0]["total_registros"].(float64) != 1 {
+		t.Errorf("relatório inesperado: %v", relatorio[0])
+	}
+
+	// CSV de registros
+	reqCSV, _ := http.NewRequest(http.MethodGet, env.server.URL+"/api/tecnicos/registros/exportar.csv?tecnico_id="+tecID, nil)
+	reqCSV.AddCookie(cookie)
+	respCSV, err := env.client.Do(reqCSV)
+	if err != nil || respCSV.StatusCode != http.StatusOK {
+		t.Fatalf("falha ao exportar CSV de técnicos: %v", err)
+	}
+	defer respCSV.Body.Close()
+	buf := new(bytes.Buffer)
+	_, _ = buf.ReadFrom(respCSV.Body)
+	if !bytes.Contains(buf.Bytes(), []byte(nome)) || !bytes.Contains(buf.Bytes(), []byte("2:30")) {
+		t.Errorf("CSV não contém o registro esperado: %s", buf.String())
+	}
+}
+

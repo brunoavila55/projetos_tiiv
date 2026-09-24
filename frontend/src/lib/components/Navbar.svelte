@@ -9,6 +9,7 @@
 		Headphones,
 		CheckSquare,
 		Package,
+		HardHat,
 		Users,
 		LogOut,
 		Menu,
@@ -25,7 +26,8 @@
 		{ href: '/atendimentos', label: 'Atendimentos', icon: Headphones },
 		{ href: '/tarefas', label: 'Tarefas', icon: CheckSquare },
 		{ href: '/calendario', label: 'Calendário', icon: Calendar },
-		{ href: '/estoque', label: 'Estoque', icon: Package }
+		{ href: '/estoque', label: 'Estoque', icon: Package },
+		{ href: '/tecnicos', label: 'Técnicos', icon: HardHat }
 	];
 
 	const temaLabel = { claro: 'Claro', escuro: 'Escuro', sistema: 'Automático' } as const;
