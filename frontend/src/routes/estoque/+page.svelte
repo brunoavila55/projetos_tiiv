@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
+	import { toast } from '$lib/toast.svelte';
 	import { auth, type UsuarioPublico } from '$lib/auth.svelte';
 	import { 
 		Package, 
@@ -19,7 +20,8 @@
 		User, 
 		Clock, 
 		Calendar,
-		Download
+		Download,
+		Trash2
 	} from 'lucide-svelte';
 
 	interface ItemEstoque {
@@ -58,6 +60,7 @@
 	// Filtros da aba Itens
 	let buscaItens = $state('');
 	let categoriaSelecionada = $state('');
+	let mostrarDesativados = $state(false);
 
 	// Filtros da aba Histórico
 	let histItemId = $state('');
@@ -90,6 +93,7 @@
 			const params = new URLSearchParams();
 			if (buscaItens.trim()) params.set('busca', buscaItens.trim());
 			if (categoriaSelecionada) params.set('categoria', categoriaSelecionada);
+			if (!mostrarDesativados) params.set('ativo', 'true');
 			itens = await apiFetch<ItemEstoque[]>(`/api/estoque/itens?${params.toString()}`);
 		} catch (err) {
 			console.error('Erro ao listar itens:', err);
@@ -191,6 +195,18 @@
 			await carregarAuxiliares();
 		} catch (err: any) {
 			alert(err.message || 'Erro ao salvar item');
+		}
+	}
+
+	async function excluirItem(it: ItemEstoque) {
+		if (!confirm(`Excluir "${it.nome}"?\n\nSe o item já teve movimentações, ele será desativado para preservar o histórico.`)) return;
+		try {
+			const res = await apiFetch<{ excluido: boolean; message: string }>(`/api/estoque/itens/${it.id}`, { method: 'DELETE' });
+			if (res.excluido) toast.success(`"${it.nome}" excluído`);
+			else toast.success(`"${it.nome}": ${res.message}`, 6000);
+			await Promise.all([carregarItens(), carregarAuxiliares()]);
+		} catch {
+			// toast de erro já exibido por apiFetch
 		}
 	}
 
@@ -311,6 +327,10 @@
 					<option value={cat}>{cat}</option>
 				{/each}
 			</select>
+			<label class="flex items-center gap-2 text-sm text-ink-2 cursor-pointer whitespace-nowrap">
+				<input type="checkbox" bind:checked={mostrarDesativados} onchange={carregarItens} class="check" />
+				Mostrar desativados
+			</label>
 		</div>
 
 		{#if loading}
@@ -336,10 +356,13 @@
 						</thead>
 						<tbody>
 							{#each itens as it (it.id)}
-								<tr>
+								<tr class={it.ativo ? '' : 'opacity-60'}>
 									<td>
 										<div class="flex items-center gap-2">
 											<span class="font-semibold text-ink">{it.nome}</span>
+											{#if !it.ativo}
+												<span class="tag">Desativado</span>
+											{/if}
 											{#if it.abaixo_do_minimo}
 												<span class="tag tag-danger" title="Saldo abaixo do mínimo">
 													<AlertTriangle class="size-3" />
@@ -356,9 +379,11 @@
 									<td class="text-right text-ink-3 whitespace-nowrap">{it.estoque_minimo} {it.unidade}</td>
 									<td class="text-right whitespace-nowrap">
 										<div class="inline-flex items-center gap-0.5">
-											<button onclick={() => abrirMovimentar(it)} class="btn btn-sm btn-soft mr-1" title="Registrar entrada, saída ou ajuste">
-												Movimentar
-											</button>
+											{#if it.ativo}
+												<button onclick={() => abrirMovimentar(it)} class="btn btn-sm btn-soft mr-1" title="Registrar entrada, saída ou ajuste">
+													Movimentar
+												</button>
+											{/if}
 											<button onclick={() => verHistoricoItem(it)} class="icon-btn" title="Histórico do item" aria-label="Histórico do item">
 												<History class="size-4" />
 											</button>
@@ -366,6 +391,11 @@
 												<button onclick={() => abrirEditarItem(it)} class="icon-btn" title="Editar item" aria-label="Editar item">
 													<Edit3 class="size-4" />
 												</button>
+												{#if it.ativo}
+													<button onclick={() => excluirItem(it)} class="icon-btn icon-btn-danger" title="Excluir item" aria-label="Excluir item">
+														<Trash2 class="size-4" />
+													</button>
+												{/if}
 											{/if}
 										</div>
 									</td>

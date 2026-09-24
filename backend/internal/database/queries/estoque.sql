@@ -79,3 +79,12 @@ FROM movimentacoes_estoque m
 WHERE m.item_id = $1
 ORDER BY m.criado_em DESC
 LIMIT 1;
+
+-- name: ContarMovimentacoesItem :one
+SELECT count(*) FROM movimentacoes_estoque WHERE item_id = $1;
+
+-- name: DesativarItemEstoque :exec
+UPDATE itens_estoque SET ativo = false WHERE id = $1;
+
+-- name: DeletarItemEstoque :exec
+DELETE FROM itens_estoque WHERE id = $1;

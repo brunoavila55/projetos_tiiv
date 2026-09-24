@@ -37,6 +37,7 @@ type Querier interface {
 	BuscarUsuarioPorIDComPin(ctx context.Context, id pgtype.UUID) (Usuarios, error)
 	ContarAdminsAtivos(ctx context.Context) (int64, error)
 	ContarAtendimentos(ctx context.Context, arg ContarAtendimentosParams) (int64, error)
+	ContarMovimentacoesItem(ctx context.Context, itemID pgtype.UUID) (int64, error)
 	ContarRegistrosTecnicos(ctx context.Context, arg ContarRegistrosTecnicosParams) (int64, error)
 	ContarUsuarios(ctx context.Context) (int64, error)
 	CriarAtendimento(ctx context.Context, arg CriarAtendimentoParams) (Atendimentos, error)
@@ -51,11 +52,13 @@ type Querier interface {
 	DeletarAtendimento(ctx context.Context, id pgtype.UUID) error
 	DeletarComentarioTarefa(ctx context.Context, id pgtype.UUID) error
 	DeletarEvento(ctx context.Context, id pgtype.UUID) error
+	DeletarItemEstoque(ctx context.Context, id pgtype.UUID) error
 	DeletarRegistroTecnico(ctx context.Context, id pgtype.UUID) error
 	DeletarSessaoPorHash(ctx context.Context, tokenHash string) error
 	DeletarSessoesExpiradas(ctx context.Context) error
 	DeletarSessoesPorUsuario(ctx context.Context, usuarioID pgtype.UUID) error
 	DeletarTarefa(ctx context.Context, id pgtype.UUID) error
+	DesativarItemEstoque(ctx context.Context, id pgtype.UUID) error
 	DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (DesbloquearUsuarioRow, error)
 	IncrementarTentativasFalhas(ctx context.Context, id pgtype.UUID) (IncrementarTentativasFalhasRow, error)
 	ListarAtendimentos(ctx context.Context, arg ListarAtendimentosParams) ([]ListarAtendimentosRow, error)

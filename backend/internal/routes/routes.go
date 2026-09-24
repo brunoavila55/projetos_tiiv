@@ -117,6 +117,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 					adminEst.Use(authMiddleware.RequireAdmin)
 					adminEst.Post("/itens", estoqueHandler.CriarItem)
 					adminEst.Put("/itens/{id}", estoqueHandler.AtualizarItem)
+					adminEst.Delete("/itens/{id}", estoqueHandler.ExcluirItem)
 				})
 			})
 

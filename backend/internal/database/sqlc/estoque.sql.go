@@ -123,6 +123,17 @@ func (q *Queries) BuscarItemEstoquePorID(ctx context.Context, id pgtype.UUID) (I
 	return i, err
 }
 
+const contarMovimentacoesItem = `-- name: ContarMovimentacoesItem :one
+SELECT count(*) FROM movimentacoes_estoque WHERE item_id = $1
+`
+
+func (q *Queries) ContarMovimentacoesItem(ctx context.Context, itemID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, contarMovimentacoesItem, itemID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const criarItemEstoque = `-- name: CriarItemEstoque :one
 INSERT INTO itens_estoque (nome, unidade, categoria, estoque_minimo, saldo, ativo)
 VALUES ($1, $2, $3, $4, 0, true)
@@ -193,6 +204,24 @@ func (q *Queries) CriarMovimentacaoEstoque(ctx context.Context, arg CriarMovimen
 		&i.CriadoEm,
 	)
 	return i, err
+}
+
+const deletarItemEstoque = `-- name: DeletarItemEstoque :exec
+DELETE FROM itens_estoque WHERE id = $1
+`
+
+func (q *Queries) DeletarItemEstoque(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deletarItemEstoque, id)
+	return err
+}
+
+const desativarItemEstoque = `-- name: DesativarItemEstoque :exec
+UPDATE itens_estoque SET ativo = false WHERE id = $1
+`
+
+func (q *Queries) DesativarItemEstoque(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, desativarItemEstoque, id)
+	return err
 }
 
 const listarCategoriasEstoque = `-- name: ListarCategoriasEstoque :many

@@ -1131,3 +1131,74 @@ func TestVisibilidade_TarefasEAtendimentosIndividuais(t *testing.T) {
 	}
 }
 
+// -------------------------------------------------------------
+// Estoque: item sem movimentações é excluído; com movimentações é desativado
+// -------------------------------------------------------------
+func TestEstoque_ExcluirItem(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+	ctx := context.Background()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(ctx)
+	if err != nil || len(users) == 0 {
+		t.Fatalf("nenhum usuário no banco")
+	}
+	adminCookie, _, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
+
+	criarItem := func(nome string) string {
+		resp, res, _ := env.doRequest(http.MethodPost, "/api/estoque/itens", adminCookie, map[string]any{
+			"nome": fmt.Sprintf("%s %d", nome, time.Now().UnixNano()), "unidade": "un",
+		})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("falha ao criar item: %d %v", resp.StatusCode, res)
+		}
+		return res["id"].(string)
+	}
+
+	// Sem movimentações: excluído de verdade
+	semMov := criarItem("Item Sem Mov")
+	resp, res, _ := env.doRequest(http.MethodDelete, "/api/estoque/itens/"+semMov, adminCookie, nil)
+	if resp.StatusCode != http.StatusOK || res["excluido"] != true {
+		t.Errorf("item sem movimentações deveria ser excluído: %d %v", resp.StatusCode, res)
+	}
+	resp, _, _ = env.doRequest(http.MethodGet, "/api/estoque/itens/"+semMov, adminCookie, nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("item excluído ainda encontrado: %d", resp.StatusCode)
+	}
+
+	// Com movimentação: desativado e histórico preservado
+	comMov := criarItem("Item Com Mov")
+	defer func() {
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM movimentacoes_estoque WHERE item_id = $1", comMov)
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM itens_estoque WHERE id = $1", comMov)
+	}()
+	env.doRequest(http.MethodPost, "/api/estoque/movimentacoes", adminCookie, map[string]any{
+		"item_id": comMov, "tipo": "entrada", "quantidade": 3,
+	})
+	resp, res, _ = env.doRequest(http.MethodDelete, "/api/estoque/itens/"+comMov, adminCookie, nil)
+	if resp.StatusCode != http.StatusOK || res["excluido"] != false {
+		t.Errorf("item com movimentações deveria ser desativado: %d %v", resp.StatusCode, res)
+	}
+	_, res, _ = env.doRequest(http.MethodGet, "/api/estoque/itens/"+comMov, adminCookie, nil)
+	if res["ativo"] != false {
+		t.Errorf("item deveria estar desativado: %v", res)
+	}
+
+	// Operador comum não pode excluir
+	nomeOp := fmt.Sprintf("Op Estoque %d", time.Now().UnixNano())
+	_, resU, _ := env.doRequest(http.MethodPost, "/api/usuarios", adminCookie, map[string]any{
+		"nome": nomeOp, "cor": "#10B981", "pin": "6464", "papel": "usuario",
+	})
+	opID := resU["id"].(string)
+	defer func() {
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM sessoes WHERE usuario_id = $1", opID)
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM usuarios WHERE id = $1", opID)
+	}()
+	opCookie, _, _ := env.login(t, opID, "6464")
+	outro := criarItem("Item Protegido")
+	resp, _, _ = env.doRequest(http.MethodDelete, "/api/estoque/itens/"+outro, opCookie, nil)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("operador excluindo item: esperado 403, obteve %d", resp.StatusCode)
+	}
+	env.doRequest(http.MethodDelete, "/api/estoque/itens/"+outro, adminCookie, nil)
+}

@@ -233,6 +233,59 @@ func (h *EstoqueHandler) AtualizarItem(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ExcluirItem: DELETE /api/estoque/itens/{id} (Admin)
+// Item sem movimentações é apagado. Com movimentações, o histórico precisa
+// continuar existindo, então o item é apenas desativado e sai da lista.
+func (h *EstoqueHandler) ExcluirItem(w http.ResponseWriter, r *http.Request) {
+	itID, err := database.StringToUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao iniciar transação")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.db.Queries.WithTx(tx)
+
+	// Trava o item para que nenhuma movimentação entre a contagem e a exclusão
+	if _, err := qtx.BloquearItemEstoqueParaAtualizacao(r.Context(), itID); err != nil {
+		response.JSONError(w, http.StatusNotFound, "item de estoque não encontrado")
+		return
+	}
+
+	total, err := qtx.ContarMovimentacoesItem(r.Context(), itID)
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao verificar movimentações do item")
+		return
+	}
+
+	excluido := total == 0
+	if excluido {
+		err = qtx.DeletarItemEstoque(r.Context(), itID)
+	} else {
+		err = qtx.DesativarItemEstoque(r.Context(), itID)
+	}
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao excluir item")
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao confirmar transação")
+		return
+	}
+
+	msg := "item excluído"
+	if !excluido {
+		msg = fmt.Sprintf("o item tem %d movimentações no histórico, então foi desativado em vez de excluído", total)
+	}
+	response.JSON(w, http.StatusOK, map[string]any{"excluido": excluido, "message": msg})
+}
+
 type MovimentacaoRequest struct {
 	ItemID     string `json:"item_id"`
 	Tipo       string `json:"tipo"` // "entrada", "saida", "ajuste"
