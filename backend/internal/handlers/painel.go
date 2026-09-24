@@ -21,9 +21,8 @@ func NewPainelHandler(db *database.DB) *PainelHandler {
 }
 
 type PainelResponse struct {
-	ProximosEventos     []EventoResponse       `json:"proximos_eventos"`
-	TarefasPendentes    []TarefaItemResponse   `json:"tarefas_pendentes"`
-	ItensAbaixoDoMinimo []ItemEstoqueResponse  `json:"itens_abaixo_do_minimo"`
+	ProximosEventos  []EventoResponse     `json:"proximos_eventos"`
+	TarefasPendentes []TarefaItemResponse `json:"tarefas_pendentes"`
 }
 
 // ObterDadosPainel: GET /api/painel (única chamada para o painel inicial)
@@ -142,30 +141,8 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
-	// 3. Itens abaixo do estoque mínimo
-	itensCriticos, err := h.db.Queries.ListarItensAbaixoDoMinimo(r.Context())
-	if err != nil {
-		itensCriticos = []sqlc.ItensEstoque{}
-	}
-
-	itensAbaixoMin := make([]ItemEstoqueResponse, 0, len(itensCriticos))
-	for _, it := range itensCriticos {
-		itensAbaixoMin = append(itensAbaixoMin, ItemEstoqueResponse{
-			ID:             database.UUIDToString(it.ID),
-			Nome:           it.Nome,
-			Unidade:        it.Unidade,
-			Categoria:      it.Categoria,
-			EstoqueMinimo:  it.EstoqueMinimo,
-			Saldo:          it.Saldo,
-			Ativo:          it.Ativo,
-			CriadoEm:       it.CriadoEm.Time.Format(time.RFC3339),
-			AbaixoDoMinimo: true,
-		})
-	}
-
 	response.JSON(w, http.StatusOK, PainelResponse{
-		ProximosEventos:     proximosEventos,
-		TarefasPendentes:    tarefasPendentes,
-		ItensAbaixoDoMinimo: itensAbaixoMin,
+		ProximosEventos:  proximosEventos,
+		TarefasPendentes: tarefasPendentes,
 	})
 }

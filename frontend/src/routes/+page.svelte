@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { Calendar, CheckSquare, Package, Headphones, Plus, Flag } from 'lucide-svelte';
+	import { Calendar, CheckSquare, Headphones, Plus, Flag } from 'lucide-svelte';
 
 	interface PainelDados {
 		proximos_eventos: {
@@ -20,14 +20,6 @@
 			prioridade: string;
 			prazo: string | null;
 			atrasada: boolean;
-		}[];
-		itens_abaixo_do_minimo: {
-			id: string;
-			nome: string;
-			unidade: string;
-			categoria: string;
-			estoque_minimo: number;
-			saldo: number;
 		}[];
 	}
 
@@ -112,7 +104,7 @@
 	{#if loading}
 		<div class="flex justify-center py-20"><div class="spinner"></div></div>
 	{:else if dados}
-		<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+		<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
 			<!-- Agenda -->
 			<section class="panel">
 				{@render cabecalho('Agenda', dados.proximos_eventos.length, '/calendario', 'Calendário')}
@@ -173,40 +165,14 @@
 				{/if}
 			</section>
 
-			<!-- Estoque abaixo do mínimo -->
-			<section class="panel">
-				{@render cabecalho('Estoque baixo', dados.itens_abaixo_do_minimo.length, '/estoque', 'Estoque')}
-				{#if dados.itens_abaixo_do_minimo.length === 0}
-					{@render vazio('Todos os itens estão acima do mínimo.')}
-				{:else}
-					<ul class="divide-y divide-line">
-						{#each dados.itens_abaixo_do_minimo as it (it.id)}
-							{@const pct = it.estoque_minimo > 0 ? Math.max(0, Math.min(100, (it.saldo / it.estoque_minimo) * 100)) : 0}
-							<li class="px-5 py-3">
-								<div class="flex items-baseline justify-between gap-3">
-									<span class="font-semibold text-ink text-sm truncate">{it.nome}</span>
-									<span class="text-sm tabular whitespace-nowrap">
-										<strong class="text-danger">{it.saldo}</strong>
-										<span class="text-ink-3">/ {it.estoque_minimo} {it.unidade}</span>
-									</span>
-								</div>
-								<div class="mt-2 h-1.5 rounded-full bg-muted overflow-hidden" aria-hidden="true">
-									<div class="h-full rounded-full bg-danger" style="width: {pct}%"></div>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
 		</div>
 
 		<!-- Atalhos -->
-		<nav class="grid grid-cols-2 md:grid-cols-4 gap-3" aria-label="Atalhos">
+		<nav class="grid grid-cols-2 md:grid-cols-3 gap-3" aria-label="Atalhos">
 			{#each [
 				{ href: '/atendimentos', label: 'Atendimentos', desc: 'Histórico e busca', icon: Headphones },
 				{ href: '/tarefas', label: 'Tarefas', desc: 'Quadro da equipe', icon: CheckSquare },
-				{ href: '/calendario', label: 'Calendário', desc: 'Reuniões da semana', icon: Calendar },
-				{ href: '/estoque', label: 'Estoque', desc: 'Saldos e movimentações', icon: Package }
+				{ href: '/calendario', label: 'Calendário', desc: 'Reuniões da semana', icon: Calendar }
 			] as atalho}
 				{@const Icon = atalho.icon}
 				<a href={atalho.href} class="group flex items-center gap-3 px-4 py-3.5 rounded-xl border border-line hover:bg-surface hover:border-line-strong transition-colors">
