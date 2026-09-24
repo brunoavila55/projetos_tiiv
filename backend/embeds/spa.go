@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-//go:embed dist/*
+// "all:" inclui arquivos que começam com "_" ou "."; o Vite gera chunks
+// como _wjNliiN.js, que seriam descartados silenciosamente sem o prefixo.
+//
+//go:embed all:dist
 var DistFS embed.FS
 
 // SPAHandler retorna um http.Handler que serve a SPA estática embutida com fallback para index.html
@@ -33,6 +36,13 @@ func SPAHandler() (http.Handler, error) {
 				fileServer.ServeHTTP(w, r)
 				return
 			}
+		}
+
+		// Asset de build inexistente é 404: devolver o index.html aqui faz o
+		// navegador tentar executar HTML como módulo JS e quebrar a SPA inteira.
+		if strings.HasPrefix(path, "_app/") {
+			http.NotFound(w, r)
+			return
 		}
 
 		// Se não encontrou (rotas do frontend como /estoque, /tarefas), serve o index.html
