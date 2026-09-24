@@ -14,7 +14,7 @@
 </script>
 
 <svelte:head>
-	<title>TIIV — App Interno</title>
+	<title>Projetos NOC</title>
 </svelte:head>
 
 {#if auth.loading}

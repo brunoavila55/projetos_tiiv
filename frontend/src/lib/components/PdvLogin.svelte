@@ -147,7 +147,7 @@
 				<rect width="28" height="28" rx="8" fill="var(--accent)" />
 				<path d="M8 9h12M14 9v11" stroke="var(--on-accent)" stroke-width="2.6" stroke-linecap="round" />
 			</svg>
-			<span class="text-[22px] font-bold tracking-[-0.01em]">TIIV</span>
+			<span class="text-[22px] font-bold tracking-[-0.01em]">Projetos NOC</span>
 		</header>
 
 		<div class="w-full max-w-sm mx-auto lg:mx-0 flex-1 mt-10 lg:mt-[9vh]">

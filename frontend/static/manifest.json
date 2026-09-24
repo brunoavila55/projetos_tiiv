@@ -1,7 +1,7 @@
 {
-  "name": "TIIV - Gestão Integrada",
-  "short_name": "TIIV",
-  "description": "Sistema Integrado de Gestão de Atendimentos, Estoque, Calendário e Tarefas TIIV",
+  "name": "Projetos NOC",
+  "short_name": "Projetos NOC",
+  "description": "Sistema Integrado de Gestão de Atendimentos, Estoque, Calendário e Tarefas - Projetos NOC",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
