@@ -139,7 +139,7 @@
 
 			<div bind:this={lista} class="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-sunken" aria-live="polite">
 				<div class="max-w-[88%] rounded-2xl rounded-tl-md bg-surface border border-line px-3.5 py-2.5 text-sm">
-					Oi! Descreva o que está acontecendo e eu procuro o procedimento certo.
+					Qual seria a sua dúvida?
 				</div>
 
 				{#each mensagens as m}

@@ -267,14 +267,14 @@
 	<div class="panel empty max-w-lg mx-auto mt-12">
 		<ShieldAlert class="size-10 text-danger" strokeWidth={1.5} />
 		<h2 class="empty-title">Acesso restrito</h2>
-		<p class="empty-text">Só administradores podem editar os procedimentos.</p>
+		<p class="empty-text">Só administradores podem editar o contexto da LLM.</p>
 		<a href="/" class="btn btn-secondary mt-5">Voltar ao painel</a>
 	</div>
 {:else}
 	<div class="space-y-6">
 		<div class="page-head">
 			<div>
-				<h1 class="page-title">Procedimentos</h1>
+				<h1 class="page-title">Contexto LLM</h1>
 				<p class="page-sub">
 					O que o tira-dúvidas da tela de acesso sabe responder. Ele só usa os procedimentos ativos.
 				</p>

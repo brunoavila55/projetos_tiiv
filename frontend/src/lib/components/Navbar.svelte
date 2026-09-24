@@ -42,7 +42,7 @@
 
 	const adminLinks = [
 		{ href: '/usuarios', label: 'Operadores', icon: Users },
-		{ href: '/procedimentos', label: 'Procedimentos', icon: BookOpen }
+		{ href: '/procedimentos', label: 'Contexto LLM', icon: BookOpen }
 	];
 
 	const temaLabel = { claro: 'Claro', escuro: 'Escuro', sistema: 'Automático' } as const;
