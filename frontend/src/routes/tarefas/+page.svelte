@@ -251,7 +251,11 @@
 	<div class="page-head">
 		<div>
 			<h1 class="page-title">Tarefas</h1>
-			<p class="page-sub">Pendências da equipe, com prioridade, prazo e responsável.</p>
+			<p class="page-sub">
+				{auth.user?.papel === 'admin'
+					? 'Pendências da equipe, com prioridade, prazo e responsável.'
+					: 'Tarefas que você criou ou pelas quais é responsável.'}
+			</p>
 		</div>
 		<button onclick={abrirCriar} class="btn btn-primary">
 			<Plus class="size-4" />

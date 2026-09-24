@@ -11,6 +11,8 @@ WHERE
     (sqlc.narg('responsavel_id')::uuid IS NULL OR t.responsavel_id = sqlc.narg('responsavel_id'))
     AND (sqlc.narg('criado_por')::uuid IS NULL OR t.criado_por = sqlc.narg('criado_por'))
     AND (sqlc.narg('status')::text IS NULL OR t.status = sqlc.narg('status'))
+    -- Visibilidade de operador comum: só tarefas que criou ou pelas quais responde
+    AND (sqlc.narg('visivel_para')::uuid IS NULL OR t.criado_por = sqlc.narg('visivel_para') OR t.responsavel_id = sqlc.narg('visivel_para'))
 ORDER BY 
     CASE WHEN t.status = 'concluida' THEN 1 ELSE 0 END ASC,
     CASE WHEN t.prazo IS NOT NULL AND t.prazo < now() AND t.status != 'concluida' THEN 0 ELSE 1 END ASC,

@@ -65,12 +65,19 @@ func (h *TarefaHandler) Listar(w http.ResponseWriter, r *http.Request) {
 		criadoPor = userUUID
 	}
 
+	// Operador comum só enxerga as próprias tarefas; admin vê todas
+	var visivelPara pgtype.UUID
+	if user.Papel != "admin" {
+		visivelPara = userUUID
+	}
+
 	statusParam := database.StringToText(statusStr)
 
 	tarefas, err := h.db.Queries.ListarTarefas(r.Context(), sqlc.ListarTarefasParams{
 		ResponsavelID: responsavelID,
 		CriadoPor:     criadoPor,
 		Status:        statusParam,
+		VisivelPara:   visivelPara,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar tarefas")
@@ -421,6 +428,11 @@ func (h *TarefaHandler) ListarComentarios(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if !h.podeVerTarefa(r, user, tID) {
+		response.JSONError(w, http.StatusNotFound, "tarefa não encontrada")
+		return
+	}
+
 	comentarios, err := h.db.Queries.ListarComentariosTarefa(r.Context(), tID)
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar comentários")
@@ -458,6 +470,11 @@ func (h *TarefaHandler) CriarComentario(w http.ResponseWriter, r *http.Request) 
 	tID, err := database.StringToUUID(idStr)
 	if err != nil {
 		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	if !h.podeVerTarefa(r, user, tID) {
+		response.JSONError(w, http.StatusNotFound, "tarefa não encontrada")
 		return
 	}
 
@@ -533,4 +550,16 @@ func (h *TarefaHandler) DeletarComentario(w http.ResponseWriter, r *http.Request
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "comentário excluído com sucesso"})
+}
+
+// podeVerTarefa: admin vê qualquer tarefa; operador só as que criou ou das quais é responsável
+func (h *TarefaHandler) podeVerTarefa(r *http.Request, user *middleware.AuthUser, tID pgtype.UUID) bool {
+	t, err := h.db.Queries.BuscarTarefaPorID(r.Context(), tID)
+	if err != nil {
+		return false
+	}
+	if user.Papel == "admin" || database.UUIDToString(t.CriadoPor) == user.ID {
+		return true
+	}
+	return t.ResponsavelID.Valid && database.UUIDToString(t.ResponsavelID) == user.ID
 }

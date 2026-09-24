@@ -189,7 +189,9 @@
 	<div class="page-head">
 		<div>
 			<h1 class="page-title">Atendimentos</h1>
-			<p class="page-sub">Registro de tudo o que o setor atendeu. A busca ignora acentos.</p>
+			<p class="page-sub">
+				{auth.user?.papel === 'admin' ? 'Registro de tudo o que o setor atendeu.' : 'Os atendimentos que você registrou.'} A busca ignora acentos.
+			</p>
 		</div>
 
 		<div class="flex items-center gap-2">
@@ -219,12 +221,14 @@
 		</div>
 
 		<div class="flex flex-wrap items-center gap-2">
-			<select bind:value={filtroUsuario} onchange={() => carregar(true)} class="field w-auto min-w-40" aria-label="Operador">
-				<option value="">Todos os operadores</option>
-				{#each usuarios as u}
-					<option value={u.id}>{u.nome}</option>
-				{/each}
-			</select>
+			{#if auth.user?.papel === 'admin'}
+				<select bind:value={filtroUsuario} onchange={() => carregar(true)} class="field w-auto min-w-40" aria-label="Operador">
+					<option value="">Todos os operadores</option>
+					{#each usuarios as u}
+						<option value={u.id}>{u.nome}</option>
+					{/each}
+				</select>
+			{/if}
 			<input type="date" bind:value={filtroInicio} onchange={() => carregar(true)} class="field w-auto" aria-label="De" />
 			<span class="text-sm text-ink-3">até</span>
 			<input type="date" bind:value={filtroFim} onchange={() => carregar(true)} class="field w-auto" aria-label="Até" />

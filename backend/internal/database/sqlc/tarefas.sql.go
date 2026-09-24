@@ -308,6 +308,8 @@ WHERE
     ($1::uuid IS NULL OR t.responsavel_id = $1)
     AND ($2::uuid IS NULL OR t.criado_por = $2)
     AND ($3::text IS NULL OR t.status = $3)
+    -- Visibilidade de operador comum: só tarefas que criou ou pelas quais responde
+    AND ($4::uuid IS NULL OR t.criado_por = $4 OR t.responsavel_id = $4)
 ORDER BY 
     CASE WHEN t.status = 'concluida' THEN 1 ELSE 0 END ASC,
     CASE WHEN t.prazo IS NOT NULL AND t.prazo < now() AND t.status != 'concluida' THEN 0 ELSE 1 END ASC,
@@ -325,6 +327,7 @@ type ListarTarefasParams struct {
 	ResponsavelID pgtype.UUID `json:"responsavel_id"`
 	CriadoPor     pgtype.UUID `json:"criado_por"`
 	Status        pgtype.Text `json:"status"`
+	VisivelPara   pgtype.UUID `json:"visivel_para"`
 }
 
 type ListarTarefasRow struct {
@@ -346,7 +349,12 @@ type ListarTarefasRow struct {
 }
 
 func (q *Queries) ListarTarefas(ctx context.Context, arg ListarTarefasParams) ([]ListarTarefasRow, error) {
-	rows, err := q.db.Query(ctx, listarTarefas, arg.ResponsavelID, arg.CriadoPor, arg.Status)
+	rows, err := q.db.Query(ctx, listarTarefas,
+		arg.ResponsavelID,
+		arg.CriadoPor,
+		arg.Status,
+		arg.VisivelPara,
+	)
 	if err != nil {
 		return nil, err
 	}

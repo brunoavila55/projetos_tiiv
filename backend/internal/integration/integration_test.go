@@ -1026,3 +1026,108 @@ func TestTecnicos_EntradaSaidaRelatorio(t *testing.T) {
 	}
 }
 
+// -------------------------------------------------------------
+// Visibilidade: operador vê só os próprios atendimentos e tarefas; admin vê tudo
+// -------------------------------------------------------------
+func TestVisibilidade_TarefasEAtendimentosIndividuais(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+	ctx := context.Background()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(ctx)
+	if err != nil || len(users) == 0 {
+		t.Fatalf("nenhum usuário no banco")
+	}
+	adminCookie, _, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
+
+	sufixo := time.Now().UnixNano()
+	criarOperador := func(nome, pin string) string {
+		_, res, _ := env.doRequest(http.MethodPost, "/api/usuarios", adminCookie, map[string]any{
+			"nome": fmt.Sprintf("%s %d", nome, sufixo), "cor": "#10B981", "pin": pin, "papel": "usuario",
+		})
+		return res["id"].(string)
+	}
+	idA := criarOperador("Visib A", "3131")
+	idB := criarOperador("Visib B", "4242")
+	idC := criarOperador("Visib C", "5353")
+	defer func() {
+		for _, id := range []string{idA, idB, idC} {
+			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM tarefas WHERE criado_por = $1 OR responsavel_id = $1", id)
+			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM atendimentos WHERE usuario_id = $1", id)
+			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM sessoes WHERE usuario_id = $1", id)
+			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM usuarios WHERE id = $1", id)
+		}
+	}()
+	cookieA, _, _ := env.login(t, idA, "3131")
+	cookieB, _, _ := env.login(t, idB, "4242")
+	cookieC, _, _ := env.login(t, idC, "5353")
+
+	getJSON := func(path string, cookie *http.Cookie, out any) int {
+		req, _ := http.NewRequest(http.MethodGet, env.server.URL+path, nil)
+		req.AddCookie(cookie)
+		resp, err := env.client.Do(req)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		if out != nil {
+			_ = json.NewDecoder(resp.Body).Decode(out)
+		}
+		return resp.StatusCode
+	}
+
+	// Atendimento de A
+	_, resAt, _ := env.doRequest(http.MethodPost, "/api/atendimentos", cookieA, map[string]any{
+		"cliente_nome": fmt.Sprintf("Cliente Visib %d", sufixo), "descricao": "teste",
+	})
+	atID := resAt["id"].(string)
+	busca := url.QueryEscape(fmt.Sprintf("Cliente Visib %d", sufixo))
+
+	var lista struct {
+		Total int `json:"total"`
+	}
+	getJSON("/api/atendimentos?busca="+busca, cookieA, &lista)
+	if lista.Total != 1 {
+		t.Errorf("autor deveria ver o próprio atendimento, total=%d", lista.Total)
+	}
+	// B tenta até forçar o filtro pelo usuário A
+	getJSON("/api/atendimentos?busca="+busca+"&usuario_id="+idA, cookieB, &lista)
+	if lista.Total != 0 {
+		t.Errorf("outro operador não deveria ver o atendimento, total=%d", lista.Total)
+	}
+	if st := getJSON("/api/atendimentos/"+atID, cookieB, nil); st != http.StatusNotFound {
+		t.Errorf("outro operador abrindo atendimento: esperado 404, obteve %d", st)
+	}
+	getJSON("/api/atendimentos?busca="+busca, adminCookie, &lista)
+	if lista.Total != 1 {
+		t.Errorf("admin deveria ver o atendimento, total=%d", lista.Total)
+	}
+
+	// Tarefa criada por A e atribuída a B: A e B veem, C não
+	titulo := fmt.Sprintf("Tarefa Visib %d", sufixo)
+	_, resT, _ := env.doRequest(http.MethodPost, "/api/tarefas", cookieA, map[string]any{
+		"titulo": titulo, "prioridade": "media", "responsavel_id": idB,
+	})
+	tarefaID, _ := resT["id"].(string)
+
+	contem := func(cookie *http.Cookie) bool {
+		var tarefas []map[string]any
+		getJSON("/api/tarefas?visao=todas", cookie, &tarefas)
+		for _, tf := range tarefas {
+			if tf["titulo"] == titulo {
+				return true
+			}
+		}
+		return false
+	}
+	if !contem(cookieA) || !contem(cookieB) || !contem(adminCookie) {
+		t.Errorf("criador, responsável e admin deveriam ver a tarefa")
+	}
+	if contem(cookieC) {
+		t.Errorf("operador sem vínculo não deveria ver a tarefa")
+	}
+	if st := getJSON("/api/tarefas/"+tarefaID+"/comentarios", cookieC, nil); st != http.StatusNotFound {
+		t.Errorf("comentários de tarefa alheia: esperado 404, obteve %d", st)
+	}
+}
+

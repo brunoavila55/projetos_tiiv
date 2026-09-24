@@ -75,6 +75,10 @@ func (h *AtendimentoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 	if usuarioIDStr != "" {
 		usuarioID, _ = database.StringToUUID(usuarioIDStr)
 	}
+	// Operador comum só enxerga os próprios atendimentos; admin pode filtrar por qualquer um
+	if user.Papel != "admin" {
+		usuarioID, _ = database.StringToUUID(user.ID)
+	}
 
 	var dataInicio, dataFim pgtype.Timestamptz
 	if inicioStr != "" {
@@ -174,7 +178,11 @@ func (h *AtendimentoHandler) Obter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uID := database.UUIDToString(item.UsuarioID)
-	podeEditar := (user.Papel == "admin") || (uID == user.ID)
+	if user.Papel != "admin" && uID != user.ID {
+		response.JSONError(w, http.StatusNotFound, "atendimento não encontrado")
+		return
+	}
+	podeEditar := true
 
 	response.JSON(w, http.StatusOK, AtendimentoItemResponse{
 		ID:              database.UUIDToString(item.ID),
@@ -358,6 +366,9 @@ func (h *AtendimentoHandler) ExportarCSV(w http.ResponseWriter, r *http.Request)
 		if uid, err := database.StringToUUID(usuarioIDStr); err == nil {
 			usuarioID = uid
 		}
+	}
+	if user.Papel != "admin" {
+		usuarioID, _ = database.StringToUUID(user.ID)
 	}
 
 	var dataInicio, dataFim pgtype.Timestamptz
