@@ -8,6 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AssistenteUso struct {
+	Dia       pgtype.Date `json:"dia"`
+	Neurons   float64     `json:"neurons"`
+	Perguntas int32       `json:"perguntas"`
+}
+
 type Atendimentos struct {
 	ID              pgtype.UUID        `json:"id"`
 	ClienteNome     string             `json:"cliente_nome"`
@@ -57,6 +63,30 @@ type MovimentacoesEstoque struct {
 	Motivo          string             `json:"motivo"`
 	UsuarioID       pgtype.UUID        `json:"usuario_id"`
 	CriadoEm        pgtype.Timestamptz `json:"criado_em"`
+}
+
+type ProcedimentoRevisoes struct {
+	ID             pgtype.UUID        `json:"id"`
+	ProcedimentoID pgtype.UUID        `json:"procedimento_id"`
+	Titulo         string             `json:"titulo"`
+	Categoria      string             `json:"categoria"`
+	Corpo          string             `json:"corpo"`
+	Ativo          bool               `json:"ativo"`
+	Nota           string             `json:"nota"`
+	EditadoPor     pgtype.UUID        `json:"editado_por"`
+	CriadoEm       pgtype.Timestamptz `json:"criado_em"`
+}
+
+type Procedimentos struct {
+	ID            pgtype.UUID        `json:"id"`
+	Titulo        string             `json:"titulo"`
+	Categoria     string             `json:"categoria"`
+	Corpo         string             `json:"corpo"`
+	Ativo         bool               `json:"ativo"`
+	CriadoPor     pgtype.UUID        `json:"criado_por"`
+	AtualizadoPor pgtype.UUID        `json:"atualizado_por"`
+	CriadoEm      pgtype.Timestamptz `json:"criado_em"`
+	AtualizadoEm  pgtype.Timestamptz `json:"atualizado_em"`
 }
 
 type Sessoes struct {

@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -28,50 +26,12 @@ const (
 )
 
 type TicketHandler struct {
-	db *database.DB
-
-	mu     sync.Mutex
-	envios map[string][]time.Time
+	db      *database.DB
+	limites *limitadorPorIP
 }
 
 func NewTicketHandler(db *database.DB) *TicketHandler {
-	return &TicketHandler{db: db, envios: map[string][]time.Time{}}
-}
-
-// permitirEnvio registra um envio do IP e diz se ainda está dentro do limite
-func (h *TicketHandler) permitirEnvio(ip string) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	agora := time.Now()
-	recentes := h.envios[ip][:0]
-	for _, t := range h.envios[ip] {
-		if agora.Sub(t) < janelaTickets {
-			recentes = append(recentes, t)
-		}
-	}
-	if len(recentes) >= ticketsPorJanela {
-		h.envios[ip] = recentes
-		return false
-	}
-	h.envios[ip] = append(recentes, agora)
-
-	// Evita crescer sem limite com IPs que não voltam
-	if len(h.envios) > 1000 {
-		for k, v := range h.envios {
-			if len(v) == 0 || agora.Sub(v[len(v)-1]) >= janelaTickets {
-				delete(h.envios, k)
-			}
-		}
-	}
-	return true
-}
-
-func ipDaRequisicao(r *http.Request) string {
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
+	return &TicketHandler{db: db, limites: novoLimitadorPorIP(ticketsPorJanela, janelaTickets)}
 }
 
 type CriarTicketRequest struct {
@@ -126,7 +86,7 @@ func (h *TicketHandler) CriarPublico(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := ipDaRequisicao(r)
-	if !h.permitirEnvio(ip) {
+	if !h.limites.permitir(ip) {
 		response.JSONError(w, http.StatusTooManyRequests, "muitos tickets enviados deste computador; aguarde alguns minutos")
 		return
 	}

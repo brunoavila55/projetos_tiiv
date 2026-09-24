@@ -15,6 +15,7 @@ type Querier interface {
 	AtualizarEvento(ctx context.Context, arg AtualizarEventoParams) (Eventos, error)
 	AtualizarItemEstoque(ctx context.Context, arg AtualizarItemEstoqueParams) (ItensEstoque, error)
 	AtualizarPin(ctx context.Context, arg AtualizarPinParams) (pgtype.UUID, error)
+	AtualizarProcedimento(ctx context.Context, arg AtualizarProcedimentoParams) (Procedimentos, error)
 	AtualizarRegistroTecnico(ctx context.Context, arg AtualizarRegistroTecnicoParams) (TecnicoRegistros, error)
 	AtualizarSaldoItemEstoque(ctx context.Context, arg AtualizarSaldoItemEstoqueParams) (ItensEstoque, error)
 	AtualizarStatusTarefa(ctx context.Context, arg AtualizarStatusTarefaParams) (Tarefas, error)
@@ -28,7 +29,12 @@ type Querier interface {
 	BuscarComentarioPorID(ctx context.Context, id pgtype.UUID) (TarefaComentarios, error)
 	BuscarEventoPorID(ctx context.Context, id pgtype.UUID) (Eventos, error)
 	BuscarItemEstoquePorID(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
+	BuscarProcedimentoPorID(ctx context.Context, id pgtype.UUID) (BuscarProcedimentoPorIDRow, error)
+	// Busca para o tira-dúvidas: full-text em português (termos em OU) somado à
+	// semelhança por trigramas, que tolera erros de digitação.
+	BuscarProcedimentosRelevantes(ctx context.Context, arg BuscarProcedimentosRelevantesParams) ([]BuscarProcedimentosRelevantesRow, error)
 	BuscarRegistroTecnicoPorID(ctx context.Context, id pgtype.UUID) (TecnicoRegistros, error)
+	BuscarRevisaoProcedimento(ctx context.Context, arg BuscarRevisaoProcedimentoParams) (ProcedimentoRevisoes, error)
 	BuscarSessaoPorHash(ctx context.Context, tokenHash string) (BuscarSessaoPorHashRow, error)
 	BuscarTarefaPorID(ctx context.Context, id pgtype.UUID) (BuscarTarefaPorIDRow, error)
 	BuscarTecnicoPorID(ctx context.Context, id pgtype.UUID) (Tecnicos, error)
@@ -43,6 +49,8 @@ type Querier interface {
 	CriarEvento(ctx context.Context, arg CriarEventoParams) (Eventos, error)
 	CriarItemEstoque(ctx context.Context, arg CriarItemEstoqueParams) (ItensEstoque, error)
 	CriarMovimentacaoEstoque(ctx context.Context, arg CriarMovimentacaoEstoqueParams) (MovimentacoesEstoque, error)
+	CriarProcedimento(ctx context.Context, arg CriarProcedimentoParams) (Procedimentos, error)
+	CriarRevisaoProcedimento(ctx context.Context, arg CriarRevisaoProcedimentoParams) error
 	CriarSessao(ctx context.Context, arg CriarSessaoParams) (Sessoes, error)
 	CriarTarefa(ctx context.Context, arg CriarTarefaParams) (Tarefas, error)
 	CriarTecnico(ctx context.Context, arg CriarTecnicoParams) (Tecnicos, error)
@@ -60,6 +68,7 @@ type Querier interface {
 	DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (DesbloquearUsuarioRow, error)
 	IncrementarTentativasFalhas(ctx context.Context, id pgtype.UUID) (IncrementarTentativasFalhasRow, error)
 	ListarCategoriasEstoque(ctx context.Context) ([]string, error)
+	ListarCategoriasProcedimentos(ctx context.Context) ([]string, error)
 	ListarComentariosTarefa(ctx context.Context, tarefaID pgtype.UUID) ([]ListarComentariosTarefaRow, error)
 	ListarEventosIntervalo(ctx context.Context, arg ListarEventosIntervaloParams) ([]ListarEventosIntervaloRow, error)
 	ListarItensAbaixoDoMinimo(ctx context.Context) ([]ItensEstoque, error)
@@ -67,7 +76,9 @@ type Querier interface {
 	ListarMovimentacoesEstoque(ctx context.Context, arg ListarMovimentacoesEstoqueParams) ([]ListarMovimentacoesEstoqueRow, error)
 	ListarParticipantesPorEvento(ctx context.Context, eventoID pgtype.UUID) ([]ListarParticipantesPorEventoRow, error)
 	ListarParticipantesPorEventos(ctx context.Context, dollar_1 []pgtype.UUID) ([]ListarParticipantesPorEventosRow, error)
+	ListarProcedimentos(ctx context.Context, arg ListarProcedimentosParams) ([]ListarProcedimentosRow, error)
 	ListarRegistrosTecnicos(ctx context.Context, arg ListarRegistrosTecnicosParams) ([]ListarRegistrosTecnicosRow, error)
+	ListarRevisoesProcedimento(ctx context.Context, procedimentoID pgtype.UUID) ([]ListarRevisoesProcedimentoRow, error)
 	ListarTarefas(ctx context.Context, arg ListarTarefasParams) ([]ListarTarefasRow, error)
 	ListarTarefasPendentesUsuario(ctx context.Context, responsavelID pgtype.UUID) ([]ListarTarefasPendentesUsuarioRow, error)
 	ListarTecnicos(ctx context.Context, ativo pgtype.Bool) ([]ListarTecnicosRow, error)
@@ -77,9 +88,11 @@ type Querier interface {
 	MarcarTicketTratado(ctx context.Context, arg MarcarTicketTratadoParams) (Tickets, error)
 	ObterFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (ObterFotoUsuarioRow, error)
 	ObterUltimaMovimentacaoItem(ctx context.Context, itemID pgtype.UUID) (MovimentacoesEstoque, error)
+	ObterUsoAssistente(ctx context.Context) (ObterUsoAssistenteRow, error)
 	ObterVersaoFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (pgtype.Timestamptz, error)
 	RegistrarEntradaTecnico(ctx context.Context, arg RegistrarEntradaTecnicoParams) (TecnicoRegistros, error)
 	RegistrarSaidaTecnico(ctx context.Context, arg RegistrarSaidaTecnicoParams) (TecnicoRegistros, error)
+	RegistrarUsoAssistente(ctx context.Context, neurons float64) error
 	// Consolidado por técnico no período (pela data de entrada). Registros ainda
 	// em aberto contam como visita, mas não somam horas.
 	RelatorioTecnicos(ctx context.Context, arg RelatorioTecnicosParams) ([]RelatorioTecnicosRow, error)

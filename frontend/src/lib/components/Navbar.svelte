@@ -13,6 +13,7 @@
 		HardHat,
 		Inbox,
 		Users,
+		BookOpen,
 		LogOut,
 		Menu,
 		X,
@@ -37,6 +38,11 @@
 		{ href: '/calendario', label: 'Calendário', icon: Calendar },
 		{ href: '/estoque', label: 'Estoque', icon: Package },
 		{ href: '/tecnicos', label: 'Técnicos', icon: HardHat }
+	];
+
+	const adminLinks = [
+		{ href: '/usuarios', label: 'Operadores', icon: Users },
+		{ href: '/procedimentos', label: 'Procedimentos', icon: BookOpen }
 	];
 
 	const temaLabel = { claro: 'Claro', escuro: 'Escuro', sistema: 'Automático' } as const;
@@ -92,19 +98,22 @@
 		{/each}
 
 		{#if auth.user?.papel === 'admin'}
-			{@const ativo = isActive('/usuarios')}
 			<div class="mt-4 mb-1 px-3 text-[13px] font-semibold text-ink-3">Administração</div>
-			<a
-				href="/usuarios"
-				onclick={() => (mobileMenuOpen = false)}
-				aria-current={ativo ? 'page' : undefined}
-				class="flex items-center gap-3 h-10 px-3 rounded-lg text-[15px] font-semibold transition-colors {ativo
-					? 'bg-surface text-ink shadow-[0_1px_2px_rgb(0_0_0/0.06)] ring-1 ring-line'
-					: 'text-ink-2 hover:bg-muted hover:text-ink'}"
-			>
-				<Users class="size-[18px] {ativo ? 'text-accent' : 'text-ink-3'}" />
-				<span>Operadores</span>
-			</a>
+			{#each adminLinks as item}
+				{@const Icon = item.icon}
+				{@const ativo = isActive(item.href)}
+				<a
+					href={item.href}
+					onclick={() => (mobileMenuOpen = false)}
+					aria-current={ativo ? 'page' : undefined}
+					class="flex items-center gap-3 h-10 px-3 rounded-lg text-[15px] font-semibold transition-colors {ativo
+						? 'bg-surface text-ink shadow-[0_1px_2px_rgb(0_0_0/0.06)] ring-1 ring-line'
+						: 'text-ink-2 hover:bg-muted hover:text-ink'}"
+				>
+					<Icon class="size-[18px] {ativo ? 'text-accent' : 'text-ink-3'}" />
+					<span>{item.label}</span>
+				</a>
+			{/each}
 		{/if}
 	</nav>
 {/snippet}

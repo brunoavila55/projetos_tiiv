@@ -38,6 +38,11 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       ADMIN_NOME: ${ADMIN_NOME:-Administrador}
       ADMIN_PIN: ${ADMIN_PIN:-1234}
+      # Tira-dúvidas (Workers AI); sem CF_ACCOUNT_ID/CF_API_TOKEN fica desligado
+      CF_ACCOUNT_ID: ${CF_ACCOUNT_ID:-}
+      CF_API_TOKEN: ${CF_API_TOKEN:-}
+      CF_AI_MODEL: ${CF_AI_MODEL:-@cf/qwen/qwen3-30b-a3b-fp8}
+      ASSISTENTE_NEURONS_DIA: ${ASSISTENTE_NEURONS_DIA:-9500}
       TZ: America/Sao_Paulo
 
   backup:

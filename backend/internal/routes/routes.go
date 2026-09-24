@@ -45,6 +45,8 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	painelHandler := handlers.NewPainelHandler(db)
 	tecnicoHandler := handlers.NewTecnicoHandler(db)
 	ticketHandler := handlers.NewTicketHandler(db)
+	procedimentoHandler := handlers.NewProcedimentoHandler(db)
+	assistenteHandler := handlers.NewAssistenteHandler(db, cfg)
 
 	// Rotas sob /api
 	r.Route("/api", func(api chi.Router) {
@@ -53,6 +55,10 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 		// Abertura de ticket sem login (tela de acesso)
 		api.Post("/tickets/publico", ticketHandler.CriarPublico)
+
+		// Tira-dúvidas da tela de acesso (sem login)
+		api.Get("/assistente/status", assistenteHandler.Status)
+		api.Post("/assistente/publico", assistenteHandler.Perguntar)
 
 		api.Route("/auth", func(auth chi.Router) {
 			auth.Get("/usuarios", authHandler.ListarUsuariosPublico)
@@ -140,6 +146,18 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 					adminTec.Put("/registros/{id}", tecnicoHandler.AtualizarRegistro)
 					adminTec.Delete("/registros/{id}", tecnicoHandler.DeletarRegistro)
 				})
+			})
+
+			// Procedimentos do tira-dúvidas (Apenas Admin)
+			protected.Route("/procedimentos", func(p chi.Router) {
+				p.Use(authMiddleware.RequireAdmin)
+				p.Get("/", procedimentoHandler.Listar)
+				p.Post("/", procedimentoHandler.Criar)
+				p.Get("/categorias", procedimentoHandler.ListarCategorias)
+				p.Get("/{id}", procedimentoHandler.Obter)
+				p.Put("/{id}", procedimentoHandler.Atualizar)
+				p.Get("/{id}/revisoes", procedimentoHandler.ListarRevisoes)
+				p.Post("/{id}/revisoes/{rid}/restaurar", procedimentoHandler.Restaurar)
 			})
 
 			// Gestão de Usuários (Apenas Admin)

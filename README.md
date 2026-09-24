@@ -78,6 +78,11 @@ make test
 | `COOKIE_SECURE` | `false` | Se `true`, exige HTTPS para o cookie de sessão (manter `false` em LAN HTTP) |
 | `ADMIN_NOME` | `Administrador` | Nome do primeiro admin criado na inicialização |
 | `ADMIN_PIN` | `1234` | PIN numérico do primeiro admin (exatamente 4 dígitos) |
+| `CF_ACCOUNT_ID` | — | Conta da Cloudflare usada pelo tira-dúvidas (vazio desliga o chat) |
+| `CF_API_TOKEN` | — | Token da Cloudflare com permissão Workers AI |
+| `CF_AI_MODEL` | `@cf/qwen/qwen3-30b-a3b-fp8` | Modelo da Workers AI |
+| `CF_AI_NEURONS_ENTRADA_M` / `CF_AI_NEURONS_SAIDA_M` | `4625` / `30475` | Neurons por milhão de tokens do modelo (ajuste se trocar o modelo) |
+| `ASSISTENTE_NEURONS_DIA` | `9500` | Limite diário de neurons; ao atingir, o chat fica indisponível até 00:00 UTC |
 | `TZ` | `America/Sao_Paulo` | Fuso horário padrão da aplicação |
 
 ---

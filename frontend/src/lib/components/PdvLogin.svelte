@@ -5,6 +5,7 @@
 	import { auth, type UsuarioPublico } from '$lib/auth.svelte';
 	import { Delete, AlertCircle, Users, ChevronRight, ArrowLeft, MessageSquareWarning, CircleCheck, Lock, X } from 'lucide-svelte';
 	import Avatar from './Avatar.svelte';
+	import TiraDuvidas from './TiraDuvidas.svelte';
 
 	let usuarios = $state<UsuarioPublico[]>([]);
 	let loading = $state<boolean>(true);
@@ -155,6 +156,13 @@
 		}
 	}
 
+	// "Não resolveu? Abrir ticket" no tira-dúvidas: leva as perguntas para a descrição
+	function ticketDoTiraDuvidas(descricao: string) {
+		if (ticketEnviado !== null) novoTicket();
+		tkDescricao = tkDescricao.trim() ? `${tkDescricao.trim()}\n\n${descricao}` : descricao;
+		document.getElementById(tkNome.trim() ? 'tk-titulo' : 'tk-nome')?.focus();
+	}
+
 	// Relógio do terminal
 	let agora = $state(new Date());
 
@@ -270,7 +278,7 @@
 			</section>
 		</main>
 
-		<footer class="px-5 sm:px-10 pb-5 text-[13px] text-white/85 [text-shadow:0_1px_2px_rgb(0_0_0/0.35)]">
+		<footer class="pl-5 pr-20 sm:px-10 pb-5 text-[13px] text-white/85 [text-shadow:0_1px_2px_rgb(0_0_0/0.35)]">
 			Foto de
 			<a
 				href="https://www.pexels.com/photo/photo-of-sea-and-mountain-906961/"
@@ -281,6 +289,8 @@
 			no Pexels
 		</footer>
 	</div>
+
+	<TiraDuvidas onAbrirTicket={ticketDoTiraDuvidas} />
 
 	<!-- Acesso da equipe (painel lateral) -->
 	{#if acessoAberto}

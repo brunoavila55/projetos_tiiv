@@ -276,6 +276,56 @@
 		@apply flex items-center gap-2.5 px-4 py-3 rounded-lg text-sm font-medium;
 	}
 
+	/* ---------- Texto em Markdown (procedimentos e tira-dúvidas) ---------- */
+	.md {
+		@apply text-sm leading-relaxed text-ink break-words;
+	}
+	.md > * + * {
+		@apply mt-2.5;
+	}
+	.md h1,
+	.md h2 {
+		@apply text-base font-bold mt-5 first:mt-0;
+	}
+	.md h3,
+	.md h4 {
+		@apply text-sm font-bold mt-4 first:mt-0;
+	}
+	.md ul {
+		@apply list-disc pl-5 space-y-1;
+	}
+	.md ol {
+		@apply list-decimal pl-5 space-y-1;
+	}
+	.md a {
+		@apply text-accent underline underline-offset-2;
+	}
+	.md strong {
+		@apply font-bold;
+	}
+	.md code {
+		@apply px-1 py-0.5 rounded bg-muted text-[13px];
+	}
+	.md pre {
+		@apply p-3 rounded-lg bg-sunken border border-line overflow-x-auto;
+	}
+	.md pre code {
+		@apply p-0 bg-transparent;
+	}
+	.md blockquote {
+		@apply pl-3 border-l-3 border-line-strong text-ink-2;
+	}
+	.md hr {
+		@apply border-line;
+	}
+	.md table {
+		@apply w-full text-left border-collapse;
+	}
+	.md th,
+	.md td {
+		@apply px-2 py-1 border border-line;
+	}
+
 	/* ---------- Modais ---------- */
 	.modal-backdrop {
 		@apply fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-overlay;

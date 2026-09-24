@@ -1236,3 +1236,216 @@ func TestTickets_AberturaPublicaEResgate(t *testing.T) {
 		t.Errorf("6ª abertura: esperado 429, obteve %d", st)
 	}
 }
+
+func TestProcedimentos_HistoricoETiraDuvidas(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+	ctx := context.Background()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(ctx)
+	if err != nil || len(users) == 0 {
+		t.Fatalf("nenhum usuário no banco")
+	}
+	adminCookie, _, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
+
+	_, resU, _ := env.doRequest(http.MethodPost, "/api/usuarios", adminCookie, map[string]any{
+		"nome": fmt.Sprintf("Op Proc %d", time.Now().UnixNano()), "cor": "#10B981", "pin": "7676", "papel": "usuario",
+	})
+	opID := resU["id"].(string)
+	opCookie, _, _ := env.login(t, opID, "7676")
+
+	// O teste usa o banco de desenvolvimento: guarda o uso do dia para devolver no fim
+	var usoAntes *float64
+	var perguntasAntes int
+	_ = env.db.Pool.QueryRow(ctx, "SELECT neurons, perguntas FROM assistente_uso WHERE dia = (now() AT TIME ZONE 'UTC')::date").Scan(&usoAntes, &perguntasAntes)
+
+	var criados []string
+	defer func() {
+		for _, id := range criados {
+			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM procedimentos WHERE id = $1", id)
+		}
+		if usoAntes == nil {
+			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM assistente_uso WHERE dia = (now() AT TIME ZONE 'UTC')::date")
+		} else {
+			_, _ = env.db.Pool.Exec(ctx, "UPDATE assistente_uso SET neurons = $1, perguntas = $2 WHERE dia = (now() AT TIME ZONE 'UTC')::date", *usoAntes, perguntasAntes)
+		}
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM sessoes WHERE usuario_id = $1", opID)
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM usuarios WHERE id = $1", opID)
+	}()
+
+	sufixo := time.Now().UnixNano()
+	titulo := fmt.Sprintf("Servidor fora do ar %d", sufixo)
+	corpoV1 := "## Como as pessoas descrevem\n- o servidor caiu\n\n## O que fazer\nLigue pro Álvaro.\n\n## Contato\n**Álvaro** · ramal 214"
+
+	// Só admin cria
+	resp, _, _ := env.doRequest(http.MethodPost, "/api/procedimentos", opCookie, map[string]any{"titulo": titulo, "corpo": corpoV1})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("operador criando procedimento: esperado 403, obteve %d", resp.StatusCode)
+	}
+	resp, _, _ = env.doRequest(http.MethodPost, "/api/procedimentos", adminCookie, map[string]any{"titulo": titulo})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("procedimento sem texto: esperado 400, obteve %d", resp.StatusCode)
+	}
+
+	resp, res, _ := env.doRequest(http.MethodPost, "/api/procedimentos", adminCookie, map[string]any{
+		"titulo": titulo, "categoria": "Infra", "corpo": corpoV1,
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("criar procedimento: esperado 201, obteve %d %v", resp.StatusCode, res)
+	}
+	id := res["id"].(string)
+	criados = append(criados, id)
+
+	salvar := func(corpo string, ativo bool) map[string]any {
+		t.Helper()
+		resp, res, _ := env.doRequest(http.MethodPut, "/api/procedimentos/"+id, adminCookie, map[string]any{
+			"titulo": titulo, "categoria": "Infra", "corpo": corpo, "ativo": ativo,
+		})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("salvar procedimento: esperado 200, obteve %d %v", resp.StatusCode, res)
+		}
+		return res
+	}
+	revisoes := func() []map[string]any {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, env.server.URL+"/api/procedimentos/"+id+"/revisoes", nil)
+		req.AddCookie(adminCookie)
+		r, err := env.client.Do(req)
+		if err != nil {
+			t.Fatalf("erro ao listar revisões: %v", err)
+		}
+		defer r.Body.Close()
+		var lista []map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&lista)
+		return lista
+	}
+
+	salvar(corpoV1+"\n\nAtualizado.", true)
+	salvar(corpoV1+"\n\nAtualizado.", true) // sem mudança: não gera revisão
+	revs := revisoes()
+	if len(revs) != 2 || revs[0]["nota"] != "Editado" || revs[1]["nota"] != "Criado" {
+		t.Fatalf("histórico após editar: esperado [Editado, Criado], obteve %v", revs)
+	}
+
+	// Restaurar a primeira versão gera uma revisão nova
+	resp, res, _ = env.doRequest(http.MethodPost, "/api/procedimentos/"+id+"/revisoes/"+revs[1]["id"].(string)+"/restaurar", adminCookie, nil)
+	if resp.StatusCode != http.StatusOK || res["corpo"] != corpoV1 {
+		t.Fatalf("restaurar: esperado 200 com o texto original, obteve %d %v", resp.StatusCode, res)
+	}
+	revs = revisoes()
+	if nota, _ := revs[0]["nota"].(string); len(revs) != 3 || !strings.HasPrefix(nota, "Restaurado da versão de") {
+		t.Fatalf("histórico após restaurar: %v", revs)
+	}
+
+	// Tira-dúvidas desligado sem credenciais
+	resp, res, _ = env.doRequest(http.MethodGet, "/api/assistente/status", nil, nil)
+	if resp.StatusCode != http.StatusOK || res["disponivel"] != false || res["motivo"] != "desligado" {
+		t.Errorf("status sem credenciais: obteve %d %v", resp.StatusCode, res)
+	}
+
+	// Workers AI falsa: confere o prompt e cita o nosso procedimento
+	var chamadas int
+	var promptSistema, ultimaPergunta string
+	falsa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		chamadas++
+		if r.URL.Path != "/accounts/conta-teste/ai/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer token-teste" {
+			http.Error(w, "rota ou token errado", http.StatusUnauthorized)
+			return
+		}
+		var body struct {
+			Messages []struct{ Role, Content string } `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		promptSistema = body.Messages[0].Content
+		ultimaPergunta = body.Messages[len(body.Messages)-1].Content
+
+		// Número com que o nosso procedimento entrou no prompt
+		indice := "0"
+		for _, linha := range strings.Split(promptSistema, "\n") {
+			if strings.HasSuffix(linha, "] "+titulo+" (Infra)") {
+				indice = strings.TrimPrefix(strings.SplitN(linha, "]", 2)[0], "[")
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{map[string]any{"message": map[string]any{
+				"content": "<think>\n\n</think>\n\nLigue para o **Álvaro**.\nFONTES: " + indice,
+			}}},
+			"usage": map[string]any{"prompt_tokens": 1000, "completion_tokens": 100},
+		})
+	}))
+	defer falsa.Close()
+	env.cfg.CFAccountID, env.cfg.CFAPIToken, env.cfg.CFAPIBaseURL = "conta-teste", "token-teste", falsa.URL
+
+	perguntar := func(texto string) (*http.Response, map[string]any) {
+		resp, res, _ := env.doRequest(http.MethodPost, "/api/assistente/publico", nil, map[string]any{
+			"mensagens": []map[string]string{{"papel": "usuario", "texto": texto}},
+		})
+		return resp, res
+	}
+
+	resp, res = perguntar("o servidor caiu, o que eu faço?")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("pergunta: esperado 200, obteve %d %v", resp.StatusCode, res)
+	}
+	if res["resposta"] != "Ligue para o **Álvaro**." {
+		t.Errorf("resposta deveria vir sem <think> e sem a linha FONTES: %q", res["resposta"])
+	}
+	fontes, _ := res["fontes"].([]any)
+	if len(fontes) != 1 {
+		t.Fatalf("esperava 1 fonte, obteve %v (prompt: %q)", res["fontes"], promptSistema)
+	}
+	fonte := fontes[0].(map[string]any)
+	if fonte["id"] != id || fonte["contato"] != "**Álvaro** · ramal 214" {
+		t.Errorf("fonte deveria trazer o contato do procedimento: %v", fonte)
+	}
+	if !strings.HasSuffix(ultimaPergunta, "/no_think") {
+		t.Errorf("pergunta enviada sem /no_think: %q", ultimaPergunta)
+	}
+
+	var neurons float64
+	_ = env.db.Pool.QueryRow(ctx, "SELECT neurons FROM assistente_uso WHERE dia = (now() AT TIME ZONE 'UTC')::date").Scan(&neurons)
+	esperado := 1000*env.cfg.NeuronsEntradaPorM/1e6 + 100*env.cfg.NeuronsSaidaPorM/1e6
+	if usoAntes != nil {
+		esperado += *usoAntes
+	}
+	if diff := neurons - esperado; diff > 0.001 || diff < -0.001 {
+		t.Errorf("neurons do dia: esperado %.3f, obteve %.3f", esperado, neurons)
+	}
+
+	// Sem procedimento parecido, responde sem chamar o modelo
+	antes := chamadas
+	resp, res = perguntar("zzqx wqpv")
+	if resp.StatusCode != http.StatusOK || chamadas != antes {
+		t.Errorf("pergunta sem procedimento não deveria chamar o modelo: %d %v (chamadas %d→%d)", resp.StatusCode, res, antes, chamadas)
+	}
+
+	// Procedimento desativado sai da busca
+	salvar(corpoV1, false)
+	if revs = revisoes(); revs[0]["nota"] != "Desativado" {
+		t.Errorf("desativar deveria gerar a nota Desativado: %v", revs[0])
+	}
+	antes = chamadas
+	perguntar("o servidor caiu, o que eu faço?")
+	if chamadas > antes && strings.Contains(promptSistema, titulo) {
+		t.Errorf("procedimento desativado apareceu no prompt")
+	}
+
+	// Última pergunta precisa ser do usuário
+	resp, _, _ = env.doRequest(http.MethodPost, "/api/assistente/publico", nil, map[string]any{
+		"mensagens": []map[string]string{{"papel": "assistente", "texto": "oi"}},
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("conversa terminando no assistente: esperado 400, obteve %d", resp.StatusCode)
+	}
+
+	// Cota esgotada
+	env.cfg.AssistenteNeuronsDia = 0.001
+	resp, res, _ = env.doRequest(http.MethodGet, "/api/assistente/status", nil, nil)
+	if res["disponivel"] != false || res["motivo"] != "cota" {
+		t.Errorf("status com cota esgotada: %v", res)
+	}
+	resp, _ = perguntar("o servidor caiu")
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("pergunta com cota esgotada: esperado 503, obteve %d", resp.StatusCode)
+	}
+}
