@@ -590,13 +590,13 @@ func (h *EstoqueHandler) ExportarCSV(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = writer.Write([]string{
 			dataStr,
-			m.ItemNome,
-			m.ItemUnidade,
+			celulaCSV(m.ItemNome),
+			celulaCSV(m.ItemUnidade),
 			m.Tipo,
 			fmt.Sprintf("%d", m.Quantidade),
 			fmt.Sprintf("%d", m.SaldoResultante),
-			m.Motivo,
-			m.UsuarioNome,
+			celulaCSV(m.Motivo),
+			celulaCSV(m.UsuarioNome),
 		})
 	}
 	writer.Flush()

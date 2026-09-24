@@ -4,13 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
-	"math"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 
 	"tiiv/backend/internal/config"
 	"tiiv/backend/internal/database"
@@ -22,15 +19,30 @@ import (
 // PIN de acesso: exatamente 4 dígitos numéricos
 var pinRegex = regexp.MustCompile(`^[0-9]{4}$`)
 
+// Cor do usuário: vai para atributos style no frontend, então só #RRGGBB
+var corRegex = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// Limites de PIN errado por origem, somados ao bloqueio por conta: um único
+// host não chega às 5 falhas que travam a conta, e o total da rede fica contido.
+const (
+	janelaFalhasIP      = 15 * time.Minute
+	falhasGlobaisMinuto = 30
+)
+
 type AuthHandler struct {
 	db  *database.DB
 	cfg *config.Config
+
+	falhasPorIP   *limitadorPorIP
+	falhasGlobais *limitadorPorIP
 }
 
 func NewAuthHandler(db *database.DB, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
-		db:  db,
-		cfg: cfg,
+		db:            db,
+		cfg:           cfg,
+		falhasPorIP:   novoLimitadorPorIP(cfg.LoginFalhasPorIP, janelaFalhasIP),
+		falhasGlobais: novoLimitadorPorIP(falhasGlobaisMinuto, time.Minute),
 	}
 }
 
@@ -74,6 +86,8 @@ type UserProfileResponse struct {
 	Papel      string `json:"papel"`
 	Tema       string `json:"tema"`
 	FotoVersao *int64 `json:"foto_versao"`
+	// Admin inicial: precisa trocar o PIN antes de usar o sistema
+	DeveTrocarPin bool `json:"deve_trocar_pin"`
 }
 
 // Login: POST /api/auth/login
@@ -100,39 +114,50 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.db.Queries.BuscarUsuarioPorIDComPin(r.Context(), uID)
-	if err != nil || !user.Ativo {
+	// 1. Reservar uma falha para o IP e para o total antes de testar o PIN;
+	// é devolvida se o PIN estiver certo ou se a conta já estava bloqueada.
+	ip := ipDaRequisicao(r)
+	if !h.falhasPorIP.permitir(ip) {
+		response.JSONError(w, http.StatusTooManyRequests, "muitas tentativas de PIN erradas neste terminal. Aguarde alguns minutos.")
+		return
+	}
+	if !h.falhasGlobais.permitir("") {
+		h.falhasPorIP.liberar(ip)
+		response.JSONError(w, http.StatusTooManyRequests, "muitas tentativas de login no momento. Aguarde um minuto.")
+		return
+	}
+	liberarFalha := func() {
+		h.falhasPorIP.liberar(ip)
+		h.falhasGlobais.liberar("")
+	}
+
+	// 2. Reservar a tentativa na conta e validar o PIN com bcrypt
+	user, resultado, bloqueadoAte, err := conferirPin(r.Context(), h.db.Queries, uID, req.PIN)
+	if err != nil {
+		slog.Error("erro ao conferir PIN no login", "erro", err)
+		response.JSONError(w, http.StatusInternalServerError, "erro ao autenticar")
+		return
+	}
+	switch resultado {
+	case pinUsuarioInvalido:
 		response.JSONError(w, http.StatusUnauthorized, "usuário não encontrado ou inativo")
 		return
-	}
-
-	now := time.Now()
-
-	// 1. Verificar se está bloqueado
-	if user.BloqueadoAte.Valid && now.Before(user.BloqueadoAte.Time) {
-		minutosRestantes := int(math.Ceil(time.Until(user.BloqueadoAte.Time).Minutes()))
-		if minutosRestantes < 1 {
-			minutosRestantes = 1
-		}
-		response.JSONError(w, http.StatusLocked, fmt.Sprintf("usuário temporariamente bloqueado por excesso de tentativas. Tente novamente em %d minuto(s).", minutosRestantes))
+	case pinJaBloqueado:
+		liberarFalha()
+		response.JSONError(w, http.StatusLocked, "usuário temporariamente bloqueado por excesso de tentativas. Tente novamente em "+minutosAte(bloqueadoAte)+".")
 		return
-	}
-
-	// 2. Validar o PIN com bcrypt
-	err = bcrypt.CompareHashAndPassword([]byte(user.PinHash), []byte(req.PIN))
-	if err != nil {
-		// PIN incorreto -> incrementa falhas e potencialmente bloqueia
-		statusTentativa, _ := h.db.Queries.IncrementarTentativasFalhas(r.Context(), uID)
-		if statusTentativa.BloqueadoAte.Valid && now.Before(statusTentativa.BloqueadoAte.Time) {
-			response.JSONError(w, http.StatusLocked, "PIN incorreto. Limite de 5 tentativas atingido. Usuário bloqueado por 5 minutos.")
-			return
-		}
+	case pinBloqueou:
+		slog.Warn("conta bloqueada por PIN errado", "usuario_id", req.UsuarioID, "papel", user.Papel, "ip", ip, "ate", bloqueadoAte)
+		response.JSONError(w, http.StatusLocked, "PIN incorreto. Limite de 5 tentativas atingido. Usuário bloqueado por "+minutosAte(bloqueadoAte)+".")
+		return
+	case pinIncorreto:
 		response.JSONError(w, http.StatusUnauthorized, "PIN incorreto")
 		return
 	}
 
-	// 3. Sucesso: zerar contador de falhas e desbloquear
-	_ = h.db.Queries.ZerarTentativasFalhas(r.Context(), uID)
+	// 3. Sucesso: a falha reservada não conta
+	liberarFalha()
+	now := time.Now()
 
 	// 4. Gerar token de sessão seguro (32 bytes aleatórios)
 	rawBytes := make([]byte, 32)
@@ -173,6 +198,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Papel:      user.Papel,
 		Tema:       user.Tema,
 		FotoVersao: buscarFotoVersao(r.Context(), h.db.Queries, user.ID),
+
+		DeveTrocarPin: user.DeveTrocarPin,
 	})
 }
 
@@ -184,19 +211,22 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		_ = h.db.Queries.DeletarSessaoPorHash(r.Context(), tokenHash)
 	}
 
-	// Limpar o cookie
+	limparCookieSessao(w, h.cfg.CookieSecure)
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "sessão encerrada com sucesso"})
+}
+
+func limparCookieSessao(w http.ResponseWriter, secure bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     middleware.SessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   h.cfg.CookieSecure,
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),
 	})
-
-	response.JSON(w, http.StatusOK, map[string]string{"message": "sessão encerrada com sucesso"})
 }
 
 // Me: GET /api/auth/me
@@ -219,6 +249,8 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		Papel:      user.Papel,
 		Tema:       user.Tema,
 		FotoVersao: fotoV,
+
+		DeveTrocarPin: user.DeveTrocarPin,
 	})
 }
 

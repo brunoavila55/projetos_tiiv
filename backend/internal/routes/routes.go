@@ -19,11 +19,25 @@ import (
 func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	r := chi.NewRouter()
 
-	// Middlewares globais
+	scriptsInline, err := embeds.HashesScriptsInline()
+	if err != nil {
+		slog.Error("falha ao ler scripts inline da SPA para a CSP", "erro", err)
+		return nil, err
+	}
+
+	proxies, err := cfg.ProxiesConfiaveis()
+	if err != nil {
+		return nil, err
+	}
+
+	// Middlewares globais. Sem chimiddleware.RealIP: ele aceita X-Forwarded-For
+	// de qualquer cliente, que escolheria o próprio IP e furaria os limites das
+	// rotas públicas. IPReal só lê o cabeçalho vindo de TRUSTED_PROXIES.
 	r.Use(chimiddleware.RequestID)
-	r.Use(chimiddleware.RealIP)
+	r.Use(middleware.IPReal(proxies))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Logger)
+	r.Use(middleware.CabecalhosSeguranca(scriptsInline, cfg.CookieSecure))
 
 	// CORS para desenvolvimento
 	r.Use(cors.Handler(cors.Options{
@@ -62,7 +76,8 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 		api.Route("/auth", func(auth chi.Router) {
 			auth.Get("/usuarios", authHandler.ListarUsuariosPublico)
-			auth.Get("/usuarios/{id}/foto", authHandler.ObterFoto)
+			// Pública para a grade de login; foto de inativo só com sessão de admin
+			auth.With(authMiddleware.OptionalAuth).Get("/usuarios/{id}/foto", authHandler.ObterFoto)
 			auth.Post("/login", authHandler.Login)
 			auth.Post("/logout", authHandler.Logout)
 

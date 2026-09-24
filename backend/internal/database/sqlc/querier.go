@@ -16,6 +16,8 @@ type Querier interface {
 	AtualizarItemEstoque(ctx context.Context, arg AtualizarItemEstoqueParams) (ItensEstoque, error)
 	AtualizarPin(ctx context.Context, arg AtualizarPinParams) (pgtype.UUID, error)
 	AtualizarProcedimento(ctx context.Context, arg AtualizarProcedimentoParams) (Procedimentos, error)
+	// Troca feita pelo próprio usuário: cumpre a troca obrigatória e zera as tentativas
+	AtualizarProprioPin(ctx context.Context, arg AtualizarProprioPinParams) error
 	AtualizarRegistroTecnico(ctx context.Context, arg AtualizarRegistroTecnicoParams) (TecnicoRegistros, error)
 	AtualizarSaldoItemEstoque(ctx context.Context, arg AtualizarSaldoItemEstoqueParams) (ItensEstoque, error)
 	AtualizarStatusTarefa(ctx context.Context, arg AtualizarStatusTarefaParams) (Tarefas, error)
@@ -39,7 +41,7 @@ type Querier interface {
 	BuscarTarefaPorID(ctx context.Context, id pgtype.UUID) (BuscarTarefaPorIDRow, error)
 	BuscarTecnicoPorID(ctx context.Context, id pgtype.UUID) (Tecnicos, error)
 	BuscarUsuarioPorID(ctx context.Context, id pgtype.UUID) (BuscarUsuarioPorIDRow, error)
-	BuscarUsuarioPorIDComPin(ctx context.Context, id pgtype.UUID) (Usuarios, error)
+	BuscarUsuarioPorIDComPin(ctx context.Context, id pgtype.UUID) (BuscarUsuarioPorIDComPinRow, error)
 	ContarAdminsAtivos(ctx context.Context) (int64, error)
 	ContarMovimentacoesItem(ctx context.Context, itemID pgtype.UUID) (int64, error)
 	ContarRegistrosTecnicos(ctx context.Context, arg ContarRegistrosTecnicosParams) (int64, error)
@@ -59,6 +61,7 @@ type Querier interface {
 	DeletarComentarioTarefa(ctx context.Context, id pgtype.UUID) error
 	DeletarEvento(ctx context.Context, id pgtype.UUID) error
 	DeletarItemEstoque(ctx context.Context, id pgtype.UUID) error
+	DeletarOutrasSessoesUsuario(ctx context.Context, arg DeletarOutrasSessoesUsuarioParams) error
 	DeletarRegistroTecnico(ctx context.Context, id pgtype.UUID) error
 	DeletarSessaoPorHash(ctx context.Context, tokenHash string) error
 	DeletarSessoesExpiradas(ctx context.Context) error
@@ -66,7 +69,6 @@ type Querier interface {
 	DeletarTarefa(ctx context.Context, id pgtype.UUID) error
 	DesativarItemEstoque(ctx context.Context, id pgtype.UUID) error
 	DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (DesbloquearUsuarioRow, error)
-	IncrementarTentativasFalhas(ctx context.Context, id pgtype.UUID) (IncrementarTentativasFalhasRow, error)
 	ListarCategoriasEstoque(ctx context.Context) ([]string, error)
 	ListarCategoriasProcedimentos(ctx context.Context) ([]string, error)
 	ListarComentariosTarefa(ctx context.Context, tarefaID pgtype.UUID) ([]ListarComentariosTarefaRow, error)
@@ -86,6 +88,7 @@ type Querier interface {
 	ListarTodosUsuarios(ctx context.Context) ([]ListarTodosUsuariosRow, error)
 	ListarUsuariosAtivos(ctx context.Context) ([]ListarUsuariosAtivosRow, error)
 	MarcarTicketTratado(ctx context.Context, arg MarcarTicketTratadoParams) (Tickets, error)
+	MarcarTrocaPinObrigatoria(ctx context.Context, id pgtype.UUID) error
 	ObterFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (ObterFotoUsuarioRow, error)
 	ObterUltimaMovimentacaoItem(ctx context.Context, itemID pgtype.UUID) (MovimentacoesEstoque, error)
 	ObterUsoAssistente(ctx context.Context) (ObterUsoAssistenteRow, error)
@@ -98,6 +101,13 @@ type Querier interface {
 	RelatorioTecnicos(ctx context.Context, arg RelatorioTecnicosParams) ([]RelatorioTecnicosRow, error)
 	RemoverFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) error
 	RemoverParticipantesEvento(ctx context.Context, eventoID pgtype.UUID) error
+	// Conta a tentativa ANTES de comparar o PIN, numa única instrução atômica:
+	// requisições simultâneas não passam juntas pela checagem de bloqueio.
+	// Sem linha retornada = usuário inexistente, inativo ou bloqueado.
+	// A contagem recomeça após 15 min sem tentativas ou ao fim de um bloqueio
+	// (o WHERE garante que bloqueado_ate, se preenchido, já expirou). A 5ª
+	// tentativa seguida bloqueia por 5 min, 15 min, 45 min e depois 1 h.
+	ReservarTentativaPin(ctx context.Context, id pgtype.UUID) (ReservarTentativaPinRow, error)
 	SalvarFotoUsuario(ctx context.Context, arg SalvarFotoUsuarioParams) (pgtype.Timestamptz, error)
 	ZerarTentativasFalhas(ctx context.Context, id pgtype.UUID) error
 }

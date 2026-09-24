@@ -27,13 +27,33 @@ type TestEnv struct {
 
 func setupTestEnv(t *testing.T) *TestEnv {
 	t.Helper()
+	return setupTestEnvCom(t, nil)
+}
+
+// setupTestEnvCom permite ajustar a configuração antes de montar o roteador
+func setupTestEnvCom(t *testing.T, ajustar func(*config.Config)) *TestEnv {
+	t.Helper()
 
 	cfg := config.Load()
+	if cfg.DatabaseURL == "" || cfg.AdminPIN == "" {
+		t.Fatal("defina DATABASE_URL e ADMIN_PIN (o PIN do admin do banco de teste); `make test` lê do .env")
+	}
+	// Todos os testes saem de 127.0.0.1: o limite por IP fica alto, exceto
+	// no teste que trata dele
+	cfg.LoginFalhasPorIP = 1000
+	if ajustar != nil {
+		ajustar(cfg)
+	}
 	ctx := context.Background()
 
 	db, err := database.ConnectAndMigrate(ctx, cfg)
 	if err != nil {
 		t.Fatalf("falha ao conectar e migrar banco de dados de teste: %v", err)
+	}
+
+	// Num banco novo o admin inicial nasce com troca de PIN obrigatória
+	if _, err := db.Pool.Exec(ctx, `UPDATE usuarios SET deve_trocar_pin = false WHERE papel = 'admin'`); err != nil {
+		t.Fatalf("falha ao preparar admin de teste: %v", err)
 	}
 
 	handler, err := routes.SetupRouter(cfg, db)
@@ -164,7 +184,7 @@ func TestAuth_LockoutAfter5FailedAttempts(t *testing.T) {
 		t.Fatalf("tentativa 5: esperado 423 Locked, obteve %d", loginStatus5)
 	}
 	errMsg := fmt.Sprintf("%v", resLogin5["error"])
-	if errMsg != "PIN incorreto. Limite de 5 tentativas atingido. Usuário bloqueado por 5 minutos." {
+	if errMsg != "PIN incorreto. Limite de 5 tentativas atingido. Usuário bloqueado por 5 minuto(s)." {
 		t.Fatalf("tentativa 5: mensagem esperada de bloqueio, obteve: %s", errMsg)
 	}
 

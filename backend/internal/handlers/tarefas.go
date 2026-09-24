@@ -345,7 +345,7 @@ func (h *TarefaHandler) AtualizarStatus(w http.ResponseWriter, r *http.Request) 
 	})
 	if err != nil {
 		slog.Error("erro ao atualizar status da tarefa", "erro", err, "id", idStr, "status", req.Status)
-		response.JSONError(w, http.StatusInternalServerError, "erro ao atualizar status da tarefa: "+err.Error())
+		response.JSONError(w, http.StatusInternalServerError, "erro ao atualizar status da tarefa")
 		return
 	}
 
@@ -532,8 +532,14 @@ func (h *TarefaHandler) DeletarComentario(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	c, err := h.db.Queries.BuscarComentarioPorID(r.Context(), cID)
+	tID, err := database.StringToUUID(chi.URLParam(r, "id"))
 	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "ID de tarefa inválido")
+		return
+	}
+
+	c, err := h.db.Queries.BuscarComentarioPorID(r.Context(), cID)
+	if err != nil || c.TarefaID != tID {
 		response.JSONError(w, http.StatusNotFound, "comentário não encontrado")
 		return
 	}

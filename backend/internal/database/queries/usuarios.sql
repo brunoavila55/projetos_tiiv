@@ -54,31 +54,61 @@ SET pin_hash = $2
 WHERE id = $1
 RETURNING id;
 
--- name: IncrementarTentativasFalhas :one
+-- name: AtualizarProprioPin :exec
+-- Troca feita pelo próprio usuário: cumpre a troca obrigatória e zera as tentativas
 UPDATE usuarios
-SET tentativas_falhas = tentativas_falhas + 1,
-    bloqueado_ate = CASE 
-        WHEN tentativas_falhas + 1 >= 5 THEN now() + interval '5 minutes'
-        ELSE bloqueado_ate
-    END
-WHERE id = $1
-RETURNING tentativas_falhas, bloqueado_ate;
+SET pin_hash = $2, deve_trocar_pin = false, tentativas_falhas = 0, bloqueado_ate = NULL, bloqueios = 0
+WHERE id = $1;
+
+-- name: ReservarTentativaPin :one
+-- Conta a tentativa ANTES de comparar o PIN, numa única instrução atômica:
+-- requisições simultâneas não passam juntas pela checagem de bloqueio.
+-- Sem linha retornada = usuário inexistente, inativo ou bloqueado.
+-- A contagem recomeça após 15 min sem tentativas ou ao fim de um bloqueio
+-- (o WHERE garante que bloqueado_ate, se preenchido, já expirou). A 5ª
+-- tentativa seguida bloqueia por 5 min, 15 min, 45 min e depois 1 h.
+UPDATE usuarios
+SET tentativas_falhas = CASE
+        WHEN ultima_tentativa_em IS NULL OR ultima_tentativa_em < now() - interval '15 minutes'
+             OR bloqueado_ate IS NOT NULL THEN 1
+        ELSE tentativas_falhas + 1
+    END,
+    bloqueado_ate = CASE
+        WHEN ultima_tentativa_em >= now() - interval '15 minutes' AND bloqueado_ate IS NULL
+             AND tentativas_falhas + 1 >= 5
+            THEN now() + least(interval '5 minutes' * power(3, bloqueios), interval '1 hour')
+    END,
+    bloqueios = CASE
+        WHEN ultima_tentativa_em >= now() - interval '15 minutes' AND bloqueado_ate IS NULL
+             AND tentativas_falhas + 1 >= 5
+            THEN bloqueios + 1
+        ELSE bloqueios
+    END,
+    ultima_tentativa_em = now()
+WHERE id = $1 AND ativo = true AND (bloqueado_ate IS NULL OR bloqueado_ate <= now())
+RETURNING id, nome, cor, pin_hash, papel, tema, bloqueado_ate, deve_trocar_pin;
 
 -- name: ZerarTentativasFalhas :exec
 UPDATE usuarios
-SET tentativas_falhas = 0, bloqueado_ate = NULL
+SET tentativas_falhas = 0, bloqueado_ate = NULL, bloqueios = 0
+WHERE id = $1;
+
+-- name: MarcarTrocaPinObrigatoria :exec
+UPDATE usuarios
+SET deve_trocar_pin = true
 WHERE id = $1;
 
 -- name: DesbloquearUsuario :one
 UPDATE usuarios
-SET tentativas_falhas = 0, bloqueado_ate = NULL
+SET tentativas_falhas = 0, bloqueado_ate = NULL, bloqueios = 0
 WHERE id = $1
 RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema;
 
 -- name: ObterFotoUsuario :one
-SELECT conteudo, mime, atualizado_em
-FROM usuario_fotos
-WHERE usuario_id = $1;
+SELECT f.conteudo, f.mime, f.atualizado_em, u.ativo AS usuario_ativo
+FROM usuario_fotos f
+JOIN usuarios u ON u.id = f.usuario_id
+WHERE f.usuario_id = $1;
 
 -- name: ObterVersaoFotoUsuario :one
 SELECT atualizado_em

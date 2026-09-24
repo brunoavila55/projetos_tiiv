@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -90,6 +91,11 @@ func (h *UsuarioHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !corRegex.MatchString(req.Cor) {
+		response.JSONError(w, http.StatusBadRequest, "cor deve estar no formato #RRGGBB")
+		return
+	}
+
 	if !pinRegex.MatchString(req.PIN) {
 		response.JSONError(w, http.StatusBadRequest, "PIN deve conter exatamente 4 dígitos numéricos")
 		return
@@ -152,6 +158,11 @@ func (h *UsuarioHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 
 	if req.Nome == "" || req.Cor == "" {
 		response.JSONError(w, http.StatusBadRequest, "nome e cor são obrigatórios")
+		return
+	}
+
+	if !corRegex.MatchString(req.Cor) {
+		response.JSONError(w, http.StatusBadRequest, "cor deve estar no formato #RRGGBB")
 		return
 	}
 
@@ -292,8 +303,23 @@ func (h *UsuarioHandler) TrocarProprioPIN(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if !pinRegex.MatchString(req.PinAtual) {
+		response.JSONError(w, http.StatusBadRequest, "PIN atual deve conter exatamente 4 dígitos numéricos")
+		return
+	}
+
 	if !pinRegex.MatchString(req.NovoPin) {
 		response.JSONError(w, http.StatusBadRequest, "Novo PIN deve conter exatamente 4 dígitos numéricos")
+		return
+	}
+
+	if config.PinTrivial(req.NovoPin) {
+		response.JSONError(w, http.StatusBadRequest, "Novo PIN é fácil demais de adivinhar (repetido ou sequência). Escolha outro.")
+		return
+	}
+
+	if req.NovoPin == req.PinAtual {
+		response.JSONError(w, http.StatusBadRequest, "Novo PIN deve ser diferente do atual")
 		return
 	}
 
@@ -302,15 +328,27 @@ func (h *UsuarioHandler) TrocarProprioPIN(w http.ResponseWriter, r *http.Request
 		response.JSONError(w, http.StatusInternalServerError, "ID de usuário inválido na sessão")
 		return
 	}
-
-	dbUser, err := h.db.Queries.BuscarUsuarioPorIDComPin(r.Context(), uID)
+	sessaoID, err := database.StringToUUID(user.SessaoID)
 	if err != nil {
-		response.JSONError(w, http.StatusInternalServerError, "usuário não encontrado")
+		response.JSONError(w, http.StatusInternalServerError, "sessão inválida")
 		return
 	}
 
-	// Valida o PIN atual
-	if err := bcrypt.CompareHashAndPassword([]byte(dbUser.PinHash), []byte(req.PinAtual)); err != nil {
+	// Valida o PIN atual com o mesmo limite de tentativas do login
+	_, resultado, _, err := conferirPin(r.Context(), h.db.Queries, uID, req.PinAtual)
+	if err != nil {
+		slog.Error("erro ao conferir PIN atual", "erro", err)
+		response.JSONError(w, http.StatusInternalServerError, "erro ao validar PIN atual")
+		return
+	}
+	switch resultado {
+	case pinBloqueou, pinJaBloqueado:
+		// Quem está chutando o PIN num terminal aberto perde a sessão
+		_ = h.db.Queries.DeletarSessoesPorUsuario(r.Context(), uID)
+		limparCookieSessao(w, h.cfg.CookieSecure)
+		response.JSONError(w, http.StatusLocked, "PIN atual incorreto muitas vezes. A sessão foi encerrada e o usuário bloqueado temporariamente.")
+		return
+	case pinIncorreto, pinUsuarioInvalido:
 		response.JSONError(w, http.StatusUnauthorized, "PIN atual incorreto")
 		return
 	}
@@ -321,13 +359,21 @@ func (h *UsuarioHandler) TrocarProprioPIN(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	_, err = h.db.Queries.AtualizarPin(r.Context(), sqlc.AtualizarPinParams{
+	err = h.db.Queries.AtualizarProprioPin(r.Context(), sqlc.AtualizarProprioPinParams{
 		ID:      uID,
 		PinHash: string(novoHash),
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao atualizar PIN")
 		return
+	}
+
+	// O PIN antigo pode ter vazado: as outras sessões do usuário caem
+	if err := h.db.Queries.DeletarOutrasSessoesUsuario(r.Context(), sqlc.DeletarOutrasSessoesUsuarioParams{
+		UsuarioID: uID,
+		ID:        sessaoID,
+	}); err != nil {
+		slog.Error("erro ao encerrar outras sessões após troca de PIN", "erro", err)
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "PIN alterado com sucesso"})

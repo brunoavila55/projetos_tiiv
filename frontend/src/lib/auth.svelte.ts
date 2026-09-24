@@ -8,6 +8,8 @@ export interface UserProfile {
 	papel: 'admin' | 'usuario';
 	tema?: 'claro' | 'escuro' | 'sistema';
 	foto_versao?: number | null;
+	// Admin inicial: precisa trocar o PIN antes de usar o sistema
+	deve_trocar_pin?: boolean;
 }
 
 export interface UsuarioPublico {

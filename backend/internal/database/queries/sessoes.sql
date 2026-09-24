@@ -15,7 +15,8 @@ SELECT
     u.cor AS usuario_cor,
     u.papel AS usuario_papel,
     u.ativo AS usuario_ativo,
-    u.tema AS usuario_tema
+    u.tema AS usuario_tema,
+    u.deve_trocar_pin AS usuario_deve_trocar_pin
 FROM sessoes s
 JOIN usuarios u ON u.id = s.usuario_id
 WHERE s.token_hash = $1 AND u.ativo = true;
@@ -32,6 +33,10 @@ WHERE token_hash = $1;
 -- name: DeletarSessoesPorUsuario :exec
 DELETE FROM sessoes
 WHERE usuario_id = $1;
+
+-- name: DeletarOutrasSessoesUsuario :exec
+DELETE FROM sessoes
+WHERE usuario_id = $1 AND id <> $2;
 
 -- name: DeletarSessoesExpiradas :exec
 DELETE FROM sessoes

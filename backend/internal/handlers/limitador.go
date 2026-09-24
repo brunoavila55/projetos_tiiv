@@ -50,6 +50,19 @@ func (l *limitadorPorIP) permitir(ip string) bool {
 	return true
 }
 
+// liberar devolve a ação mais recente da chave; usado quando a ação reservada
+// com permitir acabou não contando (ex.: login correto não é uma falha)
+func (l *limitadorPorIP) liberar(ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if n := len(l.envios[ip]); n > 0 {
+		l.envios[ip] = l.envios[ip][:n-1]
+	}
+}
+
+// ipDaRequisicao usa o endereço TCP. Não há proxy reverso na frente, então
+// cabeçalhos como X-Forwarded-For viriam do próprio cliente e são ignorados.
 func ipDaRequisicao(r *http.Request) string {
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host

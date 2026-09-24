@@ -640,14 +640,14 @@ func (h *TecnicoHandler) ExportarRegistrosCSV(w http.ResponseWriter, r *http.Req
 			saidaPor = *reg.SaidaRegistradaPorNome
 		}
 		_ = writer.Write([]string{
-			reg.TecnicoNome,
-			reg.TecnicoEmpresa,
+			celulaCSV(reg.TecnicoNome),
+			celulaCSV(reg.TecnicoEmpresa),
 			dataHoraLocal(&reg.Entrada),
 			dataHoraLocal(reg.Saida),
 			duracao,
-			reg.Observacao,
-			reg.EntradaRegistradaPorNome,
-			saidaPor,
+			celulaCSV(reg.Observacao),
+			celulaCSV(reg.EntradaRegistradaPorNome),
+			celulaCSV(saidaPor),
 		})
 	}
 	writer.Flush()
@@ -665,8 +665,8 @@ func (h *TecnicoHandler) ExportarRelatorioCSV(w http.ResponseWriter, r *http.Req
 	_ = writer.Write([]string{"Técnico", "Empresa", "Dias presentes", "Registros", "Em aberto", "Horas totais (h:mm)", "Primeira entrada", "Última marcação"})
 	for _, l := range linhas {
 		_ = writer.Write([]string{
-			l.TecnicoNome,
-			l.TecnicoEmpresa,
+			celulaCSV(l.TecnicoNome),
+			celulaCSV(l.TecnicoEmpresa),
 			strconv.FormatInt(l.DiasPresentes, 10),
 			strconv.FormatInt(l.TotalRegistros, 10),
 			strconv.FormatInt(l.RegistrosAbertos, 10),

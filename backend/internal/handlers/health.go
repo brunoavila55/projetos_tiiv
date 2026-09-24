@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -22,10 +23,11 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := h.db.Pool.Ping(ctx); err != nil {
+		// O erro do pgx traz host, porta e usuário do banco; fica só no log
+		slog.Error("health: banco indisponível", "erro", err)
 		response.JSON(w, http.StatusServiceUnavailable, map[string]string{
 			"status": "error",
 			"db":     "disconnected",
-			"error":  err.Error(),
 		})
 		return
 	}

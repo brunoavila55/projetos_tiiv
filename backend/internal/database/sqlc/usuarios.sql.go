@@ -30,6 +30,23 @@ func (q *Queries) AtualizarPin(ctx context.Context, arg AtualizarPinParams) (pgt
 	return id, err
 }
 
+const atualizarProprioPin = `-- name: AtualizarProprioPin :exec
+UPDATE usuarios
+SET pin_hash = $2, deve_trocar_pin = false, tentativas_falhas = 0, bloqueado_ate = NULL, bloqueios = 0
+WHERE id = $1
+`
+
+type AtualizarProprioPinParams struct {
+	ID      pgtype.UUID `json:"id"`
+	PinHash string      `json:"pin_hash"`
+}
+
+// Troca feita pelo próprio usuário: cumpre a troca obrigatória e zera as tentativas
+func (q *Queries) AtualizarProprioPin(ctx context.Context, arg AtualizarProprioPinParams) error {
+	_, err := q.db.Exec(ctx, atualizarProprioPin, arg.ID, arg.PinHash)
+	return err
+}
+
 const atualizarTemaUsuario = `-- name: AtualizarTemaUsuario :one
 UPDATE usuarios
 SET tema = $2
@@ -145,9 +162,22 @@ FROM usuarios
 WHERE id = $1
 `
 
-func (q *Queries) BuscarUsuarioPorIDComPin(ctx context.Context, id pgtype.UUID) (Usuarios, error) {
+type BuscarUsuarioPorIDComPinRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	Nome             string             `json:"nome"`
+	Cor              string             `json:"cor"`
+	PinHash          string             `json:"pin_hash"`
+	Papel            string             `json:"papel"`
+	Ativo            bool               `json:"ativo"`
+	TentativasFalhas int32              `json:"tentativas_falhas"`
+	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
+	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
+	Tema             string             `json:"tema"`
+}
+
+func (q *Queries) BuscarUsuarioPorIDComPin(ctx context.Context, id pgtype.UUID) (BuscarUsuarioPorIDComPinRow, error) {
 	row := q.db.QueryRow(ctx, buscarUsuarioPorIDComPin, id)
-	var i Usuarios
+	var i BuscarUsuarioPorIDComPinRow
 	err := row.Scan(
 		&i.ID,
 		&i.Nome,
@@ -239,7 +269,7 @@ func (q *Queries) CriarUsuario(ctx context.Context, arg CriarUsuarioParams) (Cri
 
 const desbloquearUsuario = `-- name: DesbloquearUsuario :one
 UPDATE usuarios
-SET tentativas_falhas = 0, bloqueado_ate = NULL
+SET tentativas_falhas = 0, bloqueado_ate = NULL, bloqueios = 0
 WHERE id = $1
 RETURNING id, nome, cor, papel, ativo, tentativas_falhas, bloqueado_ate, criado_em, tema
 `
@@ -270,29 +300,6 @@ func (q *Queries) DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (Desbl
 		&i.CriadoEm,
 		&i.Tema,
 	)
-	return i, err
-}
-
-const incrementarTentativasFalhas = `-- name: IncrementarTentativasFalhas :one
-UPDATE usuarios
-SET tentativas_falhas = tentativas_falhas + 1,
-    bloqueado_ate = CASE 
-        WHEN tentativas_falhas + 1 >= 5 THEN now() + interval '5 minutes'
-        ELSE bloqueado_ate
-    END
-WHERE id = $1
-RETURNING tentativas_falhas, bloqueado_ate
-`
-
-type IncrementarTentativasFalhasRow struct {
-	TentativasFalhas int32              `json:"tentativas_falhas"`
-	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
-}
-
-func (q *Queries) IncrementarTentativasFalhas(ctx context.Context, id pgtype.UUID) (IncrementarTentativasFalhasRow, error) {
-	row := q.db.QueryRow(ctx, incrementarTentativasFalhas, id)
-	var i IncrementarTentativasFalhasRow
-	err := row.Scan(&i.TentativasFalhas, &i.BloqueadoAte)
 	return i, err
 }
 
@@ -388,22 +395,40 @@ func (q *Queries) ListarUsuariosAtivos(ctx context.Context) ([]ListarUsuariosAti
 	return items, nil
 }
 
+const marcarTrocaPinObrigatoria = `-- name: MarcarTrocaPinObrigatoria :exec
+UPDATE usuarios
+SET deve_trocar_pin = true
+WHERE id = $1
+`
+
+func (q *Queries) MarcarTrocaPinObrigatoria(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, marcarTrocaPinObrigatoria, id)
+	return err
+}
+
 const obterFotoUsuario = `-- name: ObterFotoUsuario :one
-SELECT conteudo, mime, atualizado_em
-FROM usuario_fotos
-WHERE usuario_id = $1
+SELECT f.conteudo, f.mime, f.atualizado_em, u.ativo AS usuario_ativo
+FROM usuario_fotos f
+JOIN usuarios u ON u.id = f.usuario_id
+WHERE f.usuario_id = $1
 `
 
 type ObterFotoUsuarioRow struct {
 	Conteudo     []byte             `json:"conteudo"`
 	Mime         string             `json:"mime"`
 	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
+	UsuarioAtivo bool               `json:"usuario_ativo"`
 }
 
 func (q *Queries) ObterFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (ObterFotoUsuarioRow, error) {
 	row := q.db.QueryRow(ctx, obterFotoUsuario, usuarioID)
 	var i ObterFotoUsuarioRow
-	err := row.Scan(&i.Conteudo, &i.Mime, &i.AtualizadoEm)
+	err := row.Scan(
+		&i.Conteudo,
+		&i.Mime,
+		&i.AtualizadoEm,
+		&i.UsuarioAtivo,
+	)
 	return i, err
 }
 
@@ -430,6 +455,62 @@ func (q *Queries) RemoverFotoUsuario(ctx context.Context, usuarioID pgtype.UUID)
 	return err
 }
 
+const reservarTentativaPin = `-- name: ReservarTentativaPin :one
+UPDATE usuarios
+SET tentativas_falhas = CASE
+        WHEN ultima_tentativa_em IS NULL OR ultima_tentativa_em < now() - interval '15 minutes'
+             OR bloqueado_ate IS NOT NULL THEN 1
+        ELSE tentativas_falhas + 1
+    END,
+    bloqueado_ate = CASE
+        WHEN ultima_tentativa_em >= now() - interval '15 minutes' AND bloqueado_ate IS NULL
+             AND tentativas_falhas + 1 >= 5
+            THEN now() + least(interval '5 minutes' * power(3, bloqueios), interval '1 hour')
+    END,
+    bloqueios = CASE
+        WHEN ultima_tentativa_em >= now() - interval '15 minutes' AND bloqueado_ate IS NULL
+             AND tentativas_falhas + 1 >= 5
+            THEN bloqueios + 1
+        ELSE bloqueios
+    END,
+    ultima_tentativa_em = now()
+WHERE id = $1 AND ativo = true AND (bloqueado_ate IS NULL OR bloqueado_ate <= now())
+RETURNING id, nome, cor, pin_hash, papel, tema, bloqueado_ate, deve_trocar_pin
+`
+
+type ReservarTentativaPinRow struct {
+	ID            pgtype.UUID        `json:"id"`
+	Nome          string             `json:"nome"`
+	Cor           string             `json:"cor"`
+	PinHash       string             `json:"pin_hash"`
+	Papel         string             `json:"papel"`
+	Tema          string             `json:"tema"`
+	BloqueadoAte  pgtype.Timestamptz `json:"bloqueado_ate"`
+	DeveTrocarPin bool               `json:"deve_trocar_pin"`
+}
+
+// Conta a tentativa ANTES de comparar o PIN, numa única instrução atômica:
+// requisições simultâneas não passam juntas pela checagem de bloqueio.
+// Sem linha retornada = usuário inexistente, inativo ou bloqueado.
+// A contagem recomeça após 15 min sem tentativas ou ao fim de um bloqueio
+// (o WHERE garante que bloqueado_ate, se preenchido, já expirou). A 5ª
+// tentativa seguida bloqueia por 5 min, 15 min, 45 min e depois 1 h.
+func (q *Queries) ReservarTentativaPin(ctx context.Context, id pgtype.UUID) (ReservarTentativaPinRow, error) {
+	row := q.db.QueryRow(ctx, reservarTentativaPin, id)
+	var i ReservarTentativaPinRow
+	err := row.Scan(
+		&i.ID,
+		&i.Nome,
+		&i.Cor,
+		&i.PinHash,
+		&i.Papel,
+		&i.Tema,
+		&i.BloqueadoAte,
+		&i.DeveTrocarPin,
+	)
+	return i, err
+}
+
 const salvarFotoUsuario = `-- name: SalvarFotoUsuario :one
 INSERT INTO usuario_fotos (usuario_id, conteudo, mime, atualizado_em)
 VALUES ($1, $2, $3, now())
@@ -453,7 +534,7 @@ func (q *Queries) SalvarFotoUsuario(ctx context.Context, arg SalvarFotoUsuarioPa
 
 const zerarTentativasFalhas = `-- name: ZerarTentativasFalhas :exec
 UPDATE usuarios
-SET tentativas_falhas = 0, bloqueado_ate = NULL
+SET tentativas_falhas = 0, bloqueado_ate = NULL, bloqueios = 0
 WHERE id = $1
 `
 

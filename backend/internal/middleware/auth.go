@@ -31,57 +31,84 @@ func NewAuthMiddleware(db *database.DB, cfg *config.Config) *AuthMiddleware {
 	}
 }
 
+// sessaoDaRequisicao valida o cookie de sessão; msg explica a recusa quando user é nil
+func (m *AuthMiddleware) sessaoDaRequisicao(r *http.Request) (user *AuthUser, msg string) {
+	cookie, err := r.Cookie(SessionCookieName)
+	if err != nil || cookie.Value == "" {
+		return nil, "não autenticado"
+	}
+
+	tokenHash := HashToken(cookie.Value)
+	sessao, err := m.db.Queries.BuscarSessaoPorHash(r.Context(), tokenHash)
+	if err != nil {
+		return nil, "sessão inválida ou expirada"
+	}
+
+	now := time.Now()
+
+	// 1. Expiração absoluta (padrão 12h)
+	if now.After(sessao.ExpiraEm.Time) {
+		_ = m.db.Queries.DeletarSessaoPorHash(r.Context(), tokenHash)
+		return nil, "sessão expirada"
+	}
+
+	// 2. Expiração por inatividade (padrão 30m)
+	if now.Sub(sessao.UltimoUsoEm.Time) > m.cfg.SessionTTL {
+		_ = m.db.Queries.DeletarSessaoPorHash(r.Context(), tokenHash)
+		return nil, "sessão expirada por inatividade"
+	}
+
+	// Atualizar último uso se passou mais de 30 segundos desde o último registro
+	if now.Sub(sessao.UltimoUsoEm.Time) > 30*time.Second {
+		_ = m.db.Queries.AtualizarUltimoUsoSessao(r.Context(), sqlc.AtualizarUltimoUsoSessaoParams{
+			ID:          sessao.ID,
+			UltimoUsoEm: database.TimeToTimestamptz(now),
+		})
+	}
+
+	return &AuthUser{
+		ID:            database.UUIDToString(sessao.UsuarioID),
+		Nome:          sessao.UsuarioNome,
+		Cor:           sessao.UsuarioCor,
+		Papel:         sessao.UsuarioPapel,
+		Tema:          sessao.UsuarioTema,
+		SessaoID:      database.UUIDToString(sessao.ID),
+		DeveTrocarPin: sessao.UsuarioDeveTrocarPin,
+	}, ""
+}
+
+// Rotas liberadas enquanto o usuário ainda precisa trocar o PIN inicial
+var rotasTrocaPinPendente = map[string]bool{
+	"/api/auth/me":         true,
+	"/api/auth/trocar-pin": true,
+}
+
 // RequireAuth valida o cookie de sessão para rotas protegidas
 func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(SessionCookieName)
-		if err != nil || cookie.Value == "" {
-			response.JSONError(w, http.StatusUnauthorized, "não autenticado")
+		authUser, msg := m.sessaoDaRequisicao(r)
+		if authUser == nil {
+			response.JSONError(w, http.StatusUnauthorized, msg)
 			return
 		}
 
-		tokenHash := HashToken(cookie.Value)
-		sessao, err := m.db.Queries.BuscarSessaoPorHash(r.Context(), tokenHash)
-		if err != nil {
-			response.JSONError(w, http.StatusUnauthorized, "sessão inválida ou expirada")
+		if authUser.DeveTrocarPin && !rotasTrocaPinPendente[r.URL.Path] {
+			response.JSONError(w, http.StatusForbidden, "troque o PIN inicial antes de continuar")
 			return
-		}
-
-		now := time.Now()
-
-		// 1. Expiração absoluta (padrão 12h)
-		if now.After(sessao.ExpiraEm.Time) {
-			_ = m.db.Queries.DeletarSessaoPorHash(r.Context(), tokenHash)
-			response.JSONError(w, http.StatusUnauthorized, "sessão expirada")
-			return
-		}
-
-		// 2. Expiração por inatividade (padrão 30m)
-		if now.Sub(sessao.UltimoUsoEm.Time) > m.cfg.SessionTTL {
-			_ = m.db.Queries.DeletarSessaoPorHash(r.Context(), tokenHash)
-			response.JSONError(w, http.StatusUnauthorized, "sessão expirada por inatividade")
-			return
-		}
-
-		// Atualizar último uso se passou mais de 30 segundos desde o último registro
-		if now.Sub(sessao.UltimoUsoEm.Time) > 30*time.Second {
-			_ = m.db.Queries.AtualizarUltimoUsoSessao(r.Context(), sqlc.AtualizarUltimoUsoSessaoParams{
-				ID:          sessao.ID,
-				UltimoUsoEm: database.TimeToTimestamptz(now),
-			})
-		}
-
-		authUser := &AuthUser{
-			ID:       database.UUIDToString(sessao.UsuarioID),
-			Nome:     sessao.UsuarioNome,
-			Cor:      sessao.UsuarioCor,
-			Papel:    sessao.UsuarioPapel,
-			Tema:     sessao.UsuarioTema,
-			SessaoID: database.UUIDToString(sessao.ID),
 		}
 
 		ctx := SetAuthUser(r.Context(), authUser)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// OptionalAuth identifica o usuário quando há sessão válida, sem exigir login
+func (m *AuthMiddleware) OptionalAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if authUser, _ := m.sessaoDaRequisicao(r); authUser != nil {
+			r = r.WithContext(SetAuthUser(r.Context(), authUser))
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

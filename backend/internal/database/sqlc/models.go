@@ -163,14 +163,17 @@ type UsuarioFotos struct {
 }
 
 type Usuarios struct {
-	ID               pgtype.UUID        `json:"id"`
-	Nome             string             `json:"nome"`
-	Cor              string             `json:"cor"`
-	PinHash          string             `json:"pin_hash"`
-	Papel            string             `json:"papel"`
-	Ativo            bool               `json:"ativo"`
-	TentativasFalhas int32              `json:"tentativas_falhas"`
-	BloqueadoAte     pgtype.Timestamptz `json:"bloqueado_ate"`
-	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
-	Tema             string             `json:"tema"`
+	ID                pgtype.UUID        `json:"id"`
+	Nome              string             `json:"nome"`
+	Cor               string             `json:"cor"`
+	PinHash           string             `json:"pin_hash"`
+	Papel             string             `json:"papel"`
+	Ativo             bool               `json:"ativo"`
+	TentativasFalhas  int32              `json:"tentativas_falhas"`
+	BloqueadoAte      pgtype.Timestamptz `json:"bloqueado_ate"`
+	CriadoEm          pgtype.Timestamptz `json:"criado_em"`
+	Tema              string             `json:"tema"`
+	DeveTrocarPin     bool               `json:"deve_trocar_pin"`
+	UltimaTentativaEm pgtype.Timestamptz `json:"ultima_tentativa_em"`
+	Bloqueios         int32              `json:"bloqueios"`
 }

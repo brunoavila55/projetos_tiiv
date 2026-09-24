@@ -14,6 +14,7 @@ import (
 
 	"tiiv/backend/internal/database"
 	"tiiv/backend/internal/database/sqlc"
+	"tiiv/backend/internal/middleware"
 	"tiiv/backend/internal/response"
 )
 
@@ -63,12 +64,24 @@ func (h *AuthHandler) ObterFoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ex-operador: a foto (dado pessoal) só aparece para admin logado
+	if !foto.UsuarioAtivo {
+		if user, ok := middleware.GetAuthUser(r.Context()); !ok || user.Papel != "admin" {
+			response.JSONError(w, http.StatusNotFound, "usuário sem foto")
+			return
+		}
+	}
+
 	w.Header().Set("Content-Type", foto.Mime)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if r.URL.Query().Get("v") != "" {
+	switch {
+	case !foto.UsuarioAtivo:
+		// Visto por admin: não pode ficar em cache compartilhado
+		w.Header().Set("Cache-Control", "private, no-store")
+	case r.URL.Query().Get("v") != "":
 		// A URL muda a cada nova foto, então pode ficar em cache para sempre.
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	} else {
+	default:
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	http.ServeContent(w, r, "", foto.AtualizadoEm.Time, bytes.NewReader(foto.Conteudo))

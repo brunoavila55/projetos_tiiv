@@ -15,6 +15,8 @@ type AuthUser struct {
 	Papel    string `json:"papel"`
 	Tema     string `json:"tema"`
 	SessaoID string `json:"sessao_id"`
+
+	DeveTrocarPin bool `json:"deve_trocar_pin"`
 }
 
 func SetAuthUser(ctx context.Context, u *AuthUser) context.Context {

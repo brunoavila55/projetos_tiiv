@@ -1,0 +1,9 @@
+# Proxy HTTPS do perfil "tls" (docker compose --profile tls up -d).
+# O certificado vem da CA interna do Caddy; instale a raiz nos terminais (README, "HTTPS").
+{
+	local_certs
+}
+
+{$TIIV_HOST:localhost} {
+	reverse_proxy app:8080
+}

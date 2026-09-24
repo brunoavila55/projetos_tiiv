@@ -2,9 +2,11 @@ package database
 
 import (
 	"context"
+	"crypto/rand"
 	"embed"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"regexp"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,11 +79,24 @@ func (db *DB) ensureInitialAdmin(ctx context.Context, cfg *config.Config) error 
 	}
 
 	if count == 0 {
-		if !regexp.MustCompile(`^[0-9]{4}$`).MatchString(cfg.AdminPIN) {
+		pin := cfg.AdminPIN
+		if pin == "" {
+			// Sem ADMIN_PIN, nada de PIN conhecido: gera um e mostra só neste log
+			pin, err = pinAleatorio()
+			if err != nil {
+				return fmt.Errorf("erro ao gerar PIN do admin: %w", err)
+			}
+			slog.Warn("ADMIN_PIN não definido: PIN inicial do admin gerado. Anote-o, ele não será mostrado de novo e deve ser trocado no primeiro acesso.",
+				"nome", cfg.AdminNome, "pin", pin)
+		}
+		if !regexp.MustCompile(`^[0-9]{4}$`).MatchString(pin) {
 			return fmt.Errorf("ADMIN_PIN deve conter exatamente 4 dígitos numéricos")
 		}
+		if config.PinTrivial(pin) {
+			return fmt.Errorf("ADMIN_PIN é trivial; escolha outro ou deixe vazio para gerar um aleatório")
+		}
 		slog.Info("Nenhum usuário cadastrado. Criando primeiro admin configurado...", "nome", cfg.AdminNome)
-		hash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPIN), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(pin), bcrypt.DefaultCost)
 		if err != nil {
 			return fmt.Errorf("erro ao gerar hash do PIN do admin: %w", err)
 		}
@@ -98,8 +113,26 @@ func (db *DB) ensureInitialAdmin(ctx context.Context, cfg *config.Config) error 
 			return fmt.Errorf("erro ao inserir admin inicial: %w", err)
 		}
 
+		// O PIN inicial passou por variável de ambiente ou log: troca obrigatória
+		if err := db.Queries.MarcarTrocaPinObrigatoria(ctx, admin.ID); err != nil {
+			return fmt.Errorf("erro ao marcar troca de PIN do admin inicial: %w", err)
+		}
+
 		slog.Info("Primeiro admin criado com sucesso", "id", admin.ID, "nome", admin.Nome)
 	}
 
 	return nil
+}
+
+// pinAleatorio sorteia um PIN de 4 dígitos que não seja trivial
+func pinAleatorio() (string, error) {
+	for {
+		n, err := rand.Int(rand.Reader, big.NewInt(10000))
+		if err != nil {
+			return "", err
+		}
+		if pin := fmt.Sprintf("%04d", n.Int64()); !config.PinTrivial(pin) {
+			return pin, nil
+		}
+	}
 }

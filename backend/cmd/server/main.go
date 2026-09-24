@@ -25,6 +25,10 @@ func main() {
 	slog.Info("Iniciando aplicação TIIV...")
 
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		slog.Error("recusando iniciar", "erro", err)
+		os.Exit(1)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

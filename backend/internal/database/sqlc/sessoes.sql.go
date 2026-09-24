@@ -39,24 +39,26 @@ SELECT
     u.cor AS usuario_cor,
     u.papel AS usuario_papel,
     u.ativo AS usuario_ativo,
-    u.tema AS usuario_tema
+    u.tema AS usuario_tema,
+    u.deve_trocar_pin AS usuario_deve_trocar_pin
 FROM sessoes s
 JOIN usuarios u ON u.id = s.usuario_id
 WHERE s.token_hash = $1 AND u.ativo = true
 `
 
 type BuscarSessaoPorHashRow struct {
-	ID           pgtype.UUID        `json:"id"`
-	TokenHash    string             `json:"token_hash"`
-	UsuarioID    pgtype.UUID        `json:"usuario_id"`
-	ExpiraEm     pgtype.Timestamptz `json:"expira_em"`
-	UltimoUsoEm  pgtype.Timestamptz `json:"ultimo_uso_em"`
-	CriadoEm     pgtype.Timestamptz `json:"criado_em"`
-	UsuarioNome  string             `json:"usuario_nome"`
-	UsuarioCor   string             `json:"usuario_cor"`
-	UsuarioPapel string             `json:"usuario_papel"`
-	UsuarioAtivo bool               `json:"usuario_ativo"`
-	UsuarioTema  string             `json:"usuario_tema"`
+	ID                   pgtype.UUID        `json:"id"`
+	TokenHash            string             `json:"token_hash"`
+	UsuarioID            pgtype.UUID        `json:"usuario_id"`
+	ExpiraEm             pgtype.Timestamptz `json:"expira_em"`
+	UltimoUsoEm          pgtype.Timestamptz `json:"ultimo_uso_em"`
+	CriadoEm             pgtype.Timestamptz `json:"criado_em"`
+	UsuarioNome          string             `json:"usuario_nome"`
+	UsuarioCor           string             `json:"usuario_cor"`
+	UsuarioPapel         string             `json:"usuario_papel"`
+	UsuarioAtivo         bool               `json:"usuario_ativo"`
+	UsuarioTema          string             `json:"usuario_tema"`
+	UsuarioDeveTrocarPin bool               `json:"usuario_deve_trocar_pin"`
 }
 
 func (q *Queries) BuscarSessaoPorHash(ctx context.Context, tokenHash string) (BuscarSessaoPorHashRow, error) {
@@ -74,6 +76,7 @@ func (q *Queries) BuscarSessaoPorHash(ctx context.Context, tokenHash string) (Bu
 		&i.UsuarioPapel,
 		&i.UsuarioAtivo,
 		&i.UsuarioTema,
+		&i.UsuarioDeveTrocarPin,
 	)
 	return i, err
 }
@@ -108,6 +111,21 @@ func (q *Queries) CriarSessao(ctx context.Context, arg CriarSessaoParams) (Sesso
 		&i.CriadoEm,
 	)
 	return i, err
+}
+
+const deletarOutrasSessoesUsuario = `-- name: DeletarOutrasSessoesUsuario :exec
+DELETE FROM sessoes
+WHERE usuario_id = $1 AND id <> $2
+`
+
+type DeletarOutrasSessoesUsuarioParams struct {
+	UsuarioID pgtype.UUID `json:"usuario_id"`
+	ID        pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) DeletarOutrasSessoesUsuario(ctx context.Context, arg DeletarOutrasSessoesUsuarioParams) error {
+	_, err := q.db.Exec(ctx, deletarOutrasSessoesUsuario, arg.UsuarioID, arg.ID)
+	return err
 }
 
 const deletarSessaoPorHash = `-- name: DeletarSessaoPorHash :exec

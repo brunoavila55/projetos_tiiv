@@ -73,6 +73,11 @@
 	let fTitulo = $state('');
 	let fCategoria = $state('');
 	let fCorpo = $state('');
+
+	// Detector simples de segredos no texto (o conteúdo ativo é público)
+	const padraoSegredo = /\b(senha|password|passwd|pwd|token|api[\s_-]?key|chave|secret|segredo)\s*[:=]/i;
+	let pareceSegredo = $derived(padraoSegredo.test(fCorpo));
+
 	let fAtivo = $state(true);
 	let salvando = $state(false);
 	let textarea = $state<HTMLTextAreaElement | null>(null);
@@ -423,6 +428,18 @@
 
 				{#if aba === 'texto'}
 					<div class="flex-1 min-h-0 flex flex-col px-5 sm:px-6 py-4 gap-4">
+						<div class="alert {pareceSegredo ? 'bg-danger-soft text-danger' : 'bg-warn-soft text-ink'}" role={pareceSegredo ? 'alert' : 'note'}>
+							<ShieldAlert class="size-4 shrink-0" />
+							<span>
+								{#if pareceSegredo}
+									O texto parece conter senha, token ou chave. Procedimentos ativos podem ser lidos
+									<strong>sem login</strong> pelo tira-dúvidas; remova o segredo antes de salvar.
+								{:else}
+									Procedimentos ativos podem ser lidos <strong>sem login</strong> na tela de acesso. Não escreva senhas,
+									tokens, IPs ou ramais internos; para guardar algo só para a equipe, deixe o procedimento inativo.
+								{/if}
+							</span>
+						</div>
 						<div class="grid gap-3 sm:grid-cols-[1fr_14rem_auto] sm:items-end">
 							<div>
 								<label class="label" for="p-titulo">Título</label>

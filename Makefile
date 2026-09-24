@@ -1,6 +1,12 @@
 .PHONY: dev build sqlc migrate migrate-down test restore docker-up docker-down docker-logs
 
-DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/tiiv?sslmode=disable
+# Segredos e demais variáveis vêm do .env (copie de .env.example)
+-include .env
+export
+
+APP_DB_USER ?= tiiv_app
+POSTGRES_DB ?= tiiv
+DATABASE_URL ?= postgres://$(APP_DB_USER):$(APP_DB_PASSWORD)@localhost:5432/$(POSTGRES_DB)?sslmode=disable
 
 dev:
 	@echo "Iniciando ambiente local..."

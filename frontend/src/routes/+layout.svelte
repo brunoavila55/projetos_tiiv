@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/auth.svelte';
 	import PdvLogin from '$lib/components/PdvLogin.svelte';
+	import TrocarPinInicial from '$lib/components/TrocarPinInicial.svelte';
 	import Navbar from '$lib/components/Navbar.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 
@@ -26,6 +27,8 @@
 	</div>
 {:else if !auth.user}
 	<PdvLogin />
+{:else if auth.user.deve_trocar_pin}
+	<TrocarPinInicial />
 {:else}
 	<div class="min-h-screen bg-paper text-ink">
 		<Navbar />

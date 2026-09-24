@@ -57,6 +57,10 @@ docker exec -i "$BACKUP_CONTAINER" pg_restore \
   --no-privileges \
   "$DUMP_FILE" || true
 
+# O pg_restore cria tudo como superusuário; devolve as tabelas ao papel do app
+echo "Devolvendo as tabelas ao papel da aplicação..."
+docker exec -e POSTGRES_DB="$TARGET_DB" "$POSTGRES_CONTAINER" sh /docker-entrypoint-initdb.d/10-papel-app.sh
+
 echo "================================================================="
 echo "Restauração do backup concluída com sucesso no banco '$TARGET_DB'!"
 echo "================================================================="
