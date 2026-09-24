@@ -44,11 +44,15 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	estoqueHandler := handlers.NewEstoqueHandler(db)
 	painelHandler := handlers.NewPainelHandler(db)
 	tecnicoHandler := handlers.NewTecnicoHandler(db)
+	ticketHandler := handlers.NewTicketHandler(db)
 
 	// Rotas sob /api
 	r.Route("/api", func(api chi.Router) {
 		// Rotas públicas
 		api.Get("/health", healthHandler.Health)
+
+		// Abertura de ticket sem login (tela de acesso)
+		api.Post("/tickets/publico", ticketHandler.CriarPublico)
 
 		api.Route("/auth", func(auth chi.Router) {
 			auth.Get("/usuarios", authHandler.ListarUsuariosPublico)
@@ -108,6 +112,14 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 					adminEst.Put("/itens/{id}", estoqueHandler.AtualizarItem)
 					adminEst.Delete("/itens/{id}", estoqueHandler.ExcluirItem)
 				})
+			})
+
+			// Tickets: fila aberta pela tela de acesso; resgatar vira tarefa
+			protected.Route("/tickets", func(tk chi.Router) {
+				tk.Get("/", ticketHandler.Listar)
+				tk.Get("/resumo", ticketHandler.Resumo)
+				tk.Post("/{id}/resgatar", ticketHandler.Resgatar)
+				tk.With(authMiddleware.RequireAdmin).Post("/{id}/descartar", ticketHandler.Descartar)
 			})
 
 			// Técnicos: cadastro, entrada/saída e relatórios

@@ -110,6 +110,21 @@ type Tecnicos struct {
 	CriadoEm pgtype.Timestamptz `json:"criado_em"`
 }
 
+type Tickets struct {
+	ID              pgtype.UUID        `json:"id"`
+	Numero          int64              `json:"numero"`
+	SolicitanteNome string             `json:"solicitante_nome"`
+	Titulo          string             `json:"titulo"`
+	Descricao       string             `json:"descricao"`
+	Prioridade      string             `json:"prioridade"`
+	Status          string             `json:"status"`
+	TarefaID        pgtype.UUID        `json:"tarefa_id"`
+	TratadoPor      pgtype.UUID        `json:"tratado_por"`
+	TratadoEm       pgtype.Timestamptz `json:"tratado_em"`
+	OrigemIp        string             `json:"origem_ip"`
+	CriadoEm        pgtype.Timestamptz `json:"criado_em"`
+}
+
 type UsuarioFotos struct {
 	UsuarioID    pgtype.UUID        `json:"usuario_id"`
 	Conteudo     []byte             `json:"conteudo"`

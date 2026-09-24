@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { ticketsStore } from '$lib/tickets.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { themeStore } from '$lib/theme.svelte';
 	import Avatar from './Avatar.svelte';
@@ -9,6 +11,7 @@
 		CheckSquare,
 		Package,
 		HardHat,
+		Inbox,
 		Users,
 		LogOut,
 		Menu,
@@ -20,8 +23,16 @@
 
 	let mobileMenuOpen = $state(false);
 
+	// Contador de tickets abertos no menu, atualizado a cada minuto
+	onMount(() => {
+		ticketsStore.atualizar();
+		const timer = setInterval(() => ticketsStore.atualizar(), 60_000);
+		return () => clearInterval(timer);
+	});
+
 	const links = [
 		{ href: '/', label: 'Painel', icon: LayoutDashboard },
+		{ href: '/tickets', label: 'Tickets', icon: Inbox },
 		{ href: '/tarefas', label: 'Tarefas', icon: CheckSquare },
 		{ href: '/calendario', label: 'Calendário', icon: Calendar },
 		{ href: '/estoque', label: 'Estoque', icon: Package },
@@ -71,6 +82,12 @@
 			>
 				<Icon class="size-[18px] {ativo ? 'text-accent' : 'text-ink-3'}" strokeWidth={ativo ? 2.25 : 2} />
 				<span>{item.label}</span>
+				{#if item.href === '/tickets' && ticketsStore.abertos > 0}
+					<span
+						class="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-accent text-on-accent text-xs font-bold grid place-items-center tabular"
+						aria-label="{ticketsStore.abertos} tickets abertos">{ticketsStore.abertos}</span
+					>
+				{/if}
 			</a>
 		{/each}
 

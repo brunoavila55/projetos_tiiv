@@ -1119,3 +1119,120 @@ func TestPIN_ExatamenteQuatroDigitos(t *testing.T) {
 		}
 	}
 }
+
+// -------------------------------------------------------------
+// Tickets: abertura sem login, resgate vira tarefa, sem resgate duplo
+// -------------------------------------------------------------
+func TestTickets_AberturaPublicaEResgate(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+	ctx := context.Background()
+
+	users, err := env.db.Queries.ListarTodosUsuarios(ctx)
+	if err != nil || len(users) == 0 {
+		t.Fatalf("nenhum usuário no banco")
+	}
+	adminCookie, _, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
+
+	_, resU, _ := env.doRequest(http.MethodPost, "/api/usuarios", adminCookie, map[string]any{
+		"nome": fmt.Sprintf("Op Tickets %d", time.Now().UnixNano()), "cor": "#10B981", "pin": "7575", "papel": "usuario",
+	})
+	opID := resU["id"].(string)
+	opCookie, _, _ := env.login(t, opID, "7575")
+
+	var criados []string
+	defer func() {
+		for _, id := range criados {
+			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM tarefas WHERE id = (SELECT tarefa_id FROM tickets WHERE id = $1)", id)
+			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM tickets WHERE id = $1", id)
+		}
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM sessoes WHERE usuario_id = $1", opID)
+		_, _ = env.db.Pool.Exec(ctx, "DELETE FROM usuarios WHERE id = $1", opID)
+	}()
+
+	abrir := func(titulo string) (int, map[string]any) {
+		resp, res, _ := env.doRequest(http.MethodPost, "/api/tickets/publico", nil, map[string]any{
+			"solicitante_nome": "Recepção", "titulo": titulo, "descricao": "Impressora sem papel", "prioridade": "alta",
+		})
+		if id, ok := res["id"].(string); ok {
+			criados = append(criados, id)
+		}
+		return resp.StatusCode, res
+	}
+
+	// Validação: campos obrigatórios
+	resp, _, _ := env.doRequest(http.MethodPost, "/api/tickets/publico", nil, map[string]any{"solicitante_nome": "X"})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("ticket sem assunto/descrição: esperado 400, obteve %d", resp.StatusCode)
+	}
+
+	// Abertura sem login
+	status, res := abrir("Impressora")
+	if status != http.StatusCreated || res["numero"] == nil {
+		t.Fatalf("abertura pública: esperado 201 com número, obteve %d %v", status, res)
+	}
+	ticketID := res["id"].(string)
+
+	// Listagem exige login
+	resp, _, _ = env.doRequest(http.MethodGet, "/api/tickets/resumo", nil, nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("resumo sem login: esperado 401, obteve %d", resp.StatusCode)
+	}
+
+	// Operador comum não descarta
+	resp, _, _ = env.doRequest(http.MethodPost, "/api/tickets/"+ticketID+"/descartar", opCookie, nil)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("operador descartando: esperado 403, obteve %d", resp.StatusCode)
+	}
+
+	// 10 resgates simultâneos: só um vence
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	codigos := map[int]int{}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r, _, err := env.doRequest(http.MethodPost, "/api/tickets/"+ticketID+"/resgatar", opCookie, nil)
+			if err == nil {
+				mu.Lock()
+				codigos[r.StatusCode]++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if codigos[http.StatusOK] != 1 || codigos[http.StatusConflict] != 9 {
+		t.Errorf("resgates simultâneos: esperado 1x200 e 9x409, obteve %v", codigos)
+	}
+
+	// A tarefa gerada aparece em "Minhas tarefas" do operador
+	req, _ := http.NewRequest(http.MethodGet, env.server.URL+"/api/tarefas?visao=minhas", nil)
+	req.AddCookie(opCookie)
+	httpResp, err := env.client.Do(req)
+	if err != nil {
+		t.Fatalf("erro ao listar tarefas: %v", err)
+	}
+	defer httpResp.Body.Close()
+	var tarefas []map[string]any
+	_ = json.NewDecoder(httpResp.Body).Decode(&tarefas)
+	achou := false
+	for _, tf := range tarefas {
+		if titulo, _ := tf["titulo"].(string); strings.HasSuffix(titulo, ": Impressora") && tf["prioridade"] == "alta" {
+			achou = true
+		}
+	}
+	if !achou {
+		t.Errorf("tarefa do ticket não apareceu em Minhas tarefas: %v", tarefas)
+	}
+
+	// Limite de envios por IP (a primeira abertura já contou)
+	for i := 0; i < 4; i++ {
+		if st, _ := abrir("Spam"); st != http.StatusCreated {
+			t.Fatalf("abertura %d dentro do limite: esperado 201, obteve %d", i+2, st)
+		}
+	}
+	if st, _ := abrir("Spam"); st != http.StatusTooManyRequests {
+		t.Errorf("6ª abertura: esperado 429, obteve %d", st)
+	}
+}

@@ -24,6 +24,7 @@ type Querier interface {
 	AtualizarUltimoUsoSessao(ctx context.Context, arg AtualizarUltimoUsoSessaoParams) error
 	AtualizarUsuario(ctx context.Context, arg AtualizarUsuarioParams) (AtualizarUsuarioRow, error)
 	BloquearItemEstoqueParaAtualizacao(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
+	BloquearTicket(ctx context.Context, id pgtype.UUID) (Tickets, error)
 	BuscarComentarioPorID(ctx context.Context, id pgtype.UUID) (TarefaComentarios, error)
 	BuscarEventoPorID(ctx context.Context, id pgtype.UUID) (Eventos, error)
 	BuscarItemEstoquePorID(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
@@ -36,6 +37,7 @@ type Querier interface {
 	ContarAdminsAtivos(ctx context.Context) (int64, error)
 	ContarMovimentacoesItem(ctx context.Context, itemID pgtype.UUID) (int64, error)
 	ContarRegistrosTecnicos(ctx context.Context, arg ContarRegistrosTecnicosParams) (int64, error)
+	ContarTicketsAbertos(ctx context.Context) (int64, error)
 	ContarUsuarios(ctx context.Context) (int64, error)
 	CriarComentarioTarefa(ctx context.Context, arg CriarComentarioTarefaParams) (TarefaComentarios, error)
 	CriarEvento(ctx context.Context, arg CriarEventoParams) (Eventos, error)
@@ -44,6 +46,7 @@ type Querier interface {
 	CriarSessao(ctx context.Context, arg CriarSessaoParams) (Sessoes, error)
 	CriarTarefa(ctx context.Context, arg CriarTarefaParams) (Tarefas, error)
 	CriarTecnico(ctx context.Context, arg CriarTecnicoParams) (Tecnicos, error)
+	CriarTicket(ctx context.Context, arg CriarTicketParams) (Tickets, error)
 	CriarUsuario(ctx context.Context, arg CriarUsuarioParams) (CriarUsuarioRow, error)
 	DeletarComentarioTarefa(ctx context.Context, id pgtype.UUID) error
 	DeletarEvento(ctx context.Context, id pgtype.UUID) error
@@ -68,8 +71,10 @@ type Querier interface {
 	ListarTarefas(ctx context.Context, arg ListarTarefasParams) ([]ListarTarefasRow, error)
 	ListarTarefasPendentesUsuario(ctx context.Context, responsavelID pgtype.UUID) ([]ListarTarefasPendentesUsuarioRow, error)
 	ListarTecnicos(ctx context.Context, ativo pgtype.Bool) ([]ListarTecnicosRow, error)
+	ListarTickets(ctx context.Context, status pgtype.Text) ([]ListarTicketsRow, error)
 	ListarTodosUsuarios(ctx context.Context) ([]ListarTodosUsuariosRow, error)
 	ListarUsuariosAtivos(ctx context.Context) ([]ListarUsuariosAtivosRow, error)
+	MarcarTicketTratado(ctx context.Context, arg MarcarTicketTratadoParams) (Tickets, error)
 	ObterFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (ObterFotoUsuarioRow, error)
 	ObterUltimaMovimentacaoItem(ctx context.Context, itemID pgtype.UUID) (MovimentacoesEstoque, error)
 	ObterVersaoFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (pgtype.Timestamptz, error)
