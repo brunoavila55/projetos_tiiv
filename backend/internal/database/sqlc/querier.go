@@ -12,7 +12,6 @@ import (
 
 type Querier interface {
 	AdicionarParticipanteEvento(ctx context.Context, arg AdicionarParticipanteEventoParams) error
-	AtualizarAtendimento(ctx context.Context, arg AtualizarAtendimentoParams) (Atendimentos, error)
 	AtualizarEvento(ctx context.Context, arg AtualizarEventoParams) (Eventos, error)
 	AtualizarItemEstoque(ctx context.Context, arg AtualizarItemEstoqueParams) (ItensEstoque, error)
 	AtualizarPin(ctx context.Context, arg AtualizarPinParams) (pgtype.UUID, error)
@@ -25,7 +24,6 @@ type Querier interface {
 	AtualizarUltimoUsoSessao(ctx context.Context, arg AtualizarUltimoUsoSessaoParams) error
 	AtualizarUsuario(ctx context.Context, arg AtualizarUsuarioParams) (AtualizarUsuarioRow, error)
 	BloquearItemEstoqueParaAtualizacao(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
-	BuscarAtendimentoPorID(ctx context.Context, id pgtype.UUID) (BuscarAtendimentoPorIDRow, error)
 	BuscarComentarioPorID(ctx context.Context, id pgtype.UUID) (TarefaComentarios, error)
 	BuscarEventoPorID(ctx context.Context, id pgtype.UUID) (Eventos, error)
 	BuscarItemEstoquePorID(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
@@ -36,11 +34,9 @@ type Querier interface {
 	BuscarUsuarioPorID(ctx context.Context, id pgtype.UUID) (BuscarUsuarioPorIDRow, error)
 	BuscarUsuarioPorIDComPin(ctx context.Context, id pgtype.UUID) (Usuarios, error)
 	ContarAdminsAtivos(ctx context.Context) (int64, error)
-	ContarAtendimentos(ctx context.Context, arg ContarAtendimentosParams) (int64, error)
 	ContarMovimentacoesItem(ctx context.Context, itemID pgtype.UUID) (int64, error)
 	ContarRegistrosTecnicos(ctx context.Context, arg ContarRegistrosTecnicosParams) (int64, error)
 	ContarUsuarios(ctx context.Context) (int64, error)
-	CriarAtendimento(ctx context.Context, arg CriarAtendimentoParams) (Atendimentos, error)
 	CriarComentarioTarefa(ctx context.Context, arg CriarComentarioTarefaParams) (TarefaComentarios, error)
 	CriarEvento(ctx context.Context, arg CriarEventoParams) (Eventos, error)
 	CriarItemEstoque(ctx context.Context, arg CriarItemEstoqueParams) (ItensEstoque, error)
@@ -49,7 +45,6 @@ type Querier interface {
 	CriarTarefa(ctx context.Context, arg CriarTarefaParams) (Tarefas, error)
 	CriarTecnico(ctx context.Context, arg CriarTecnicoParams) (Tecnicos, error)
 	CriarUsuario(ctx context.Context, arg CriarUsuarioParams) (CriarUsuarioRow, error)
-	DeletarAtendimento(ctx context.Context, id pgtype.UUID) error
 	DeletarComentarioTarefa(ctx context.Context, id pgtype.UUID) error
 	DeletarEvento(ctx context.Context, id pgtype.UUID) error
 	DeletarItemEstoque(ctx context.Context, id pgtype.UUID) error
@@ -61,7 +56,6 @@ type Querier interface {
 	DesativarItemEstoque(ctx context.Context, id pgtype.UUID) error
 	DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (DesbloquearUsuarioRow, error)
 	IncrementarTentativasFalhas(ctx context.Context, id pgtype.UUID) (IncrementarTentativasFalhasRow, error)
-	ListarAtendimentos(ctx context.Context, arg ListarAtendimentosParams) ([]ListarAtendimentosRow, error)
 	ListarCategoriasEstoque(ctx context.Context) ([]string, error)
 	ListarComentariosTarefa(ctx context.Context, tarefaID pgtype.UUID) ([]ListarComentariosTarefaRow, error)
 	ListarEventosIntervalo(ctx context.Context, arg ListarEventosIntervaloParams) ([]ListarEventosIntervaloRow, error)

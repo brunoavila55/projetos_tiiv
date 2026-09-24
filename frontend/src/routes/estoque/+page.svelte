@@ -564,7 +564,7 @@
 							id="mov-motivo"
 							type="text"
 							bind:value={movMotivo}
-							placeholder={movTipo === 'saida' ? 'Ex.: Usado no atendimento da recepção' : movTipo === 'ajuste' ? 'Ex.: Inventário mensal' : 'Ex.: Reposição de compra'}
+							placeholder={movTipo === 'saida' ? 'Ex.: Usado na manutenção da recepção' : movTipo === 'ajuste' ? 'Ex.: Inventário mensal' : 'Ex.: Reposição de compra'}
 							class="field"
 						/>
 					</div>

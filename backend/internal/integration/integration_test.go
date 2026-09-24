@@ -485,64 +485,6 @@ func TestCalendario_IntervalFilter(t *testing.T) {
 }
 
 // -------------------------------------------------------------
-// P2.1: Teste 5 - Busca de atendimentos com unaccent (acentos e caixa)
-// -------------------------------------------------------------
-func TestAtendimentos_UnaccentSearch(t *testing.T) {
-	env := setupTestEnv(t)
-	defer env.teardown()
-
-	users, _ := env.db.Queries.ListarTodosUsuarios(context.Background())
-	adminCookie, _, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
-
-	// Inserir atendimento com acentuação e caixa mista
-	clienteNome := fmt.Sprintf("Clínica São Cristóvão %d", time.Now().UnixNano())
-	descricao := "Substituição e Manutenção de roteador óptico"
-
-	respAt, resAt, err := env.doRequest(http.MethodPost, "/api/atendimentos", adminCookie, map[string]any{
-		"cliente_nome": clienteNome,
-		"descricao":    descricao,
-	})
-	if err != nil || respAt.StatusCode != http.StatusCreated {
-		t.Fatalf("erro ao criar atendimento: status %d, err %v", respAt.StatusCode, err)
-	}
-	atID := resAt["id"].(string)
-
-	// Testar buscas sem acento e em minúsculas/maiúsculas
-	consultas := []string{
-		"clinica",
-		"sao cristovao",
-		"MANUTENCAO",
-		"substituicao",
-		"optico",
-	}
-
-	for _, termo := range consultas {
-		reqURL := fmt.Sprintf("/api/atendimentos?busca=%s", url.QueryEscape(termo))
-		req, _ := http.NewRequest(http.MethodGet, env.server.URL+reqURL, nil)
-		req.AddCookie(adminCookie)
-		resp, _ := env.client.Do(req)
-
-		var respData struct {
-			Itens []map[string]any `json:"itens"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&respData)
-		resp.Body.Close()
-
-		encontrou := false
-		for _, item := range respData.Itens {
-			if item["id"] == atID {
-				encontrou = true
-				break
-			}
-		}
-
-		if !encontrou {
-			t.Errorf("busca por '%s' falhou em encontrar o atendimento com unaccent", termo)
-		}
-	}
-}
-
-// -------------------------------------------------------------
 // P2.3: Teste 6 - Recuperação de panic sem derrubar o servidor
 // -------------------------------------------------------------
 func TestRecoverer_PanicRecovery(t *testing.T) {
@@ -630,35 +572,7 @@ func TestCSV_Exports(t *testing.T) {
 		t.Fatalf("falha ao logar como admin: status %d", status)
 	}
 
-	// 1. Exportar Atendimentos CSV
-	reqAt, _ := http.NewRequest(http.MethodGet, env.server.URL+"/api/atendimentos/exportar.csv", nil)
-	reqAt.AddCookie(adminCookie)
-	respAt, err := env.client.Do(reqAt)
-	if err != nil || respAt.StatusCode != http.StatusOK {
-		t.Fatalf("falha ao exportar atendimentos CSV: status %d, err %v", respAt.StatusCode, err)
-	}
-	defer respAt.Body.Close()
-
-	ct := respAt.Header.Get("Content-Type")
-	if ct != "text/csv; charset=utf-8" {
-		t.Errorf("Content-Type esperado 'text/csv; charset=utf-8', obteve '%s'", ct)
-	}
-
-	buf := new(bytes.Buffer)
-	_, _ = buf.ReadFrom(respAt.Body)
-	bytesAt := buf.Bytes()
-
-	// Checar UTF-8 BOM (0xEF, 0xBB, 0xBF)
-	if len(bytesAt) < 3 || bytesAt[0] != 0xEF || bytesAt[1] != 0xBB || bytesAt[2] != 0xBF {
-		t.Errorf("exportação de atendimentos não possui UTF-8 BOM no início")
-	}
-
-	conteudoAt := string(bytesAt[3:])
-	if !bytes.Contains([]byte(conteudoAt), []byte("Data/Hora;Cliente;Descrição;Técnico Responsável")) {
-		t.Errorf("cabeçalhos com ';' esperados não encontrados em atendimentos CSV: %s", conteudoAt[:min(len(conteudoAt), 100)])
-	}
-
-	// 2. Exportar Movimentações Estoque CSV
+	// Exportar Movimentações Estoque CSV
 	reqEst, _ := http.NewRequest(http.MethodGet, env.server.URL+"/api/estoque/movimentacoes/exportar.csv", nil)
 	reqEst.AddCookie(adminCookie)
 	respEst, err := env.client.Do(reqEst)
@@ -1027,9 +941,9 @@ func TestTecnicos_EntradaSaidaRelatorio(t *testing.T) {
 }
 
 // -------------------------------------------------------------
-// Visibilidade: operador vê só os próprios atendimentos e tarefas; admin vê tudo
+// Visibilidade: operador vê só as próprias tarefas; admin vê tudo
 // -------------------------------------------------------------
-func TestVisibilidade_TarefasEAtendimentosIndividuais(t *testing.T) {
+func TestVisibilidade_TarefasIndividuais(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 	ctx := context.Background()
@@ -1053,7 +967,6 @@ func TestVisibilidade_TarefasEAtendimentosIndividuais(t *testing.T) {
 	defer func() {
 		for _, id := range []string{idA, idB, idC} {
 			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM tarefas WHERE criado_por = $1 OR responsavel_id = $1", id)
-			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM atendimentos WHERE usuario_id = $1", id)
 			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM sessoes WHERE usuario_id = $1", id)
 			_, _ = env.db.Pool.Exec(ctx, "DELETE FROM usuarios WHERE id = $1", id)
 		}
@@ -1074,33 +987,6 @@ func TestVisibilidade_TarefasEAtendimentosIndividuais(t *testing.T) {
 			_ = json.NewDecoder(resp.Body).Decode(out)
 		}
 		return resp.StatusCode
-	}
-
-	// Atendimento de A
-	_, resAt, _ := env.doRequest(http.MethodPost, "/api/atendimentos", cookieA, map[string]any{
-		"cliente_nome": fmt.Sprintf("Cliente Visib %d", sufixo), "descricao": "teste",
-	})
-	atID := resAt["id"].(string)
-	busca := url.QueryEscape(fmt.Sprintf("Cliente Visib %d", sufixo))
-
-	var lista struct {
-		Total int `json:"total"`
-	}
-	getJSON("/api/atendimentos?busca="+busca, cookieA, &lista)
-	if lista.Total != 1 {
-		t.Errorf("autor deveria ver o próprio atendimento, total=%d", lista.Total)
-	}
-	// B tenta até forçar o filtro pelo usuário A
-	getJSON("/api/atendimentos?busca="+busca+"&usuario_id="+idA, cookieB, &lista)
-	if lista.Total != 0 {
-		t.Errorf("outro operador não deveria ver o atendimento, total=%d", lista.Total)
-	}
-	if st := getJSON("/api/atendimentos/"+atID, cookieB, nil); st != http.StatusNotFound {
-		t.Errorf("outro operador abrindo atendimento: esperado 404, obteve %d", st)
-	}
-	getJSON("/api/atendimentos?busca="+busca, adminCookie, &lista)
-	if lista.Total != 1 {
-		t.Errorf("admin deveria ver o atendimento, total=%d", lista.Total)
 	}
 
 	// Tarefa criada por A e atribuída a B: A e B veem, C não

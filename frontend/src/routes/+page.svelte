@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { Calendar, CheckSquare, Headphones, Plus, Flag } from 'lucide-svelte';
+	import { Calendar, CheckSquare, Plus, Flag } from 'lucide-svelte';
 
 	interface PainelDados {
 		proximos_eventos: {
@@ -90,11 +90,7 @@
 			<h1 class="page-title mt-0.5">{saudacao()}, {primeiroNome(auth.user?.nome)}</h1>
 		</div>
 		<div class="flex flex-wrap gap-2">
-			<a href="/atendimentos" class="btn btn-primary">
-				<Headphones class="size-4" />
-				<span>Registrar atendimento</span>
-			</a>
-			<a href="/tarefas" class="btn btn-secondary">
+			<a href="/tarefas" class="btn btn-primary">
 				<Plus class="size-4" />
 				<span>Nova tarefa</span>
 			</a>
@@ -168,9 +164,8 @@
 		</div>
 
 		<!-- Atalhos -->
-		<nav class="grid grid-cols-2 md:grid-cols-3 gap-3" aria-label="Atalhos">
+		<nav class="grid grid-cols-2 gap-3" aria-label="Atalhos">
 			{#each [
-				{ href: '/atendimentos', label: 'Atendimentos', desc: 'Histórico e busca', icon: Headphones },
 				{ href: '/tarefas', label: 'Tarefas', desc: 'Quadro da equipe', icon: CheckSquare },
 				{ href: '/calendario', label: 'Calendário', desc: 'Reuniões da semana', icon: Calendar }
 			] as atalho}

@@ -6,7 +6,6 @@
 	import {
 		LayoutDashboard,
 		Calendar,
-		Headphones,
 		CheckSquare,
 		Package,
 		HardHat,
@@ -23,7 +22,6 @@
 
 	const links = [
 		{ href: '/', label: 'Painel', icon: LayoutDashboard },
-		{ href: '/atendimentos', label: 'Atendimentos', icon: Headphones },
 		{ href: '/tarefas', label: 'Tarefas', icon: CheckSquare },
 		{ href: '/calendario', label: 'Calendário', icon: Calendar },
 		{ href: '/estoque', label: 'Estoque', icon: Package },

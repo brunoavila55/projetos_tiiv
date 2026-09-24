@@ -1,7 +1,7 @@
 {
   "name": "Projetos NOC",
   "short_name": "Projetos NOC",
-  "description": "Sistema Integrado de Gestão de Atendimentos, Estoque, Calendário e Tarefas - Projetos NOC",
+  "description": "Sistema Integrado de Gestão de Tarefas, Calendário, Estoque e Técnicos - Projetos NOC",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

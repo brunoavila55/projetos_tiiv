@@ -2,9 +2,9 @@
 
 Aplicação web interna para uso de equipe em rede local (LAN), englobando:
 1. **Calendário**: Reuniões e eventos entre membros da equipe.
-2. **Atendimentos**: Registro ágil de atendimentos (nome de cliente texto livre + descrição).
-3. **Tarefas**: Gestão de pendências com status, prioridade e responsáveis.
-4. **Estoque**: Controle material baseado em movimentações transacionais (entrada/saída/ajuste).
+2. **Tarefas**: Gestão de pendências com status, prioridade e responsáveis.
+3. **Estoque**: Controle material baseado em movimentações transacionais (entrada/saída/ajuste).
+4. **Técnicos**: Cadastro de técnicos, marcação de entrada/saída e relatório de horas.
 5. **Acesso PDV**: Terminal com seleção visual de operador e PIN numérico de 4 dígitos.
 
 ---

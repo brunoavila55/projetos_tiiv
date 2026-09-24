@@ -40,7 +40,6 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	authHandler := handlers.NewAuthHandler(db, cfg)
 	usuarioHandler := handlers.NewUsuarioHandler(db, cfg)
 	eventoHandler := handlers.NewEventoHandler(db)
-	atendimentoHandler := handlers.NewAtendimentoHandler(db)
 	tarefaHandler := handlers.NewTarefaHandler(db)
 	estoqueHandler := handlers.NewEstoqueHandler(db)
 	painelHandler := handlers.NewPainelHandler(db)
@@ -79,16 +78,6 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 				e.Post("/", eventoHandler.Criar)
 				e.Put("/{id}", eventoHandler.Atualizar)
 				e.Delete("/{id}", eventoHandler.Deletar)
-			})
-
-			// Atendimentos
-			protected.Route("/atendimentos", func(a chi.Router) {
-				a.Get("/exportar.csv", atendimentoHandler.ExportarCSV)
-				a.Get("/", atendimentoHandler.Listar)
-				a.Post("/", atendimentoHandler.Criar)
-				a.Get("/{id}", atendimentoHandler.Obter)
-				a.Put("/{id}", atendimentoHandler.Atualizar)
-				a.Delete("/{id}", atendimentoHandler.Deletar)
 			})
 
 			// Tarefas
