@@ -14,9 +14,9 @@ import (
 const atualizarPlantao = `-- name: AtualizarPlantao :one
 UPDATE plantoes
 SET nome = $2, tipo = $3, cidade = $4, inicio = $5, fim = $6, observacao = $7,
-    folga_inicio = $8, folga_fim = $9, atualizado_em = now()
+    folga_inicio = $8, folga_fim = $9, periodo = $10, atualizado_em = now()
 WHERE id = $1
-RETURNING id, tipo, inicio, fim, observacao, criado_por, criado_em, atualizado_em, setor_id, nome, folga_inicio, folga_fim, cidade
+RETURNING id, tipo, inicio, fim, observacao, criado_por, criado_em, atualizado_em, setor_id, nome, folga_inicio, folga_fim, cidade, periodo
 `
 
 type AtualizarPlantaoParams struct {
@@ -29,6 +29,7 @@ type AtualizarPlantaoParams struct {
 	Observacao  string      `json:"observacao"`
 	FolgaInicio pgtype.Date `json:"folga_inicio"`
 	FolgaFim    pgtype.Date `json:"folga_fim"`
+	Periodo     pgtype.Text `json:"periodo"`
 }
 
 func (q *Queries) AtualizarPlantao(ctx context.Context, arg AtualizarPlantaoParams) (Plantoes, error) {
@@ -42,6 +43,7 @@ func (q *Queries) AtualizarPlantao(ctx context.Context, arg AtualizarPlantaoPara
 		arg.Observacao,
 		arg.FolgaInicio,
 		arg.FolgaFim,
+		arg.Periodo,
 	)
 	var i Plantoes
 	err := row.Scan(
@@ -58,12 +60,13 @@ func (q *Queries) AtualizarPlantao(ctx context.Context, arg AtualizarPlantaoPara
 		&i.FolgaInicio,
 		&i.FolgaFim,
 		&i.Cidade,
+		&i.Periodo,
 	)
 	return i, err
 }
 
 const buscarConflitoFolga = `-- name: BuscarConflitoFolga :one
-SELECT inicio, fim, folga_inicio, folga_fim, tipo, cidade
+SELECT inicio, fim, folga_inicio, folga_fim, tipo, cidade, periodo
 FROM plantoes
 WHERE setor_id = $1
   AND lower(nome) = lower($2)
@@ -94,6 +97,7 @@ type BuscarConflitoFolgaRow struct {
 	FolgaFim    pgtype.Date `json:"folga_fim"`
 	Tipo        string      `json:"tipo"`
 	Cidade      pgtype.Text `json:"cidade"`
+	Periodo     pgtype.Text `json:"periodo"`
 }
 
 // Ninguém trabalha na própria folga: nem turno novo sobre uma folga já
@@ -116,19 +120,21 @@ func (q *Queries) BuscarConflitoFolga(ctx context.Context, arg BuscarConflitoFol
 		&i.FolgaFim,
 		&i.Tipo,
 		&i.Cidade,
+		&i.Periodo,
 	)
 	return i, err
 }
 
 const buscarConflitoPlantao = `-- name: BuscarConflitoPlantao :one
-SELECT inicio, fim, nome, cidade
+SELECT inicio, fim, nome, cidade, periodo
 FROM plantoes
 WHERE setor_id = $1
   AND lower(nome) = lower($2)
   AND tipo = $3
-  AND fim >= $4::date
-  AND inicio <= $5::date
-  AND ($6::uuid IS NULL OR id <> $6)
+  AND periodo IS NOT DISTINCT FROM $4
+  AND fim >= $5::date
+  AND inicio <= $6::date
+  AND ($7::uuid IS NULL OR id <> $7)
 ORDER BY inicio
 LIMIT 1
 `
@@ -137,25 +143,29 @@ type BuscarConflitoPlantaoParams struct {
 	SetorID   pgtype.UUID `json:"setor_id"`
 	Nome      string      `json:"nome"`
 	Tipo      string      `json:"tipo"`
+	Periodo   pgtype.Text `json:"periodo"`
 	Inicio    pgtype.Date `json:"inicio"`
 	Fim       pgtype.Date `json:"fim"`
 	IgnorarID pgtype.UUID `json:"ignorar_id"`
 }
 
 type BuscarConflitoPlantaoRow struct {
-	Inicio pgtype.Date `json:"inicio"`
-	Fim    pgtype.Date `json:"fim"`
-	Nome   string      `json:"nome"`
-	Cidade pgtype.Text `json:"cidade"`
+	Inicio  pgtype.Date `json:"inicio"`
+	Fim     pgtype.Date `json:"fim"`
+	Nome    string      `json:"nome"`
+	Cidade  pgtype.Text `json:"cidade"`
+	Periodo pgtype.Text `json:"periodo"`
 }
 
 // A mesma pessoa (pelo nome, sem diferenciar maiúsculas) não pode ter dois
-// turnos do mesmo tipo sobrepostos no setor, nem em cidades diferentes
+// turnos do mesmo tipo sobrepostos no setor, nem em cidades diferentes; no
+// interno, só conflita no mesmo período (manhã e tarde no mesmo dia pode)
 func (q *Queries) BuscarConflitoPlantao(ctx context.Context, arg BuscarConflitoPlantaoParams) (BuscarConflitoPlantaoRow, error) {
 	row := q.db.QueryRow(ctx, buscarConflitoPlantao,
 		arg.SetorID,
 		arg.Nome,
 		arg.Tipo,
+		arg.Periodo,
 		arg.Inicio,
 		arg.Fim,
 		arg.IgnorarID,
@@ -166,14 +176,15 @@ func (q *Queries) BuscarConflitoPlantao(ctx context.Context, arg BuscarConflitoP
 		&i.Fim,
 		&i.Nome,
 		&i.Cidade,
+		&i.Periodo,
 	)
 	return i, err
 }
 
 const criarPlantao = `-- name: CriarPlantao :one
-INSERT INTO plantoes (nome, tipo, cidade, inicio, fim, observacao, folga_inicio, folga_fim, criado_por, setor_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, tipo, inicio, fim, observacao, criado_por, criado_em, atualizado_em, setor_id, nome, folga_inicio, folga_fim, cidade
+INSERT INTO plantoes (nome, tipo, cidade, inicio, fim, observacao, folga_inicio, folga_fim, criado_por, setor_id, periodo)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, tipo, inicio, fim, observacao, criado_por, criado_em, atualizado_em, setor_id, nome, folga_inicio, folga_fim, cidade, periodo
 `
 
 type CriarPlantaoParams struct {
@@ -187,6 +198,7 @@ type CriarPlantaoParams struct {
 	FolgaFim    pgtype.Date `json:"folga_fim"`
 	CriadoPor   pgtype.UUID `json:"criado_por"`
 	SetorID     pgtype.UUID `json:"setor_id"`
+	Periodo     pgtype.Text `json:"periodo"`
 }
 
 func (q *Queries) CriarPlantao(ctx context.Context, arg CriarPlantaoParams) (Plantoes, error) {
@@ -201,6 +213,7 @@ func (q *Queries) CriarPlantao(ctx context.Context, arg CriarPlantaoParams) (Pla
 		arg.FolgaFim,
 		arg.CriadoPor,
 		arg.SetorID,
+		arg.Periodo,
 	)
 	var i Plantoes
 	err := row.Scan(
@@ -217,6 +230,7 @@ func (q *Queries) CriarPlantao(ctx context.Context, arg CriarPlantaoParams) (Pla
 		&i.FolgaInicio,
 		&i.FolgaFim,
 		&i.Cidade,
+		&i.Periodo,
 	)
 	return i, err
 }
@@ -259,12 +273,12 @@ func (q *Queries) ListarPessoasPlantao(ctx context.Context, setorID pgtype.UUID)
 }
 
 const listarPlantoesIntervalo = `-- name: ListarPlantoesIntervalo :many
-SELECT id, nome, tipo, cidade, inicio, fim, observacao, folga_inicio, folga_fim
+SELECT id, nome, tipo, cidade, periodo, inicio, fim, observacao, folga_inicio, folga_fim
 FROM plantoes
 WHERE setor_id = $1
   AND ((fim >= $2::date AND inicio <= $3::date)
     OR (folga_fim >= $2::date AND folga_inicio <= $3::date))
-ORDER BY inicio, tipo, cidade, nome
+ORDER BY inicio, tipo, cidade, periodo, nome
 `
 
 type ListarPlantoesIntervaloParams struct {
@@ -278,6 +292,7 @@ type ListarPlantoesIntervaloRow struct {
 	Nome        string      `json:"nome"`
 	Tipo        string      `json:"tipo"`
 	Cidade      pgtype.Text `json:"cidade"`
+	Periodo     pgtype.Text `json:"periodo"`
 	Inicio      pgtype.Date `json:"inicio"`
 	Fim         pgtype.Date `json:"fim"`
 	Observacao  string      `json:"observacao"`
@@ -300,6 +315,7 @@ func (q *Queries) ListarPlantoesIntervalo(ctx context.Context, arg ListarPlantoe
 			&i.Nome,
 			&i.Tipo,
 			&i.Cidade,
+			&i.Periodo,
 			&i.Inicio,
 			&i.Fim,
 			&i.Observacao,
@@ -317,7 +333,7 @@ func (q *Queries) ListarPlantoesIntervalo(ctx context.Context, arg ListarPlantoe
 }
 
 const obterPlantao = `-- name: ObterPlantao :one
-SELECT id, tipo, inicio, fim, observacao, criado_por, criado_em, atualizado_em, setor_id, nome, folga_inicio, folga_fim, cidade FROM plantoes WHERE id = $1 AND setor_id = $2
+SELECT id, tipo, inicio, fim, observacao, criado_por, criado_em, atualizado_em, setor_id, nome, folga_inicio, folga_fim, cidade, periodo FROM plantoes WHERE id = $1 AND setor_id = $2
 `
 
 type ObterPlantaoParams struct {
@@ -342,12 +358,13 @@ func (q *Queries) ObterPlantao(ctx context.Context, arg ObterPlantaoParams) (Pla
 		&i.FolgaInicio,
 		&i.FolgaFim,
 		&i.Cidade,
+		&i.Periodo,
 	)
 	return i, err
 }
 
 const proximoPlantaoPorNome = `-- name: ProximoPlantaoPorNome :one
-SELECT id, nome, tipo, cidade, inicio, fim, observacao, folga_inicio, folga_fim FROM plantoes
+SELECT id, nome, tipo, cidade, periodo, inicio, fim, observacao, folga_inicio, folga_fim FROM plantoes
 WHERE setor_id = $1 AND lower(nome) = lower($2) AND fim >= $3::date
 ORDER BY inicio
 LIMIT 1
@@ -364,6 +381,7 @@ type ProximoPlantaoPorNomeRow struct {
 	Nome        string      `json:"nome"`
 	Tipo        string      `json:"tipo"`
 	Cidade      pgtype.Text `json:"cidade"`
+	Periodo     pgtype.Text `json:"periodo"`
 	Inicio      pgtype.Date `json:"inicio"`
 	Fim         pgtype.Date `json:"fim"`
 	Observacao  string      `json:"observacao"`
@@ -380,6 +398,7 @@ func (q *Queries) ProximoPlantaoPorNome(ctx context.Context, arg ProximoPlantaoP
 		&i.Nome,
 		&i.Tipo,
 		&i.Cidade,
+		&i.Periodo,
 		&i.Inicio,
 		&i.Fim,
 		&i.Observacao,

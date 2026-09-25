@@ -3,6 +3,7 @@
 	import { ModoTV, lerChaveTV, esquecerChaveTV } from '$lib/modoTV.svelte';
 	import {
 		CIDADES,
+		PERIODOS,
 		daEscala,
 		ehDomingo,
 		proximoDomingo,
@@ -112,6 +113,7 @@
 	// Plantão interno (domingos e feriados): o de hoje ou o do próximo dia desses
 	const diaInterno = $derived(proximoDiaInterno(hoje, feriados));
 	const internoDoDia = $derived(escala.filter((t) => t.tipo === 'interno' && cobre(t, diaInterno)));
+	const internoPorPeriodo = $derived(PERIODOS.map((p) => ({ ...p, turnos: internoDoDia.filter((t) => t.periodo === p.id) })));
 	// Técnicos externos: o noturno de hoje (o destaque da tela) e o plantão do
 	// domingo (hoje ou o próximo)
 	const domingo = $derived(proximoDomingo(hoje));
@@ -138,7 +140,7 @@
 				numero: d.getDate(),
 				fimDeSemana: d.getDay() === 0 || d.getDay() === 6,
 				domingo: ehDomingo(dia),
-				interno: escala.filter((t) => t.tipo === 'interno' && cobre(t, dia)),
+				interno: PERIODOS.map((p) => escala.filter((t) => daEscala(t, 'interno', null, p.id) && cobre(t, dia))),
 				cidades: CIDADES.map((c) => ({
 					noturno: escala.filter((t) => daEscala(t, 'noturno', c.id) && cobre(t, dia)),
 					domingo: escala.filter((t) => daEscala(t, 'domingo', c.id) && cobre(t, dia))
@@ -259,12 +261,14 @@
 								{c.domingo.length ? c.domingo.map((t) => t.nome).join(', ') : 'Ninguém escalado'}
 							</dd>
 						{/each}
-						<dt class="text-[1.05rem] text-ink-3">
-							Interno{diaInterno !== domingo ? `, ${diaInterno === hoje ? 'hoje' : diaComFeriado(diaInterno, feriados)}` : ''}
-						</dt>
-						<dd class="text-[1.3rem] font-bold leading-tight truncate {internoDoDia.length ? '' : 'text-warn'}">
-							{internoDoDia.length ? internoDoDia.map((t) => t.nome).join(', ') : 'Ninguém escalado'}
-						</dd>
+						{#each internoPorPeriodo as p (p.id)}
+							<dt class="text-[1.05rem] text-ink-3">
+								Interno, {p.nome.toLowerCase()}{diaInterno !== domingo ? `, ${diaInterno === hoje ? 'hoje' : diaComFeriado(diaInterno, feriados)}` : ''}
+							</dt>
+							<dd class="text-[1.3rem] font-bold leading-tight truncate {p.turnos.length ? '' : 'text-warn'}">
+								{p.turnos.length ? p.turnos.map((t) => t.nome).join(', ') : 'Ninguém escalado'}
+							</dd>
+						{/each}
 					</dl>
 				</section>
 
@@ -339,15 +343,18 @@
 						{/each}
 					{/each}
 
-					<span class="self-center pl-1 text-[0.95rem] font-semibold text-ink-3">Interno</span>
-					{#each faixa as d (d.dia)}
-						<div class="celula {d.temInterno && d.interno.length === 0 ? 'bg-warn-soft' : ''} {d.dia === hoje ? 'ring-2 ring-accent' : ''}">
-							{#each d.interno as t (t.id)}
-								<span class="chip text-white" style="background-color: {corDaPessoa(t.nome)}" title={t.nome}>{primeiroNome(t.nome)}</span>
-							{:else}
-								{#if d.temInterno}<span class="text-center text-[0.85rem] text-warn">—</span>{/if}
-							{/each}
-						</div>
+					{#each PERIODOS as p, i (p.id)}
+						<span class="self-center pl-1 text-[0.95rem] font-semibold text-ink-3 truncate">Interno {p.nome.toLowerCase()}</span>
+						{#each faixa as d (d.dia)}
+							{@const turnos = d.interno[i]}
+							<div class="celula {d.temInterno && turnos.length === 0 ? 'bg-warn-soft' : ''} {d.dia === hoje ? 'ring-2 ring-accent' : ''}">
+								{#each turnos as t (t.id)}
+									<span class="chip text-white" style="background-color: {corDaPessoa(t.nome)}" title="{t.nome}, interno {p.nome.toLowerCase()}">{primeiroNome(t.nome)}</span>
+								{:else}
+									{#if d.temInterno}<span class="text-center text-[0.85rem] text-warn">—</span>{/if}
+								{/each}
+							</div>
+						{/each}
 					{/each}
 
 					{#if faixa.some((d) => d.folga.length > 0)}

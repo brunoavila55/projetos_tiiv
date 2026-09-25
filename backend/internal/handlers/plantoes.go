@@ -21,7 +21,7 @@ import (
 
 // Escala de plantão: módulo próprio (calendário, dash e modo TV), que toda a
 // equipe vê; só admin monta, avulsa ou em rodízio. São três escalas: plantão
-// interno (a equipe do setor, aos domingos e feriados) e, para os técnicos
+// interno (a equipe do setor, aos domingos e feriados, de manhã e à tarde) e, para os técnicos
 // externos, plantão noturno e plantão de domingo, cada um por cidade. Quem fica escalado é só um nome em
 // texto livre, não precisa ser usuário do sistema. Datas por dia, fim inclusivo.
 type PlantaoHandler struct {
@@ -44,6 +44,7 @@ type PlantaoRequest struct {
 	Nome       string `json:"nome"`
 	Tipo       string `json:"tipo"`
 	Cidade     string `json:"cidade"`
+	Periodo    string `json:"periodo"` // só no interno: manha ou tarde
 	Inicio     string `json:"inicio"`
 	Fim        string `json:"fim"`
 	Observacao string `json:"observacao"`
@@ -56,6 +57,7 @@ type RodizioRequest struct {
 	Pessoas []string `json:"pessoas"`
 	Tipo    string   `json:"tipo"`
 	Cidade  string   `json:"cidade"`
+	Periodo string   `json:"periodo"`
 	Inicio  string   `json:"inicio"`
 	// Só no noturno; no de domingo e no interno cada turno é um dia (domingo,
 	// ou domingo e feriado), um depois do outro
@@ -72,6 +74,7 @@ type PlantaoResponse struct {
 	Nome        string  `json:"nome"`
 	Tipo        string  `json:"tipo"`
 	Cidade      *string `json:"cidade"`
+	Periodo     *string `json:"periodo"`
 	Inicio      string  `json:"inicio"`
 	Fim         string  `json:"fim"`
 	Observacao  string  `json:"observacao"`
@@ -90,6 +93,7 @@ type turno struct {
 	nome       string
 	tipo       string
 	cidade     string // vazia no plantão interno
+	periodo    string // só no plantão interno: manha ou tarde
 	inicio     time.Time
 	fim        time.Time
 	observacao string
@@ -144,6 +148,12 @@ const (
 	tipoDomingo = "domingo"
 )
 
+// Períodos do plantão interno
+var periodosInterno = map[string]string{
+	"manha": "manhã",
+	"tarde": "tarde",
+}
+
 // Cidades dos técnicos externos (plantão noturno e de domingo)
 var cidadesPlantao = map[string]string{
 	"sao_gabriel": "São Gabriel",
@@ -151,9 +161,12 @@ var cidadesPlantao = map[string]string{
 	"passo_fundo": "Passo Fundo",
 }
 
-// rotuloEscala: "plantão interno", "plantão noturno de Bagé"...
-func rotuloEscala(tipo string, cidade pgtype.Text) string {
+// rotuloEscala: "plantão interno da manhã", "plantão noturno de Bagé"...
+func rotuloEscala(tipo string, cidade, periodo pgtype.Text) string {
 	r := "plantão interno"
+	if periodo.Valid {
+		r += " da " + periodosInterno[periodo.String]
+	}
 	switch tipo {
 	case tipoNoturno:
 		r = "plantão noturno"
@@ -203,25 +216,32 @@ func iniciosDoRodizio(inicio time.Time, diasPorTurno, turnos int, diaDoRodizio f
 	return res
 }
 
-// validarEscala confere o tipo e a cidade: o plantão interno não tem cidade;
-// o noturno e o de domingo exigem uma das cidades
-func validarEscala(tipo, cidade string) (string, string, error) {
+// validarEscala confere o tipo, a cidade e o período: o plantão interno não
+// tem cidade e é de manhã ou à tarde; o noturno e o de domingo exigem uma das
+// cidades e não têm período
+func validarEscala(tipo, cidade, periodo string) (string, string, string, error) {
 	if tipo == "" {
 		tipo = tipoInterno
 	}
 	switch tipo {
 	case tipoInterno:
 		if cidade != "" {
-			return "", "", errors.New("o plantão interno não tem cidade")
+			return "", "", "", errors.New("o plantão interno não tem cidade")
+		}
+		if _, ok := periodosInterno[periodo]; !ok {
+			return "", "", "", errors.New("escolha o período do plantão interno (manha ou tarde)")
 		}
 	case tipoNoturno, tipoDomingo:
 		if _, ok := cidadesPlantao[cidade]; !ok {
-			return "", "", errors.New("escolha a cidade do plantão (sao_gabriel, bage ou passo_fundo)")
+			return "", "", "", errors.New("escolha a cidade do plantão (sao_gabriel, bage ou passo_fundo)")
+		}
+		if periodo != "" {
+			return "", "", "", errors.New("só o plantão interno tem período")
 		}
 	default:
-		return "", "", errors.New("tipo inválido (interno, noturno ou domingo)")
+		return "", "", "", errors.New("tipo inválido (interno, noturno ou domingo)")
 	}
-	return tipo, cidade, nil
+	return tipo, cidade, periodo, nil
 }
 
 func textoOpcional(s string) pgtype.Text {
@@ -237,7 +257,7 @@ func validarNomePlantao(nome string) (string, error) {
 func validarPlantao(req PlantaoRequest) (turno, error) {
 	var t turno
 	var err error
-	if t.tipo, t.cidade, err = validarEscala(req.Tipo, req.Cidade); err != nil {
+	if t.tipo, t.cidade, t.periodo, err = validarEscala(req.Tipo, req.Cidade, req.Periodo); err != nil {
 		return t, err
 	}
 	if t.nome, err = validarNomePlantao(req.Nome); err != nil {
@@ -291,12 +311,13 @@ func conferirTurno(ctx context.Context, q *sqlc.Queries, setor pgtype.UUID, t tu
 		SetorID:   setor,
 		Nome:      t.nome,
 		Tipo:      t.tipo,
+		Periodo:   textoOpcional(t.periodo),
 		Inicio:    paraDate(t.inicio),
 		Fim:       paraDate(t.fim),
 		IgnorarID: ignorarID,
 	})
 	if err == nil {
-		return fmt.Sprintf("%s já está no %s de %s a %s", c.Nome, rotuloEscala(t.tipo, c.Cidade), diaCurto(c.Inicio), diaCurto(c.Fim)), errConflitoEscala
+		return fmt.Sprintf("%s já está no %s de %s a %s", c.Nome, rotuloEscala(t.tipo, c.Cidade, c.Periodo), diaCurto(c.Inicio), diaCurto(c.Fim)), errConflitoEscala
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", err
@@ -320,7 +341,7 @@ func conferirTurno(ctx context.Context, q *sqlc.Queries, setor pgtype.UUID, t tu
 	if f.FolgaInicio.Valid && !f.FolgaFim.Time.Before(t.inicio) && !f.FolgaInicio.Time.After(t.fim) {
 		return fmt.Sprintf("%s está de folga de %s a %s", t.nome, diaCurto(f.FolgaInicio), diaCurto(f.FolgaFim)), errConflitoEscala
 	}
-	return fmt.Sprintf("a folga de %s cai no %s de %s a %s", t.nome, rotuloEscala(f.Tipo, f.Cidade), diaCurto(f.Inicio), diaCurto(f.Fim)), errConflitoEscala
+	return fmt.Sprintf("a folga de %s cai no %s de %s a %s", t.nome, rotuloEscala(f.Tipo, f.Cidade, f.Periodo), diaCurto(f.Inicio), diaCurto(f.Fim)), errConflitoEscala
 }
 
 // gravarTurnos grava tudo ou nada; um conflito devolve errConflitoEscala
@@ -346,13 +367,14 @@ func (h *PlantaoHandler) gravarTurnos(ctx context.Context, setor pgtype.UUID, tu
 				ID: atualizarID, Nome: t.nome, Tipo: t.tipo, Cidade: textoOpcional(t.cidade),
 				Inicio: paraDate(t.inicio), Fim: paraDate(t.fim), Observacao: t.observacao,
 				FolgaInicio: dateOpcional(t.folgaInicio), FolgaFim: dateOpcional(t.folgaFim),
+				Periodo: textoOpcional(t.periodo),
 			})
 		} else {
 			_, err = q.CriarPlantao(ctx, sqlc.CriarPlantaoParams{
 				Nome: t.nome, Tipo: t.tipo, Cidade: textoOpcional(t.cidade),
 				Inicio: paraDate(t.inicio), Fim: paraDate(t.fim), Observacao: t.observacao,
 				FolgaInicio: dateOpcional(t.folgaInicio), FolgaFim: dateOpcional(t.folgaFim),
-				CriadoPor: criadoPor, SetorID: setor,
+				CriadoPor: criadoPor, SetorID: setor, Periodo: textoOpcional(t.periodo),
 			})
 		}
 		if err != nil {
@@ -375,6 +397,7 @@ func paraPlantaoResponse(p sqlc.ListarPlantoesIntervaloRow) PlantaoResponse {
 		Nome:        p.Nome,
 		Tipo:        p.Tipo,
 		Cidade:      textoResposta(p.Cidade),
+		Periodo:     textoResposta(p.Periodo),
 		Inicio:      p.Inicio.Time.Format(formatoDia),
 		Fim:         p.Fim.Time.Format(formatoDia),
 		Observacao:  p.Observacao,
@@ -512,7 +535,7 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tipo, cidade, err := validarEscala(req.Tipo, req.Cidade)
+	tipo, cidade, periodo, err := validarEscala(req.Tipo, req.Cidade, req.Periodo)
 	if err != nil {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return
@@ -531,7 +554,7 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 	diaDoRodizio := diaDaEscala(tipo)
 	if diaDoRodizio != nil {
 		if !diaDoRodizio(inicio) {
-			response.JSONError(w, http.StatusBadRequest, fmt.Sprintf("o rodízio do %s deve começar num %s", rotuloEscala(tipo, pgtype.Text{}), textoDiaDaEscala(tipo)))
+			response.JSONError(w, http.StatusBadRequest, fmt.Sprintf("o rodízio do %s deve começar num %s", rotuloEscala(tipo, pgtype.Text{}, pgtype.Text{}), textoDiaDaEscala(tipo)))
 			return
 		}
 		req.DiasPorTurno = 1
@@ -579,7 +602,7 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 	turnos := make([]turno, 0, req.Turnos)
 	for i, ini := range inicios {
 		t := turno{
-			nome: pessoas[i%len(pessoas)], tipo: tipo, cidade: cidade,
+			nome: pessoas[i%len(pessoas)], tipo: tipo, cidade: cidade, periodo: periodo,
 			inicio: ini, fim: ini.AddDate(0, 0, req.DiasPorTurno-1),
 			observacao: observacao,
 		}

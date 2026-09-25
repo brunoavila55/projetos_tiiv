@@ -133,6 +133,7 @@ type Plantoes struct {
 	FolgaInicio  pgtype.Date        `json:"folga_inicio"`
 	FolgaFim     pgtype.Date        `json:"folga_fim"`
 	Cidade       pgtype.Text        `json:"cidade"`
+	Periodo      pgtype.Text        `json:"periodo"`
 }
 
 type ProcedimentoRevisoes struct {

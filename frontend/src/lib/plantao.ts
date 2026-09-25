@@ -1,17 +1,19 @@
 // Escala de plantão: tipos e utilitários compartilhados pelo módulo, painel e modo TV.
 // Quem fica escalado é só um nome (não precisa ser usuário do sistema).
-// Três escalas: plantão interno (a equipe do setor, aos domingos e feriados)
-// e, para os técnicos externos, plantão noturno e plantão de domingo, cada um
+// Três escalas: plantão interno (a equipe do setor, aos domingos e feriados,
+// de manhã e à tarde) e, para os técnicos externos, plantão noturno e plantão de domingo, cada um
 // por cidade.
 
 export type TipoPlantao = 'interno' | 'noturno' | 'domingo';
 export type Cidade = 'sao_gabriel' | 'bage' | 'passo_fundo';
+export type Periodo = 'manha' | 'tarde';
 
 export interface Turno {
 	id: string;
 	nome: string;
 	tipo: TipoPlantao;
 	cidade: Cidade | null; // só no noturno e no de domingo
+	periodo: Periodo | null; // só no interno
 	inicio: string; // AAAA-MM-DD
 	fim: string; // AAAA-MM-DD, inclusivo
 	observacao: string;
@@ -26,6 +28,16 @@ export const TIPO_PLANTAO: Record<TipoPlantao, string> = {
 	domingo: 'Plantão de domingo'
 };
 
+// Períodos do plantão interno, na ordem do dia
+export const PERIODOS: { id: Periodo; nome: string }[] = [
+	{ id: 'manha', nome: 'Manhã' },
+	{ id: 'tarde', nome: 'Tarde' }
+];
+
+export function nomePeriodo(p: Periodo | null): string {
+	return PERIODOS.find((x) => x.id === p)?.nome ?? '';
+}
+
 // Na ordem em que aparecem na dash e na TV
 export const CIDADES: { id: Cidade; nome: string }[] = [
 	{ id: 'sao_gabriel', nome: 'São Gabriel' },
@@ -37,14 +49,18 @@ export function nomeCidade(c: Cidade | null): string {
 	return CIDADES.find((x) => x.id === c)?.nome ?? '';
 }
 
-// "Plantão interno", "Plantão noturno · Bagé"
-export function rotuloEscala(t: { tipo: TipoPlantao; cidade: Cidade | null }): string {
-	return t.cidade ? `${TIPO_PLANTAO[t.tipo]} · ${nomeCidade(t.cidade)}` : TIPO_PLANTAO[t.tipo];
+type ComEscala = { tipo: TipoPlantao; cidade: Cidade | null; periodo?: Periodo | null };
+
+// "Plantão interno · Manhã", "Plantão noturno · Bagé"
+export function rotuloEscala(t: ComEscala): string {
+	const detalhe = t.cidade ? nomeCidade(t.cidade) : t.periodo ? nomePeriodo(t.periodo) : '';
+	return detalhe ? `${TIPO_PLANTAO[t.tipo]} · ${detalhe}` : TIPO_PLANTAO[t.tipo];
 }
 
-// Rótulo curto, para listas e o calendário: "interno", "noturno Bagé"
-export function rotuloCurto(t: { tipo: TipoPlantao; cidade: Cidade | null }): string {
-	return t.cidade ? `${t.tipo} ${nomeCidade(t.cidade)}` : t.tipo;
+// Rótulo curto, para listas e o calendário: "interno manhã", "noturno Bagé"
+export function rotuloCurto(t: ComEscala): string {
+	if (t.cidade) return `${t.tipo} ${nomeCidade(t.cidade)}`;
+	return t.periodo ? `${t.tipo} ${nomePeriodo(t.periodo).toLowerCase()}` : t.tipo;
 }
 
 // Feriados que o plantão interno cobre (vêm do servidor: nacionais e do RS)
@@ -83,20 +99,22 @@ export function diaComFeriado(dia: string, feriados: DiasFeriado): string {
 export interface Escala {
 	tipo: TipoPlantao;
 	cidade: Cidade | null;
+	periodo: Periodo | null;
 	rotulo: string;
 	precisa: (dia: string, feriados: DiasFeriado) => boolean;
 }
 
 export const ESCALAS: Escala[] = [
-	{ tipo: 'interno', cidade: null, rotulo: TIPO_PLANTAO.interno, precisa: diaDoInterno },
+	...PERIODOS.map((p) => ({ tipo: 'interno' as const, cidade: null, periodo: p.id, rotulo: `Interno · ${p.nome}`, precisa: diaDoInterno })),
 	...CIDADES.flatMap((c) => [
-		{ tipo: 'noturno' as const, cidade: c.id, rotulo: `Noturno · ${c.nome}`, precisa: () => true },
-		{ tipo: 'domingo' as const, cidade: c.id, rotulo: `Domingo · ${c.nome}`, precisa: ehDomingo }
+		{ tipo: 'noturno' as const, cidade: c.id, periodo: null, rotulo: `Noturno · ${c.nome}`, precisa: () => true },
+		{ tipo: 'domingo' as const, cidade: c.id, periodo: null, rotulo: `Domingo · ${c.nome}`, precisa: ehDomingo }
 	])
 ];
 
-export function daEscala(t: Turno, tipo: TipoPlantao, cidade: Cidade | null): boolean {
-	return t.tipo === tipo && t.cidade === cidade;
+// Sem período, vale qualquer um (no interno: manhã ou tarde)
+export function daEscala(t: Turno, tipo: TipoPlantao, cidade: Cidade | null, periodo?: Periodo | null): boolean {
+	return t.tipo === tipo && t.cidade === cidade && (periodo === undefined || t.periodo === periodo);
 }
 
 export function ehDomingo(dia: string): boolean {

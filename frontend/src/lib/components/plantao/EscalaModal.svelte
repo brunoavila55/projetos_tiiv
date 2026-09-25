@@ -6,6 +6,7 @@
 	import { X, Repeat, ArrowRight, Plus } from 'lucide-svelte';
 	import {
 		CIDADES,
+		PERIODOS,
 		TIPO_PLANTAO,
 		corDaPessoa,
 		mesmaPessoa,
@@ -19,6 +20,7 @@
 		paraDia,
 		somarDias,
 		type Cidade,
+		type Periodo,
 		type TipoPlantao,
 		type Turno
 	} from '$lib/plantao';
@@ -29,13 +31,14 @@
 		// Valores iniciais ao criar (ex.: cobrir um buraco da escala)
 		tipo?: TipoPlantao;
 		cidade?: Cidade | null;
+		periodo?: Periodo | null;
 		inicio?: string;
 		fim?: string;
 		onfechar: () => void;
 		onsalvo: () => void;
 	}
 
-	let { turno = null, tipo: tipoInicial, cidade: cidadeInicial, inicio, fim, onfechar, onsalvo }: Props = $props();
+	let { turno = null, tipo: tipoInicial, cidade: cidadeInicial, periodo: periodoInicial, inicio, fim, onfechar, onsalvo }: Props = $props();
 
 	// As props só dão os valores iniciais do formulário (o modal abre de novo a cada uso)
 	const hoje = paraDia(new Date());
@@ -43,6 +46,7 @@
 		nome: turno?.nome ?? '',
 		tipo: turno?.tipo ?? tipoInicial ?? ('interno' as TipoPlantao),
 		cidade: turno?.cidade ?? cidadeInicial ?? CIDADES[0].id,
+		periodo: turno?.periodo ?? periodoInicial ?? PERIODOS[0].id,
 		inicio: turno?.inicio ?? inicio ?? hoje,
 		fim: turno?.fim ?? fim ?? inicio ?? hoje,
 		obs: turno?.observacao ?? '',
@@ -54,6 +58,7 @@
 	let nome = $state(ini.nome);
 	let tipo = $state<TipoPlantao>(ini.tipo);
 	let cidade = $state<Cidade>(ini.cidade);
+	let periodo = $state<Periodo>(ini.periodo);
 	let eInicio = $state(ini.inicio);
 	let eFim = $state(ini.fim);
 	let obs = $state(ini.obs);
@@ -188,6 +193,7 @@
 						pessoas,
 						tipo,
 						cidade: tipo === 'interno' ? '' : cidade,
+						periodo: tipo === 'interno' ? periodo : '',
 						inicio: eInicio,
 						dias_por_turno: Number(dias),
 						turnos: Number(turnos),
@@ -207,6 +213,7 @@
 						nome: nome.trim(),
 						tipo,
 						cidade: tipo === 'interno' ? '' : cidade,
+						periodo: tipo === 'interno' ? periodo : '',
 						inicio: eInicio,
 						fim: eFim < eInicio ? eInicio : eFim,
 						observacao: obs.trim(),
@@ -252,7 +259,7 @@
 			{/if}
 
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-				<div class={tipo === 'interno' ? 'sm:col-span-2' : ''}>
+				<div>
 					<label class="label" for="es-tipo">Escala</label>
 					<select id="es-tipo" bind:value={tipo} class="field">
 						{#each Object.entries(TIPO_PLANTAO) as [valor, rotulo] (valor)}
@@ -260,7 +267,16 @@
 						{/each}
 					</select>
 				</div>
-				{#if tipo !== 'interno'}
+				{#if tipo === 'interno'}
+					<div>
+						<label class="label" for="es-periodo">Período</label>
+						<select id="es-periodo" bind:value={periodo} class="field">
+							{#each PERIODOS as p (p.id)}
+								<option value={p.id}>{p.nome}</option>
+							{/each}
+						</select>
+					</div>
+				{:else}
 					<div>
 						<label class="label" for="es-cidade">Cidade</label>
 						<select id="es-cidade" bind:value={cidade} class="field">

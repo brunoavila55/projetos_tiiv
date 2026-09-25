@@ -35,6 +35,8 @@
 		quandoComeca,
 		quantoFalta,
 		type Cidade,
+		PERIODOS,
+		type Periodo,
 		type Escala,
 		type TipoPlantao,
 		type Turno
@@ -83,6 +85,8 @@
 	// Plantão interno: o de hoje, se hoje for domingo ou feriado, ou o do próximo dia desses
 	const diaInterno = $derived(proximoDiaInterno(hoje, feriados));
 	const internoDoDia = $derived(proximos.filter((t) => t.tipo === 'interno' && cobre(t, diaInterno)));
+	// Manhã e tarde, cada um com quem está escalado (pode ficar vazio)
+	const internoPorPeriodo = $derived(PERIODOS.map((p) => ({ ...p, turnos: internoDoDia.filter((t) => t.periodo === p.id) })));
 	// Técnicos externos: o noturno de hoje e o plantão do domingo (hoje ou o próximo)
 	const domingo = $derived(proximoDomingo(hoje));
 	const externos = $derived(
@@ -113,7 +117,7 @@
 			let aberto: Buraco | null = null;
 			for (const d of dias) {
 				if (!e.precisa(d, feriados)) continue;
-				if (proximos.some((t) => daEscala(t, e.tipo, e.cidade) && cobre(t, d))) {
+				if (proximos.some((t) => daEscala(t, e.tipo, e.cidade, e.periodo) && cobre(t, d))) {
 					aberto = null;
 				} else if (aberto) {
 					aberto.fim = d;
@@ -240,7 +244,8 @@
 			classNames: [`ec-${t.tipo}`],
 			backgroundColor: t.tipo === 'domingo' ? 'transparent' : corDaPessoa(t.nome),
 			styles: [`--cor-escala: ${corDaPessoa(t.nome)}`],
-			extendedProps: { ordem: ORDEM_TIPO[t.tipo] }
+			// No mesmo dia, o interno da manhã vem antes do da tarde
+			extendedProps: { ordem: ORDEM_TIPO[t.tipo] + (t.periodo === 'tarde' ? 0.5 : 0) }
 		}));
 		// Feriado no topo do dia, para ver onde o interno precisa de alguém
 		const diasDeFeriado = feriadosCal.map((f) => ({
@@ -264,7 +269,7 @@
 
 	// ---------- Turnos: detalhes, criar, editar, excluir ----------
 	let selecionado = $state<Turno | null>(null);
-	let novo = $state<{ inicio?: string; fim?: string; tipo?: TipoPlantao; cidade?: Cidade | null } | null>(null);
+	let novo = $state<{ inicio?: string; fim?: string; tipo?: TipoPlantao; cidade?: Cidade | null; periodo?: Periodo | null } | null>(null);
 	let editando = $state<Turno | null>(null);
 
 	function aposSalvar() {
@@ -322,46 +327,48 @@
 			<!-- Agora -->
 			<section aria-label="Plantão interno" class="space-y-3">
 				<h2 class="text-[13px] font-bold uppercase tracking-wide text-ink-3">Plantão interno</h2>
-				{#if internoDoDia.length === 0}
-					<div class="flex items-start gap-3 px-4 py-3.5 rounded-xl border border-warn/40 bg-warn-soft">
-						<ShieldAlert class="size-5 mt-0.5 text-warn shrink-0" />
-						<div class="text-sm flex-1">
-							<p class="font-semibold text-ink">
-								{diaInterno === hoje ? 'Ninguém no plantão interno hoje' : `Ninguém no plantão interno de ${diaComFeriado(diaInterno, feriados)}`}
-							</p>
-							<p class="text-ink-2">O plantão interno é aos domingos e feriados.</p>
-						</div>
-						{#if ehAdmin}
-							<button onclick={() => (novo = { tipo: 'interno', inicio: diaInterno, fim: diaInterno })} class="btn btn-secondary btn-sm">Escalar</button>
-						{/if}
-					</div>
-				{:else}
-					<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-						{#each internoDoDia as t (t.id)}
-							<button
-								onclick={() => (selecionado = t)}
-								class="panel text-left p-5 flex items-center gap-4 min-w-0 cursor-pointer hover:border-line-strong transition-colors"
-								style="border-left: 4px solid {corDaPessoa(t.nome)};"
-							>
-								<Avatar id={t.id} nome={t.nome} cor={corDaPessoa(t.nome)} class="size-14 text-lg shrink-0" />
-								<div class="min-w-0">
-									<p class="text-[13px] font-semibold text-ink-3 truncate">
-										{diaInterno === hoje ? 'De plantão hoje' : `Próximo: ${diaComFeriado(diaInterno, feriados)}`}
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+					{#each internoPorPeriodo as p (p.id)}
+						{#if p.turnos.length === 0}
+							<div class="flex items-start gap-3 px-4 py-3.5 rounded-xl border border-warn/40 bg-warn-soft">
+								<ShieldAlert class="size-5 mt-0.5 text-warn shrink-0" />
+								<div class="text-sm flex-1">
+									<p class="font-semibold text-ink">
+										{p.nome}: {diaInterno === hoje ? 'ninguém no plantão interno hoje' : `ninguém no plantão interno de ${diaComFeriado(diaInterno, feriados)}`}
 									</p>
-									<p class="text-xl font-bold text-ink leading-tight truncate">{t.nome}</p>
-									<p class="mt-0.5 text-sm text-ink-2 tabular">
-										{#if diaInterno === hoje}
-											{feriados.get(hoje) ?? (t.fim === hoje ? 'Até o fim do dia' : `Até ${diaSemana(t.fim)}`)}
-										{:else}
-											{quandoComeca(diaInterno, hoje)}
-										{/if}
-									</p>
-									{#if t.observacao}<p class="text-[13px] text-ink-3 truncate">{t.observacao}</p>{/if}
+									<p class="text-ink-2">O plantão interno é aos domingos e feriados, de manhã e à tarde.</p>
 								</div>
-							</button>
-						{/each}
-					</div>
-				{/if}
+								{#if ehAdmin}
+									<button onclick={() => (novo = { tipo: 'interno', periodo: p.id, inicio: diaInterno, fim: diaInterno })} class="btn btn-secondary btn-sm">Escalar</button>
+								{/if}
+							</div>
+						{:else}
+							{#each p.turnos as t (t.id)}
+								<button
+									onclick={() => (selecionado = t)}
+									class="panel text-left p-5 flex items-center gap-4 min-w-0 cursor-pointer hover:border-line-strong transition-colors"
+									style="border-left: 4px solid {corDaPessoa(t.nome)};"
+								>
+									<Avatar id={t.id} nome={t.nome} cor={corDaPessoa(t.nome)} class="size-14 text-lg shrink-0" />
+									<div class="min-w-0">
+										<p class="text-[13px] font-semibold text-ink-3 truncate">
+											{p.nome}, {diaInterno === hoje ? 'hoje' : diaComFeriado(diaInterno, feriados)}
+										</p>
+										<p class="text-xl font-bold text-ink leading-tight truncate">{t.nome}</p>
+										<p class="mt-0.5 text-sm text-ink-2 tabular">
+											{#if diaInterno === hoje}
+												{feriados.get(hoje) ?? (t.fim === hoje ? 'Até o fim do dia' : `Até ${diaSemana(t.fim)}`)}
+											{:else}
+												{quandoComeca(diaInterno, hoje)}
+											{/if}
+										</p>
+										{#if t.observacao}<p class="text-[13px] text-ink-3 truncate">{t.observacao}</p>{/if}
+									</div>
+								</button>
+							{/each}
+						{/if}
+					{/each}
+				</div>
 			</section>
 
 			<section aria-label="Técnicos externos" class="space-y-3">
@@ -508,6 +515,7 @@
 												(novo = {
 													tipo: b.escala.tipo,
 													cidade: b.escala.cidade,
+													periodo: b.escala.periodo,
 													inicio: b.inicio,
 													// Domingo e interno: um turno por dia; o resto vai pelo rodízio
 													fim: b.escala.tipo === 'noturno' ? b.fim : b.inicio
@@ -634,6 +642,7 @@
 			turno={editando}
 			tipo={novo?.tipo}
 			cidade={novo?.cidade}
+			periodo={novo?.periodo}
 			inicio={novo?.inicio}
 			fim={novo?.fim}
 			onfechar={() => {

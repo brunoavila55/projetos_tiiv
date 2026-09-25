@@ -42,7 +42,8 @@ type Querier interface {
 	// marcada, nem folga nova sobre um turno já marcado (de qualquer tipo)
 	BuscarConflitoFolga(ctx context.Context, arg BuscarConflitoFolgaParams) (BuscarConflitoFolgaRow, error)
 	// A mesma pessoa (pelo nome, sem diferenciar maiúsculas) não pode ter dois
-	// turnos do mesmo tipo sobrepostos no setor, nem em cidades diferentes
+	// turnos do mesmo tipo sobrepostos no setor, nem em cidades diferentes; no
+	// interno, só conflita no mesmo período (manhã e tarde no mesmo dia pode)
 	BuscarConflitoPlantao(ctx context.Context, arg BuscarConflitoPlantaoParams) (BuscarConflitoPlantaoRow, error)
 	BuscarEventoPorID(ctx context.Context, arg BuscarEventoPorIDParams) (BuscarEventoPorIDRow, error)
 	BuscarItemEstoquePorID(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)

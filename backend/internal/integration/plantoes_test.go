@@ -39,7 +39,7 @@ func TestPlantoes_EscalaERodizio(t *testing.T) {
 	dia := func(n int) string { return hoje.AddDate(0, 0, n).Format("2006-01-02") }
 
 	// Operador não monta escala
-	turnoHoje := map[string]any{"nome": ana, "tipo": "interno", "inicio": dia(0), "fim": dia(1)}
+	turnoHoje := map[string]any{"nome": ana, "tipo": "interno", "periodo": "manha", "inicio": dia(0), "fim": dia(1)}
 	if resp, _, _ := env.doRequest(http.MethodPost, "/api/plantoes", opCookie, turnoHoje); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("esperado 403 para operador criar plantão, veio %d", resp.StatusCode)
 	}
@@ -50,10 +50,13 @@ func TestPlantoes_EscalaERodizio(t *testing.T) {
 		{"nome": ana, "tipo": "sobreaviso", "inicio": dia(0)},
 		{"nome": ana, "tipo": "noturno", "inicio": dia(0)},
 		{"nome": ana, "tipo": "domingo", "cidade": "porto_alegre", "inicio": dia(0)},
-		{"nome": ana, "tipo": "interno", "cidade": "bage", "inicio": dia(0)},
-		{"nome": ana, "inicio": "ontem"},
-		{"nome": ana, "inicio": dia(2), "fim": dia(1)},
-		{"nome": "   ", "inicio": dia(0)},
+		{"nome": ana, "tipo": "interno", "periodo": "manha", "cidade": "bage", "inicio": dia(0)},
+		{"nome": ana, "tipo": "interno", "inicio": dia(0)},
+		{"nome": ana, "tipo": "interno", "periodo": "noite", "inicio": dia(0)},
+		{"nome": ana, "tipo": "noturno", "cidade": "bage", "periodo": "manha", "inicio": dia(0)},
+		{"nome": ana, "periodo": "manha", "inicio": "ontem"},
+		{"nome": ana, "periodo": "manha", "inicio": dia(2), "fim": dia(1)},
+		{"nome": "   ", "periodo": "manha", "inicio": dia(0)},
 	} {
 		if resp, _, _ := env.doRequest(http.MethodPost, "/api/plantoes", adminCookie, c); resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("esperado 400 para %v, veio %d", c, resp.StatusCode)
@@ -67,9 +70,24 @@ func TestPlantoes_EscalaERodizio(t *testing.T) {
 	// Mesmo nome (sem diferenciar maiúsculas e espaços), mesmo tipo, dias
 	// sobrepostos: conflito. Outro tipo no mesmo dia pode; o mesmo tipo em
 	// outra cidade, não.
-	sobreposto := map[string]any{"nome": "  ana  PLANTONISTA teste ", "tipo": "interno", "inicio": dia(1), "fim": dia(3)}
+	sobreposto := map[string]any{"nome": "  ana  PLANTONISTA teste ", "tipo": "interno", "periodo": "manha", "inicio": dia(1), "fim": dia(3)}
 	if resp, res, _ := env.doRequest(http.MethodPost, "/api/plantoes", adminCookie, sobreposto); resp.StatusCode != http.StatusConflict {
 		t.Errorf("esperado 409 para plantão sobreposto, veio %d (%v)", resp.StatusCode, res)
+	}
+	// No interno, manhã e tarde são turnos à parte: a mesma pessoa pode ficar
+	// nos dois no mesmo dia
+	tarde := map[string]any{"nome": ana, "tipo": "interno", "periodo": "tarde", "inicio": dia(0)}
+	if resp, res, _ := env.doRequest(http.MethodPost, "/api/plantoes", adminCookie, tarde); resp.StatusCode != http.StatusCreated {
+		t.Errorf("esperado 201 para o interno da tarde no dia do da manhã, veio %d (%v)", resp.StatusCode, res)
+	}
+	periodos := map[any]bool{}
+	for _, p := range env.getLista(t, "/api/plantoes?inicio="+dia(0)+"&fim="+dia(0), adminCookie) {
+		if p["nome"] == ana && p["tipo"] == "interno" {
+			periodos[p["periodo"]] = true
+		}
+	}
+	if !periodos["manha"] || !periodos["tarde"] {
+		t.Errorf("o interno de hoje deveria vir com manhã e tarde, veio %v", periodos)
 	}
 	noturno := map[string]any{"nome": ana, "tipo": "noturno", "cidade": "bage", "inicio": dia(1)}
 	if resp, res, _ := env.doRequest(http.MethodPost, "/api/plantoes", adminCookie, noturno); resp.StatusCode != http.StatusCreated {
@@ -214,17 +232,17 @@ func TestPlantoes_EscalaERodizio(t *testing.T) {
 		segunda = segunda.AddDate(0, 0, 1)
 	}
 	domInterno := segunda.AddDate(0, 0, -1).Format("2006-01-02")
-	naSegunda := map[string]any{"pessoas": []string{bea, ana}, "tipo": "interno", "inicio": segunda.Format("2006-01-02"), "turnos": 2}
+	naSegunda := map[string]any{"pessoas": []string{bea, ana}, "tipo": "interno", "periodo": "tarde", "inicio": segunda.Format("2006-01-02"), "turnos": 2}
 	if resp, res, _ := env.doRequest(http.MethodPost, "/api/plantoes/rodizio", adminCookie, naSegunda); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("esperado 400 para rodízio do interno numa segunda, veio %d (%v)", resp.StatusCode, res)
 	}
-	interno := map[string]any{"pessoas": []string{bea, ana}, "tipo": "interno", "inicio": domInterno, "dias_por_turno": 7, "turnos": 3}
+	interno := map[string]any{"pessoas": []string{bea, ana}, "tipo": "interno", "periodo": "tarde", "inicio": domInterno, "dias_por_turno": 7, "turnos": 3}
 	if resp, res, _ := env.doRequest(http.MethodPost, "/api/plantoes/rodizio", adminCookie, interno); resp.StatusCode != http.StatusCreated || res["criados"] != float64(3) {
 		t.Fatalf("esperado 201 com 3 turnos do interno, veio %d (%v)", resp.StatusCode, res)
 	}
 	var internos []map[string]any
 	for _, p := range env.getLista(t, "/api/plantoes?inicio="+domInterno+"&fim="+segunda.AddDate(0, 0, 30).Format("2006-01-02"), opCookie) {
-		if p["tipo"] == "interno" {
+		if p["tipo"] == "interno" && p["periodo"] == "tarde" {
 			internos = append(internos, p)
 		}
 	}
@@ -273,11 +291,11 @@ func TestPlantoes_EscalaERodizio(t *testing.T) {
 	// Editar: trocar a pessoa do turno de hoje; excluir
 	var idHoje string
 	for _, p := range env.getLista(t, "/api/plantoes?inicio="+dia(0)+"&fim="+dia(0), opCookie) {
-		if p["nome"] == ana && p["tipo"] == "interno" {
+		if p["nome"] == ana && p["tipo"] == "interno" && p["periodo"] == "manha" {
 			idHoje = p["id"].(string)
 		}
 	}
-	troca := map[string]any{"nome": bea, "tipo": "interno", "inicio": dia(0), "fim": dia(1), "observacao": "troca com Ana"}
+	troca := map[string]any{"nome": bea, "tipo": "interno", "periodo": "manha", "inicio": dia(0), "fim": dia(1), "observacao": "troca com Ana"}
 	if resp, _, _ := env.doRequest(http.MethodPut, "/api/plantoes/"+idHoje, adminCookie, troca); resp.StatusCode != http.StatusNoContent {
 		t.Errorf("esperado 204 ao editar turno, veio %d", resp.StatusCode)
 	}
@@ -316,10 +334,10 @@ func TestPlantoes_Folga(t *testing.T) {
 
 	// Folga inválida ou dentro do próprio turno
 	for _, c := range []map[string]any{
-		{"nome": caio, "inicio": dia(-3), "fim": dia(-2), "folga_inicio": dia(-2)},
-		{"nome": caio, "inicio": dia(-3), "fim": dia(-2), "folga_inicio": dia(1), "folga_fim": dia(0)},
-		{"nome": caio, "inicio": dia(-3), "fim": dia(-2), "folga_inicio": "amanhã"},
-		{"nome": caio, "inicio": dia(-3), "fim": dia(-2), "folga_inicio": dia(0), "folga_fim": dia(40)},
+		{"nome": caio, "periodo": "manha", "inicio": dia(-3), "fim": dia(-2), "folga_inicio": dia(-2)},
+		{"nome": caio, "periodo": "manha", "inicio": dia(-3), "fim": dia(-2), "folga_inicio": dia(1), "folga_fim": dia(0)},
+		{"nome": caio, "periodo": "manha", "inicio": dia(-3), "fim": dia(-2), "folga_inicio": "amanhã"},
+		{"nome": caio, "periodo": "manha", "inicio": dia(-3), "fim": dia(-2), "folga_inicio": dia(0), "folga_fim": dia(40)},
 	} {
 		if st, res := criar(c); st != http.StatusBadRequest {
 			t.Errorf("esperado 400 para %v, veio %d (%v)", c, st, res)
@@ -327,7 +345,7 @@ func TestPlantoes_Folga(t *testing.T) {
 	}
 
 	// Plantão até ontem, folga hoje e amanhã
-	if st, res := criar(map[string]any{"nome": caio, "inicio": dia(-3), "fim": dia(-1), "folga_inicio": dia(0), "folga_fim": dia(1)}); st != http.StatusCreated {
+	if st, res := criar(map[string]any{"nome": caio, "periodo": "manha", "inicio": dia(-3), "fim": dia(-1), "folga_inicio": dia(0), "folga_fim": dia(1)}); st != http.StatusCreated {
 		t.Fatalf("esperado 201 ao criar plantão com folga, veio %d (%v)", st, res)
 	}
 
@@ -358,7 +376,7 @@ func TestPlantoes_Folga(t *testing.T) {
 
 	// Ninguém trabalha na folga, em nenhuma escala
 	for _, c := range []map[string]any{
-		{"tipo": "interno"},
+		{"tipo": "interno", "periodo": "tarde"},
 		{"tipo": "noturno", "cidade": "bage"},
 		{"tipo": "domingo", "cidade": "passo_fundo"},
 	} {
@@ -371,7 +389,7 @@ func TestPlantoes_Folga(t *testing.T) {
 	if st, _ := criar(map[string]any{"nome": caio, "tipo": "noturno", "cidade": "sao_gabriel", "inicio": dia(5)}); st != http.StatusCreated {
 		t.Fatalf("esperado 201 para noturno fora da folga, veio %d", st)
 	}
-	if st, res := criar(map[string]any{"nome": caio, "inicio": dia(3), "fim": dia(4), "folga_inicio": dia(5)}); st != http.StatusConflict {
+	if st, res := criar(map[string]any{"nome": caio, "periodo": "manha", "inicio": dia(3), "fim": dia(4), "folga_inicio": dia(5)}); st != http.StatusConflict {
 		t.Errorf("esperado 409 para folga sobre o noturno, veio %d (%v)", st, res)
 	}
 
@@ -407,11 +425,11 @@ func TestPlantoes_Folga(t *testing.T) {
 			id = p["id"].(string)
 		}
 	}
-	semFolga := map[string]any{"nome": caio, "inicio": dia(-3), "fim": dia(-1)}
+	semFolga := map[string]any{"nome": caio, "periodo": "manha", "inicio": dia(-3), "fim": dia(-1)}
 	if resp, _, _ := env.doRequest(http.MethodPut, "/api/plantoes/"+id, adminCookie, semFolga); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("esperado 204 ao tirar a folga, veio %d", resp.StatusCode)
 	}
-	if st, res := criar(map[string]any{"nome": caio, "tipo": "interno", "inicio": dia(1)}); st != http.StatusCreated {
+	if st, res := criar(map[string]any{"nome": caio, "tipo": "interno", "periodo": "manha", "inicio": dia(1)}); st != http.StatusCreated {
 		t.Errorf("sem a folga, o plantão de amanhã deveria entrar, veio %d (%v)", st, res)
 	}
 }
