@@ -200,6 +200,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 				tec.Post("/{id}/saida", tecnicoHandler.RegistrarSaida)
 				tec.Get("/registros", tecnicoHandler.ListarRegistros)
 				tec.Get("/registros/exportar.csv", tecnicoHandler.ExportarRegistrosCSV)
+				tec.Patch("/registros/{id}/atividades", tecnicoHandler.AtualizarAtividades)
 				tec.Get("/relatorio", tecnicoHandler.Relatorio)
 				tec.Get("/relatorio/exportar.csv", tecnicoHandler.ExportarRelatorioCSV)
 

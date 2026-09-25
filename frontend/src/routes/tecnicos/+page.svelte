@@ -17,7 +17,8 @@
 		UserCheck,
 		Download,
 		ChevronLeft,
-		ChevronRight
+		ChevronRight,
+		NotebookPen
 	} from 'lucide-svelte';
 
 	interface Tecnico {
@@ -28,6 +29,7 @@
 		criado_em: string;
 		registro_aberto_id: string | null;
 		entrada_aberta: string | null;
+		atividades_abertas: string;
 	}
 
 	interface Registro {
@@ -39,6 +41,7 @@
 		saida: string | null;
 		duracao_segundos: number | null;
 		observacao: string;
+		atividades: string;
 		entrada_registrada_por_nome: string;
 		saida_registrada_por_nome: string | null;
 	}
@@ -95,6 +98,14 @@
 	let marcacaoTecnico = $state<Tecnico | null>(null);
 	let marcacaoHorario = $state('');
 	let marcacaoObs = $state('');
+	let marcacaoAtividades = $state('');
+
+	// Modal "o que foi feito" (qualquer operador)
+	let modalAtividadesAberto = $state(false);
+	let atividadesRegistroId = $state('');
+	let atividadesTitulo = $state('');
+	let atividadesTexto = $state('');
+	let atividadesSalvando = $state(false);
 
 	// Modal correção de registro (admin)
 	let modalRegistroAberto = $state(false);
@@ -196,11 +207,12 @@
 		window.open(`/api/tecnicos/${rota}/exportar.csv?${parametrosFiltro().toString()}`, '_blank');
 	}
 
-	async function marcar(t: Tecnico, horario?: string, observacao?: string) {
+	async function marcar(t: Tecnico, horario?: string, observacao?: string, atividades?: string) {
 		const tipo = t.entrada_aberta ? 'saida' : 'entrada';
 		const body: Record<string, string> = {};
 		if (horario) body.horario = new Date(horario).toISOString();
 		if (observacao?.trim()) body.observacao = observacao.trim();
+		if (tipo === 'saida' && atividades?.trim()) body.atividades = atividades.trim();
 		try {
 			await apiFetch(`/api/tecnicos/${t.id}/${tipo}`, { method: 'POST', body: JSON.stringify(body) });
 			toast.success(`${tipo === 'entrada' ? 'Entrada' : 'Saída'} de ${t.nome} registrada`);
@@ -215,7 +227,33 @@
 		marcacaoTecnico = t;
 		marcacaoHorario = paraInputLocal(new Date());
 		marcacaoObs = '';
+		marcacaoAtividades = t.atividades_abertas ?? '';
 		modalMarcacaoAberto = true;
+	}
+
+	function abrirAtividades(registroId: string, titulo: string, texto: string) {
+		atividadesRegistroId = registroId;
+		atividadesTitulo = titulo;
+		atividadesTexto = texto;
+		modalAtividadesAberto = true;
+	}
+
+	async function salvarAtividades() {
+		atividadesSalvando = true;
+		try {
+			await apiFetch(`/api/tecnicos/registros/${atividadesRegistroId}/atividades`, {
+				method: 'PATCH',
+				body: JSON.stringify({ atividades: atividadesTexto.trim() })
+			});
+			modalAtividadesAberto = false;
+			toast.success('Anotação salva');
+			if (abaAtiva === 'registros') await carregarRegistros();
+			else await carregarTecnicos();
+		} catch {
+			// toast de erro já exibido por apiFetch
+		} finally {
+			atividadesSalvando = false;
+		}
 	}
 
 	function abrirCriarTecnico() {
@@ -384,10 +422,30 @@
 							{/if}
 						</div>
 
+						{#if noLocal && t.registro_aberto_id}
+							{@const regId = t.registro_aberto_id}
+							<button
+								onclick={() => abrirAtividades(regId, t.nome, t.atividades_abertas)}
+								class="group text-left rounded-lg border border-dashed border-line-strong hover:border-accent/50 hover:bg-accent-soft/40 px-3 py-2 transition-colors cursor-pointer"
+								title="Anotar o que o técnico fez hoje"
+							>
+								{#if t.atividades_abertas}
+									<span class="flex items-center gap-1.5 text-xs font-semibold text-ink-3 mb-0.5">
+										<NotebookPen class="size-3.5" /> O que fez hoje
+									</span>
+									<span class="block text-[13px] text-ink-2 whitespace-pre-line line-clamp-3 break-words">{t.atividades_abertas}</span>
+								{:else}
+									<span class="flex items-center gap-1.5 text-[13px] text-ink-3 group-hover:text-accent">
+										<NotebookPen class="size-4" /> Anotar o que ele fez hoje
+									</span>
+								{/if}
+							</button>
+						{/if}
+
 						{#if t.ativo || noLocal}
 							<div class="flex gap-2 mt-auto">
 								<button
-									onclick={() => marcar(t)}
+									onclick={() => (noLocal ? abrirMarcacao(t) : marcar(t))}
 									class="btn flex-1 {noLocal ? 'btn-secondary' : 'btn-primary'}"
 								>
 									{#if noLocal}
@@ -447,6 +505,7 @@
 									<th>Entrada</th>
 									<th>Saída</th>
 									<th class="text-right">Duração</th>
+									<th>O que fez</th>
 									<th>Observação</th>
 									<th>Marcado por</th>
 									{#if auth.user?.papel === 'admin'}
@@ -472,7 +531,16 @@
 										<td class="text-right whitespace-nowrap font-semibold text-ink tabular">
 											{r.duracao_segundos !== null ? duracao(r.duracao_segundos) : '—'}
 										</td>
-										<td class="text-ink-2 max-w-xs truncate" title={r.observacao}>{r.observacao || '—'}</td>
+										<td class="max-w-xs">
+											<button
+												onclick={() => abrirAtividades(r.id, `${r.tecnico_nome} · ${dataHora(r.entrada)}`, r.atividades)}
+												class="block w-full text-left truncate cursor-pointer hover:text-accent {r.atividades ? 'text-ink' : 'text-ink-3'}"
+												title={r.atividades || 'Anotar o que foi feito'}
+											>
+												{#if r.atividades}{r.atividades}{:else}<span class="inline-flex items-center gap-1"><NotebookPen class="size-3.5" /> anotar</span>{/if}
+											</button>
+										</td>
+										<td class="text-ink-2 max-w-40 truncate" title={r.observacao}>{r.observacao || '—'}</td>
 										<td class="text-[13px] text-ink-2 whitespace-nowrap">
 											{r.entrada_registrada_por_nome}{#if r.saida_registrada_por_nome && r.saida_registrada_por_nome !== r.entrada_registrada_por_nome}
 												/ {r.saida_registrada_por_nome}{/if}
@@ -598,19 +666,66 @@
 						<label class="label" for="marc-horario">Horário da {saida ? 'saída' : 'entrada'}</label>
 						<input id="marc-horario" type="datetime-local" bind:value={marcacaoHorario} max={paraInputLocal(new Date())} class="field" />
 					</div>
+					{#if saida}
+						<div>
+							<label class="label" for="marc-atividades">O que ele fez hoje? <span class="font-normal text-ink-3">(opcional)</span></label>
+							<textarea
+								id="marc-atividades"
+								bind:value={marcacaoAtividades}
+								rows="5"
+								maxlength="4000"
+								placeholder={'Ex.: Troca do switch do rack 2\nOrganização do cabeamento do 3º andar'}
+								class="field"
+								autofocus
+							></textarea>
+						</div>
+					{/if}
 					<div>
 						<label class="label" for="marc-obs">Observação <span class="font-normal text-ink-3">(opcional)</span></label>
-						<input id="marc-obs" type="text" bind:value={marcacaoObs} placeholder="Ex.: Manutenção do ar-condicionado" class="field" />
+						<input id="marc-obs" type="text" bind:value={marcacaoObs} placeholder={saida ? 'Ex.: Volta amanhã para terminar' : 'Ex.: Manutenção do ar-condicionado'} class="field" />
 					</div>
 				</div>
 				<div class="modal-foot">
 					<button onclick={() => (modalMarcacaoAberto = false)} class="btn btn-ghost">Cancelar</button>
 					<button
-						onclick={() => marcacaoTecnico && marcar(marcacaoTecnico, marcacaoHorario, marcacaoObs)}
+						onclick={() => marcacaoTecnico && marcar(marcacaoTecnico, marcacaoHorario, marcacaoObs, marcacaoAtividades)}
 						class="btn btn-primary"
 					>
 						Registrar {saida ? 'saída' : 'entrada'}
 					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Modal "o que foi feito" -->
+	{#if modalAtividadesAberto}
+		<div class="modal-backdrop">
+			<div class="modal max-w-lg" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<div>
+						<h3 class="modal-title">O que foi feito</h3>
+						<p class="mt-0.5 text-sm text-ink-3">{atividadesTitulo}</p>
+					</div>
+					<button onclick={() => (modalAtividadesAberto = false)} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
+					</button>
+				</div>
+				<div class="modal-body">
+					<textarea
+						bind:value={atividadesTexto}
+						rows="8"
+						maxlength="4000"
+						placeholder="Serviços feitos, equipamentos trocados, pendências…"
+						class="field"
+						aria-label="O que foi feito"
+						autofocus
+					></textarea>
+					<p class="hint -mt-2 text-right tabular">{atividadesTexto.length}/4000</p>
+				</div>
+				<div class="modal-foot">
+					<button onclick={() => (modalAtividadesAberto = false)} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarAtividades} class="btn btn-primary" disabled={atividadesSalvando}>Salvar</button>
 				</div>
 			</div>
 		</div>

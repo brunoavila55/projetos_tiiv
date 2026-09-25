@@ -11,11 +11,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const atualizarAtividadesRegistro = `-- name: AtualizarAtividadesRegistro :one
+UPDATE tecnico_registros
+SET atividades = $2, atualizado_em = now()
+WHERE id = $1
+RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em, atividades
+`
+
+type AtualizarAtividadesRegistroParams struct {
+	ID         pgtype.UUID `json:"id"`
+	Atividades string      `json:"atividades"`
+}
+
+func (q *Queries) AtualizarAtividadesRegistro(ctx context.Context, arg AtualizarAtividadesRegistroParams) (TecnicoRegistros, error) {
+	row := q.db.QueryRow(ctx, atualizarAtividadesRegistro, arg.ID, arg.Atividades)
+	var i TecnicoRegistros
+	err := row.Scan(
+		&i.ID,
+		&i.TecnicoID,
+		&i.Entrada,
+		&i.Saida,
+		&i.Observacao,
+		&i.EntradaRegistradaPor,
+		&i.SaidaRegistradaPor,
+		&i.CriadoEm,
+		&i.AtualizadoEm,
+		&i.Atividades,
+	)
+	return i, err
+}
+
 const atualizarRegistroTecnico = `-- name: AtualizarRegistroTecnico :one
 UPDATE tecnico_registros
 SET entrada = $2, saida = $3, observacao = $4, atualizado_em = now()
 WHERE id = $1
-RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em
+RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em, atividades
 `
 
 type AtualizarRegistroTecnicoParams struct {
@@ -43,6 +73,7 @@ func (q *Queries) AtualizarRegistroTecnico(ctx context.Context, arg AtualizarReg
 		&i.SaidaRegistradaPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.Atividades,
 	)
 	return i, err
 }
@@ -80,7 +111,7 @@ func (q *Queries) AtualizarTecnico(ctx context.Context, arg AtualizarTecnicoPara
 }
 
 const buscarRegistroTecnicoPorID = `-- name: BuscarRegistroTecnicoPorID :one
-SELECT id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em FROM tecnico_registros WHERE id = $1
+SELECT id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em, atividades FROM tecnico_registros WHERE id = $1
 `
 
 func (q *Queries) BuscarRegistroTecnicoPorID(ctx context.Context, id pgtype.UUID) (TecnicoRegistros, error) {
@@ -96,6 +127,7 @@ func (q *Queries) BuscarRegistroTecnicoPorID(ctx context.Context, id pgtype.UUID
 		&i.SaidaRegistradaPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.Atividades,
 	)
 	return i, err
 }
@@ -176,7 +208,7 @@ func (q *Queries) DeletarRegistroTecnico(ctx context.Context, id pgtype.UUID) er
 
 const listarRegistrosTecnicos = `-- name: ListarRegistrosTecnicos :many
 SELECT
-    r.id, r.tecnico_id, r.entrada, r.saida, r.observacao, r.atualizado_em,
+    r.id, r.tecnico_id, r.entrada, r.saida, r.observacao, r.atividades, r.atualizado_em,
     t.nome AS tecnico_nome, t.empresa AS tecnico_empresa,
     ue.nome AS entrada_registrada_por_nome,
     us.nome AS saida_registrada_por_nome
@@ -206,6 +238,7 @@ type ListarRegistrosTecnicosRow struct {
 	Entrada                  pgtype.Timestamptz `json:"entrada"`
 	Saida                    pgtype.Timestamptz `json:"saida"`
 	Observacao               string             `json:"observacao"`
+	Atividades               string             `json:"atividades"`
 	AtualizadoEm             pgtype.Timestamptz `json:"atualizado_em"`
 	TecnicoNome              string             `json:"tecnico_nome"`
 	TecnicoEmpresa           string             `json:"tecnico_empresa"`
@@ -234,6 +267,7 @@ func (q *Queries) ListarRegistrosTecnicos(ctx context.Context, arg ListarRegistr
 			&i.Entrada,
 			&i.Saida,
 			&i.Observacao,
+			&i.Atividades,
 			&i.AtualizadoEm,
 			&i.TecnicoNome,
 			&i.TecnicoEmpresa,
@@ -254,7 +288,8 @@ const listarTecnicos = `-- name: ListarTecnicos :many
 SELECT
     t.id, t.nome, t.empresa, t.ativo, t.criado_em,
     r.id AS registro_aberto_id,
-    r.entrada AS entrada_aberta
+    r.entrada AS entrada_aberta,
+    r.atividades AS atividades_abertas
 FROM tecnicos t
 LEFT JOIN tecnico_registros r ON r.tecnico_id = t.id AND r.saida IS NULL
 WHERE ($1::boolean IS NULL OR t.ativo = $1)
@@ -262,13 +297,14 @@ ORDER BY t.nome ASC
 `
 
 type ListarTecnicosRow struct {
-	ID               pgtype.UUID        `json:"id"`
-	Nome             string             `json:"nome"`
-	Empresa          string             `json:"empresa"`
-	Ativo            bool               `json:"ativo"`
-	CriadoEm         pgtype.Timestamptz `json:"criado_em"`
-	RegistroAbertoID pgtype.UUID        `json:"registro_aberto_id"`
-	EntradaAberta    pgtype.Timestamptz `json:"entrada_aberta"`
+	ID                pgtype.UUID        `json:"id"`
+	Nome              string             `json:"nome"`
+	Empresa           string             `json:"empresa"`
+	Ativo             bool               `json:"ativo"`
+	CriadoEm          pgtype.Timestamptz `json:"criado_em"`
+	RegistroAbertoID  pgtype.UUID        `json:"registro_aberto_id"`
+	EntradaAberta     pgtype.Timestamptz `json:"entrada_aberta"`
+	AtividadesAbertas pgtype.Text        `json:"atividades_abertas"`
 }
 
 func (q *Queries) ListarTecnicos(ctx context.Context, ativo pgtype.Bool) ([]ListarTecnicosRow, error) {
@@ -288,6 +324,7 @@ func (q *Queries) ListarTecnicos(ctx context.Context, ativo pgtype.Bool) ([]List
 			&i.CriadoEm,
 			&i.RegistroAbertoID,
 			&i.EntradaAberta,
+			&i.AtividadesAbertas,
 		); err != nil {
 			return nil, err
 		}
@@ -302,7 +339,7 @@ func (q *Queries) ListarTecnicos(ctx context.Context, ativo pgtype.Bool) ([]List
 const registrarEntradaTecnico = `-- name: RegistrarEntradaTecnico :one
 INSERT INTO tecnico_registros (tecnico_id, entrada, observacao, entrada_registrada_por)
 VALUES ($1, $2, $3, $4)
-RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em
+RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em, atividades
 `
 
 type RegistrarEntradaTecnicoParams struct {
@@ -330,6 +367,7 @@ func (q *Queries) RegistrarEntradaTecnico(ctx context.Context, arg RegistrarEntr
 		&i.SaidaRegistradaPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.Atividades,
 	)
 	return i, err
 }
@@ -341,9 +379,12 @@ SET saida = $2,
     observacao = CASE WHEN $4::text = '' THEN observacao
                       WHEN observacao = '' THEN $4::text
                       ELSE observacao || E'\n' || $4::text END,
+    -- A tela de saída já vem com o texto anotado no dia: o enviado substitui
+    atividades = CASE WHEN $5::text = '' THEN atividades
+                      ELSE $5::text END,
     atualizado_em = now()
 WHERE tecnico_id = $1 AND saida IS NULL
-RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em
+RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em, atividades
 `
 
 type RegistrarSaidaTecnicoParams struct {
@@ -351,6 +392,7 @@ type RegistrarSaidaTecnicoParams struct {
 	Saida              pgtype.Timestamptz `json:"saida"`
 	SaidaRegistradaPor pgtype.UUID        `json:"saida_registrada_por"`
 	Observacao         string             `json:"observacao"`
+	Atividades         string             `json:"atividades"`
 }
 
 func (q *Queries) RegistrarSaidaTecnico(ctx context.Context, arg RegistrarSaidaTecnicoParams) (TecnicoRegistros, error) {
@@ -359,6 +401,7 @@ func (q *Queries) RegistrarSaidaTecnico(ctx context.Context, arg RegistrarSaidaT
 		arg.Saida,
 		arg.SaidaRegistradaPor,
 		arg.Observacao,
+		arg.Atividades,
 	)
 	var i TecnicoRegistros
 	err := row.Scan(
@@ -371,6 +414,7 @@ func (q *Queries) RegistrarSaidaTecnico(ctx context.Context, arg RegistrarSaidaT
 		&i.SaidaRegistradaPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.Atividades,
 	)
 	return i, err
 }

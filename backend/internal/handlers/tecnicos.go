@@ -46,6 +46,8 @@ type TecnicoResponse struct {
 	CriadoEm         string  `json:"criado_em"`
 	RegistroAbertoID *string `json:"registro_aberto_id"`
 	EntradaAberta    *string `json:"entrada_aberta"`
+	// O que já foi anotado na visita em andamento
+	AtividadesAbertas string `json:"atividades_abertas"`
 }
 
 type RegistroTecnicoResponse struct {
@@ -57,6 +59,7 @@ type RegistroTecnicoResponse struct {
 	Saida                    *string `json:"saida"`
 	DuracaoSegundos          *int64  `json:"duracao_segundos"`
 	Observacao               string  `json:"observacao"`
+	Atividades               string  `json:"atividades"`
 	EntradaRegistradaPorNome string  `json:"entrada_registrada_por_nome"`
 	SaidaRegistradaPorNome   *string `json:"saida_registrada_por_nome"`
 }
@@ -173,13 +176,14 @@ func (h *TecnicoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 			registroAberto = &s
 		}
 		result = append(result, TecnicoResponse{
-			ID:               database.UUIDToString(t.ID),
-			Nome:             t.Nome,
-			Empresa:          t.Empresa,
-			Ativo:            t.Ativo,
-			CriadoEm:         t.CriadoEm.Time.Format(time.RFC3339),
-			RegistroAbertoID: registroAberto,
-			EntradaAberta:    formatarTimestamptz(t.EntradaAberta),
+			ID:                database.UUIDToString(t.ID),
+			Nome:              t.Nome,
+			Empresa:           t.Empresa,
+			Ativo:             t.Ativo,
+			CriadoEm:          t.CriadoEm.Time.Format(time.RFC3339),
+			RegistroAbertoID:  registroAberto,
+			EntradaAberta:     formatarTimestamptz(t.EntradaAberta),
+			AtividadesAbertas: t.AtividadesAbertas.String,
 		})
 	}
 
@@ -271,7 +275,11 @@ func (h *TecnicoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 type MarcacaoRequest struct {
 	Horario    string `json:"horario"` // RFC3339 opcional; vazio = agora
 	Observacao string `json:"observacao"`
+	Atividades string `json:"atividades"` // só na saída: o que o técnico fez
 }
+
+// Limite do texto "o que foi feito" de uma visita
+const maxAtividades = 4000
 
 func lerMarcacao(r *http.Request) (MarcacaoRequest, error) {
 	var req MarcacaoRequest
@@ -281,6 +289,10 @@ func lerMarcacao(r *http.Request) (MarcacaoRequest, error) {
 		}
 	}
 	req.Observacao = strings.TrimSpace(req.Observacao)
+	var err error
+	if req.Atividades, err = validarTexto(req.Atividades, "o que foi feito", false, maxAtividades); err != nil {
+		return req, err
+	}
 	return req, nil
 }
 
@@ -372,6 +384,7 @@ func (h *TecnicoHandler) RegistrarSaida(w http.ResponseWriter, r *http.Request) 
 		Saida:              database.TimeToTimestamptz(horario),
 		SaidaRegistradaPor: uID,
 		Observacao:         req.Observacao,
+		Atividades:         req.Atividades,
 	})
 	if err != nil {
 		switch {
@@ -425,6 +438,7 @@ func (h *TecnicoHandler) consultarRegistros(r *http.Request, limite, offset int)
 			Saida:                    formatarTimestamptz(row.Saida),
 			DuracaoSegundos:          duracao,
 			Observacao:               row.Observacao,
+			Atividades:               row.Atividades,
 			EntradaRegistradaPorNome: row.EntradaRegistradaPorNome,
 			SaidaRegistradaPorNome:   database.TextToString(row.SaidaRegistradaPorNome),
 		})
@@ -599,6 +613,43 @@ func formatarDuracao(segundos int64) string {
 	return fmt.Sprintf("%d:%02d", segundos/3600, (segundos%3600)/60)
 }
 
+type AtividadesRequest struct {
+	Atividades string `json:"atividades"`
+}
+
+// AtualizarAtividades: PATCH /api/tecnicos/registros/{id}/atividades
+// Qualquer operador anota o que o técnico fez (horários continuam só com admin).
+func (h *TecnicoHandler) AtualizarAtividades(w http.ResponseWriter, r *http.Request) {
+	id, err := database.StringToUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+	var req AtividadesRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&req); err != nil {
+		response.JSONError(w, http.StatusBadRequest, "corpo da requisição inválido")
+		return
+	}
+	if req.Atividades, err = validarTexto(req.Atividades, "o que foi feito", false, maxAtividades); err != nil {
+		response.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	reg, err := h.db.Queries.AtualizarAtividadesRegistro(r.Context(), sqlc.AtualizarAtividadesRegistroParams{
+		ID:         id,
+		Atividades: req.Atividades,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		response.JSONError(w, http.StatusNotFound, "registro não encontrado")
+		return
+	}
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao salvar o que foi feito")
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"atividades": reg.Atividades})
+}
+
 func iniciarCSV(w http.ResponseWriter, prefixo string) *csv.Writer {
 	filename := fmt.Sprintf("%s_%s.csv", prefixo, time.Now().In(fusoSaoPaulo).Format("20060102_150405"))
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
@@ -629,7 +680,7 @@ func (h *TecnicoHandler) ExportarRegistrosCSV(w http.ResponseWriter, r *http.Req
 	}
 
 	writer := iniciarCSV(w, "presenca_tecnicos")
-	_ = writer.Write([]string{"Técnico", "Empresa", "Entrada", "Saída", "Duração (h:mm)", "Observação", "Entrada marcada por", "Saída marcada por"})
+	_ = writer.Write([]string{"Técnico", "Empresa", "Entrada", "Saída", "Duração (h:mm)", "O que foi feito", "Observação", "Entrada marcada por", "Saída marcada por"})
 	for _, reg := range registros {
 		duracao := ""
 		if reg.DuracaoSegundos != nil {
@@ -645,6 +696,7 @@ func (h *TecnicoHandler) ExportarRegistrosCSV(w http.ResponseWriter, r *http.Req
 			dataHoraLocal(&reg.Entrada),
 			dataHoraLocal(reg.Saida),
 			duracao,
+			celulaCSV(reg.Atividades),
 			celulaCSV(reg.Observacao),
 			celulaCSV(reg.EntradaRegistradaPorNome),
 			celulaCSV(saidaPor),

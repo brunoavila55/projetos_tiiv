@@ -192,6 +192,7 @@ type TecnicoRegistros struct {
 	SaidaRegistradaPor   pgtype.UUID        `json:"saida_registrada_por"`
 	CriadoEm             pgtype.Timestamptz `json:"criado_em"`
 	AtualizadoEm         pgtype.Timestamptz `json:"atualizado_em"`
+	Atividades           string             `json:"atividades"`
 }
 
 type Tecnicos struct {

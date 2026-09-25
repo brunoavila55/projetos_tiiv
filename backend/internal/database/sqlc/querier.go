@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	AbrirQueda(ctx context.Context, arg AbrirQuedaParams) (pgtype.UUID, error)
 	AdicionarParticipanteEvento(ctx context.Context, arg AdicionarParticipanteEventoParams) error
+	AtualizarAtividadesRegistro(ctx context.Context, arg AtualizarAtividadesRegistroParams) (TecnicoRegistros, error)
 	AtualizarAviso(ctx context.Context, arg AtualizarAvisoParams) (Avisos, error)
 	AtualizarEvento(ctx context.Context, arg AtualizarEventoParams) (Eventos, error)
 	AtualizarItemEstoque(ctx context.Context, arg AtualizarItemEstoqueParams) (ItensEstoque, error)

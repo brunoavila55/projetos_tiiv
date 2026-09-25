@@ -2,7 +2,8 @@
 SELECT
     t.id, t.nome, t.empresa, t.ativo, t.criado_em,
     r.id AS registro_aberto_id,
-    r.entrada AS entrada_aberta
+    r.entrada AS entrada_aberta,
+    r.atividades AS atividades_abertas
 FROM tecnicos t
 LEFT JOIN tecnico_registros r ON r.tecnico_id = t.id AND r.saida IS NULL
 WHERE (sqlc.narg('ativo')::boolean IS NULL OR t.ativo = sqlc.narg('ativo'))
@@ -36,6 +37,9 @@ SET saida = $2,
     observacao = CASE WHEN sqlc.arg('observacao')::text = '' THEN observacao
                       WHEN observacao = '' THEN sqlc.arg('observacao')::text
                       ELSE observacao || E'\n' || sqlc.arg('observacao')::text END,
+    -- A tela de saída já vem com o texto anotado no dia: o enviado substitui
+    atividades = CASE WHEN sqlc.arg('atividades')::text = '' THEN atividades
+                      ELSE sqlc.arg('atividades')::text END,
     atualizado_em = now()
 WHERE tecnico_id = $1 AND saida IS NULL
 RETURNING *;
@@ -46,6 +50,12 @@ SELECT * FROM tecnico_registros WHERE id = $1;
 -- name: AtualizarRegistroTecnico :one
 UPDATE tecnico_registros
 SET entrada = $2, saida = $3, observacao = $4, atualizado_em = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: AtualizarAtividadesRegistro :one
+UPDATE tecnico_registros
+SET atividades = $2, atualizado_em = now()
 WHERE id = $1
 RETURNING *;
 
@@ -62,7 +72,7 @@ WHERE
 
 -- name: ListarRegistrosTecnicos :many
 SELECT
-    r.id, r.tecnico_id, r.entrada, r.saida, r.observacao, r.atualizado_em,
+    r.id, r.tecnico_id, r.entrada, r.saida, r.observacao, r.atividades, r.atualizado_em,
     t.nome AS tecnico_nome, t.empresa AS tecnico_empresa,
     ue.nome AS entrada_registrada_por_nome,
     us.nome AS saida_registrada_por_nome
