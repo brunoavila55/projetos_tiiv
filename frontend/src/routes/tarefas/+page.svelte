@@ -465,7 +465,7 @@
 								{:else}
 									{#each comentarios as c (c.id)}
 										<div class="group flex gap-2.5">
-											<div class="avatar size-7 text-[11px] mt-0.5" style="background-color: {c.usuario_cor || '#1f5c5a'};">
+											<div class="avatar size-7 text-[11px] mt-0.5" style="background-color: {c.usuario_cor || '#1d5bbf'};">
 												{c.usuario_nome.slice(0, 1).toUpperCase()}
 											</div>
 											<div class="flex-1 min-w-0">

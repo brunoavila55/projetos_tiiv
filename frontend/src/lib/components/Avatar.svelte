@@ -33,5 +33,5 @@
 		draggable="false"
 	/>
 {:else}
-	<span class="avatar {classe}" style="background-color: {cor || '#1f5c5a'};" aria-hidden="true">{iniciais}</span>
+	<span class="avatar {classe}" style="background-color: {cor || '#1d5bbf'};" aria-hidden="true">{iniciais}</span>
 {/if}

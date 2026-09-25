@@ -189,7 +189,7 @@
 
 <div class="relative min-h-dvh text-ink">
 	<!-- Foto de fundo -->
-	<div class="fixed inset-0 bg-[#6f8fa8]" aria-hidden="true">
+	<div class="fixed inset-0 bg-[#06122b]" aria-hidden="true">
 		<img src="/login-bg.jpg" alt="" class="size-full object-cover" draggable="false" />
 		<div class="absolute inset-0 bg-gradient-to-b from-black/40 via-black/10 to-black/45"></div>
 	</div>
@@ -278,16 +278,6 @@
 			</section>
 		</main>
 
-		<footer class="pl-5 pr-20 sm:px-10 pb-5 text-[13px] text-white/85 [text-shadow:0_1px_2px_rgb(0_0_0/0.35)]">
-			Foto de
-			<a
-				href="https://www.pexels.com/photo/photo-of-sea-and-mountain-906961/"
-				target="_blank"
-				rel="noopener noreferrer"
-				class="underline underline-offset-2 hover:text-white">Stefanos Martimianakis</a
-			>
-			no Pexels
-		</footer>
 	</div>
 
 	<TiraDuvidas onAbrirTicket={ticketDoTiraDuvidas} />

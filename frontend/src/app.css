@@ -5,7 +5,7 @@
 
 /*
  * TIIV — sistema visual
- * Neutros frios levemente esverdeados, um único acento "petróleo" e
+ * Neutros frios levemente esverdeados, um único acento azul e
  * cores de estado discretas. Todas as cores são tokens que trocam
  * sozinhos no modo escuro: nas telas não se usa `dark:` para cor.
  */
@@ -22,9 +22,9 @@
 	--ink-2: #46514c;
 	--ink-3: #6b7570;
 
-	--accent: #1f5c5a;
-	--accent-strong: #174745;
-	--accent-soft: #e2eeec;
+	--accent: #1d5bbf;
+	--accent-strong: #164896;
+	--accent-soft: #e3ebf9;
 	--on-accent: #ffffff;
 
 	--danger: #a53a2c;
@@ -53,10 +53,10 @@
 	--ink-2: #b4bdb8;
 	--ink-3: #87918c;
 
-	--accent: #7fb4ae;
-	--accent-strong: #9dc7c2;
-	--accent-soft: #1d3432;
-	--on-accent: #0e1b1a;
+	--accent: #86b0ee;
+	--accent-strong: #a8c6f4;
+	--accent-soft: #1a2940;
+	--on-accent: #0c1628;
 
 	--danger: #e3907f;
 	--danger-soft: #3a211d;

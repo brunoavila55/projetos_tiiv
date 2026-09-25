@@ -110,8 +110,8 @@
 				start: e.inicio,
 				end: e.fim,
 				allDay: e.dia_inteiro,
-				backgroundColor: e.criador_cor || '#1f5c5a',
-				borderColor: e.criador_cor || '#1f5c5a',
+				backgroundColor: e.criador_cor || '#1d5bbf',
+				borderColor: e.criador_cor || '#1d5bbf',
 				editable: e.pode_editar,
 				extendedProps: {
 					descricao: e.descricao,
@@ -383,7 +383,7 @@
 									{#if selecionado}
 										<Check class="size-3.5 text-accent" strokeWidth={3} />
 									{:else}
-										<span class="dot" style="background-color: {u.cor || '#1f5c5a'};"></span>
+										<span class="dot" style="background-color: {u.cor || '#1d5bbf'};"></span>
 									{/if}
 									<span>{u.nome}</span>
 									{#if ehCriador}
