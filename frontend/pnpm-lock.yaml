@@ -23,6 +23,9 @@ importers:
       '@event-calendar/time-grid':
         specifier: ^3.12.0
         version: 3.12.0
+      '@fontsource-variable/archivo':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fontsource-variable/atkinson-hyperlegible-next':
         specifier: ^5.3.0
         version: 5.3.0
@@ -102,6 +105,9 @@ packages:
 
   '@event-calendar/time-grid@3.12.0':
     resolution: {integrity: sha512-n/IoFSq/ym6ad2k+H9RL2A8GpfOJy1zpKKLb1Edp/QEusexpPg8LNdSbxhmKGz6ip5ud0Bi/xgUa8xUqut8ooQ==}
+
+  '@fontsource-variable/archivo@5.3.0':
+    resolution: {integrity: sha512-HogK8FJelrD1o7TlZlkIVtHgc20bO5PZRWE7mUeUTdMN055alznQV6/00J00IBeu8FQAH4s3zW9UJNvKExXf+g==}
 
   '@fontsource-variable/atkinson-hyperlegible-next@5.3.0':
     resolution: {integrity: sha512-UnLzNUy1RWoLDfydAatP4NaRm99X/WbQEph7q/PymJnCFIOOwKOx3pBmp5ys8trO0dM+CKGuJgeZP9fAR4mQpA==}
@@ -837,6 +843,8 @@ snapshots:
     dependencies:
       '@event-calendar/core': 3.12.0
       svelte: 4.2.20
+
+  '@fontsource-variable/archivo@5.3.0': {}
 
   '@fontsource-variable/atkinson-hyperlegible-next@5.3.0': {}
 
