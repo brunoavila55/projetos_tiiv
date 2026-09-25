@@ -60,6 +60,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	avisoHandler := handlers.NewAvisoHandler(db)
 	monitorHandler := handlers.NewMonitorHandler(db)
 	linkHandler := handlers.NewLinkHandler(db)
+	plantaoHandler := handlers.NewPlantaoHandler(db)
 	tecnicoHandler := handlers.NewTecnicoHandler(db)
 	ticketHandler := handlers.NewTicketHandler(db)
 	procedimentoHandler := handlers.NewProcedimentoHandler(db)
@@ -137,6 +138,19 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 				e.Post("/", eventoHandler.Criar)
 				e.Put("/{id}", eventoHandler.Atualizar)
 				e.Delete("/{id}", eventoHandler.Deletar)
+			})
+
+			// Escala de plantão (montagem só admin)
+			protected.Route("/plantoes", func(p chi.Router) {
+				p.Get("/", plantaoHandler.Listar)
+
+				p.Group(func(adminPl chi.Router) {
+					adminPl.Use(authMiddleware.RequireAdmin)
+					adminPl.Post("/", plantaoHandler.Criar)
+					adminPl.Post("/rodizio", plantaoHandler.Rodizio)
+					adminPl.Put("/{id}", plantaoHandler.Atualizar)
+					adminPl.Delete("/{id}", plantaoHandler.Deletar)
+				})
 			})
 
 			// Tarefas

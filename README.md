@@ -1,7 +1,7 @@
 # TIIV — Aplicação Interna do Setor
 
 Aplicação web interna para uso de equipe em rede local (LAN), englobando:
-1. **Calendário**: Reuniões e eventos entre membros da equipe.
+1. **Calendário**: Reuniões e eventos entre membros da equipe, e a escala de plantão/sobreaviso (turnos avulsos ou em rodízio; quem está de plantão hoje aparece no painel).
 2. **Tarefas**: Gestão de pendências com status, prioridade e responsáveis.
 3. **Estoque**: Controle material baseado em movimentações transacionais (entrada/saída/ajuste).
 4. **Técnicos**: Cadastro de técnicos, marcação de entrada/saída e relatório de horas.

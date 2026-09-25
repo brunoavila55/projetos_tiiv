@@ -27,6 +27,7 @@ const DiasAntecedenciaPainel = 7
 type PainelResponse struct {
 	Avisos           []AvisoResponse         `json:"avisos"`
 	Monitores        ResumoMonitoresResponse `json:"monitores"`
+	Plantao          PainelPlantaoResponse   `json:"plantao"`
 	ProximosEventos  []EventoResponse        `json:"proximos_eventos"`
 	TarefasPendentes []TarefaItemResponse    `json:"tarefas_pendentes"`
 }
@@ -153,6 +154,7 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 	response.JSON(w, http.StatusOK, PainelResponse{
 		Avisos:           avisos,
 		Monitores:        monitores,
+		Plantao:          plantaoNoPainel(r.Context(), h.db.Queries, user),
 		ProximosEventos:  proximosEventos,
 		TarefasPendentes: tarefasPendentes,
 	})

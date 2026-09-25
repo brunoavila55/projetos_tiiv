@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { Calendar, CalendarClock, CheckSquare, Plus, Flag, Megaphone, Pencil, Trash2, X, Activity, CircleAlert } from 'lucide-svelte';
+	import { Calendar, CalendarClock, CheckSquare, Plus, Flag, Megaphone, Pencil, Trash2, X, Activity, CircleAlert, ShieldCheck } from 'lucide-svelte';
 
 	type NivelAviso = 'info' | 'atencao' | 'critico';
 
@@ -18,6 +18,16 @@
 		pode_editar: boolean;
 	}
 
+	interface Turno {
+		id: string;
+		usuario_id: string;
+		usuario_nome: string;
+		usuario_cor: string;
+		tipo: 'plantao' | 'sobreaviso';
+		inicio: string; // AAAA-MM-DD
+		fim: string;
+	}
+
 	interface PainelDados {
 		avisos: Aviso[];
 		monitores: {
@@ -25,6 +35,10 @@
 			online: number;
 			offline: number;
 			fora: { id: string; nome: string; alvo: string; ultimo_erro: string; status_desde: string }[];
+		};
+		plantao: {
+			hoje: Turno[];
+			meu_proximo: Turno | null;
 		};
 		proximos_eventos: {
 			id: string;
@@ -183,6 +197,17 @@
 		return `há ${d} ${d === 1 ? 'dia' : 'dias'}`;
 	}
 
+	// Turno do usuário: em andamento ou quando começa (datas AAAA-MM-DD, fim inclusivo)
+	function textoMeuTurno(t: Turno): string {
+		const tipo = t.tipo === 'plantao' ? 'plantão' : 'sobreaviso';
+		const dia = (d: string) =>
+			new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).replace('.', '');
+		const inicio = diasAte(t.inicio + 'T00:00:00');
+		if (inicio <= 0) return `Você está de ${tipo} ${t.fim === dataLocalISO(hoje) ? 'até o fim do dia' : `até ${dia(t.fim)}`}`;
+		const quando = inicio === 1 ? 'amanhã' : `em ${inicio} dias`;
+		return `Seu próximo ${tipo} começa ${quando}: ${t.inicio === t.fim ? dia(t.inicio) : `${dia(t.inicio)} a ${dia(t.fim)}`}`;
+	}
+
 	function quandoFalta(iso: string): string {
 		const n = diasAte(iso);
 		if (n < 0) return 'em andamento';
@@ -302,6 +327,30 @@
 						? `Todos os ${dados.monitores.ativos} serviços monitorados estão no ar.`
 						: `${dados.monitores.online} de ${dados.monitores.ativos} serviços confirmados no ar.`}
 				</span>
+			</a>
+		{/if}
+
+		<!-- Escala de plantão -->
+		{#if dados.plantao.hoje.length > 0 || dados.plantao.meu_proximo}
+			<a href="/calendario" class="flex flex-col sm:flex-row sm:items-center gap-x-5 gap-y-2 px-4 py-3 rounded-xl border border-line hover:border-line-strong transition-colors">
+				<div class="flex items-center gap-2.5 min-w-0 flex-1 flex-wrap">
+					<ShieldCheck class="size-4 text-accent shrink-0" />
+					<span class="text-sm font-semibold text-ink">De plantão hoje</span>
+					{#if dados.plantao.hoje.length === 0}
+						<span class="text-sm text-ink-3">ninguém escalado</span>
+					{:else}
+						{#each dados.plantao.hoje as t (t.id)}
+							<span class="tag h-7 px-2.5 text-[13px] {t.usuario_id === auth.user?.id ? 'tag-accent' : ''}">
+								<span class="dot size-2" style="background-color: {t.usuario_cor};"></span>
+								{t.usuario_nome}
+								{#if t.tipo === 'sobreaviso'}<span class="font-normal text-ink-3">sobreaviso</span>{/if}
+							</span>
+						{/each}
+					{/if}
+				</div>
+				{#if dados.plantao.meu_proximo}
+					<span class="text-[13px] text-ink-2 sm:text-right">{textoMeuTurno(dados.plantao.meu_proximo)}</span>
+				{/if}
 			</a>
 		{/if}
 
