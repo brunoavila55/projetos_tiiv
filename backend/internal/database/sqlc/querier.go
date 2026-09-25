@@ -50,13 +50,13 @@ type Querier interface {
 	// Busca para o tira-dúvidas: full-text em português (termos em OU) somado à
 	// semelhança por trigramas, que tolera erros de digitação.
 	BuscarProcedimentosRelevantes(ctx context.Context, arg BuscarProcedimentosRelevantesParams) ([]BuscarProcedimentosRelevantesRow, error)
-	BuscarRegistroTecnicoPorID(ctx context.Context, id pgtype.UUID) (TecnicoRegistros, error)
+	BuscarRegistroTecnicoPorID(ctx context.Context, arg BuscarRegistroTecnicoPorIDParams) (TecnicoRegistros, error)
 	BuscarRevisaoProcedimento(ctx context.Context, arg BuscarRevisaoProcedimentoParams) (ProcedimentoRevisoes, error)
 	// Setor de trabalho: o escolhido na sessão (só superadmin) ou o do usuário
 	BuscarSessaoPorHash(ctx context.Context, tokenHash string) (BuscarSessaoPorHashRow, error)
 	BuscarSetor(ctx context.Context, id pgtype.UUID) (Setores, error)
 	BuscarTarefaPorID(ctx context.Context, arg BuscarTarefaPorIDParams) (BuscarTarefaPorIDRow, error)
-	BuscarTecnicoPorID(ctx context.Context, id pgtype.UUID) (Tecnicos, error)
+	BuscarTecnicoPorID(ctx context.Context, arg BuscarTecnicoPorIDParams) (BuscarTecnicoPorIDRow, error)
 	BuscarTelaTVPorHash(ctx context.Context, chaveHash string) (BuscarTelaTVPorHashRow, error)
 	BuscarUsuarioPorID(ctx context.Context, id pgtype.UUID) (BuscarUsuarioPorIDRow, error)
 	BuscarUsuarioPorIDComPin(ctx context.Context, id pgtype.UUID) (BuscarUsuarioPorIDComPinRow, error)
@@ -130,7 +130,7 @@ type Querier interface {
 	ListarSetoresPedidos(ctx context.Context) ([]ListarSetoresPedidosRow, error)
 	ListarTarefas(ctx context.Context, arg ListarTarefasParams) ([]ListarTarefasRow, error)
 	ListarTarefasPendentesUsuario(ctx context.Context, arg ListarTarefasPendentesUsuarioParams) ([]ListarTarefasPendentesUsuarioRow, error)
-	ListarTecnicos(ctx context.Context, ativo pgtype.Bool) ([]ListarTecnicosRow, error)
+	ListarTecnicos(ctx context.Context, arg ListarTecnicosParams) ([]ListarTecnicosRow, error)
 	ListarTelasTV(ctx context.Context, setorID pgtype.UUID) ([]ListarTelasTVRow, error)
 	ListarTickets(ctx context.Context, arg ListarTicketsParams) ([]ListarTicketsRow, error)
 	ListarTodosUsuarios(ctx context.Context, setorID pgtype.UUID) ([]ListarTodosUsuariosRow, error)

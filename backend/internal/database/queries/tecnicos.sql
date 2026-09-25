@@ -6,23 +6,24 @@ SELECT
     r.atividades AS atividades_abertas
 FROM tecnicos t
 LEFT JOIN tecnico_registros r ON r.tecnico_id = t.id AND r.saida IS NULL
-WHERE (sqlc.narg('ativo')::boolean IS NULL OR t.ativo = sqlc.narg('ativo'))
+WHERE t.setor_id = sqlc.arg('setor_id')
+  AND (sqlc.narg('ativo')::boolean IS NULL OR t.ativo = sqlc.narg('ativo'))
 ORDER BY t.nome ASC;
 
 -- name: BuscarTecnicoPorID :one
 SELECT id, nome, empresa, ativo, criado_em
 FROM tecnicos
-WHERE id = $1;
+WHERE id = $1 AND setor_id = $2;
 
 -- name: CriarTecnico :one
-INSERT INTO tecnicos (nome, empresa)
-VALUES ($1, $2)
+INSERT INTO tecnicos (nome, empresa, setor_id)
+VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: AtualizarTecnico :one
 UPDATE tecnicos
 SET nome = $2, empresa = $3, ativo = $4
-WHERE id = $1
+WHERE id = $1 AND setor_id = sqlc.arg('setor_id')
 RETURNING *;
 
 -- name: RegistrarEntradaTecnico :one
@@ -42,21 +43,26 @@ SET saida = $2,
                       ELSE sqlc.arg('atividades')::text END,
     atualizado_em = now()
 WHERE tecnico_id = $1 AND saida IS NULL
+  AND tecnico_id IN (SELECT t.id FROM tecnicos t WHERE t.setor_id = sqlc.arg('setor_id'))
 RETURNING *;
 
 -- name: BuscarRegistroTecnicoPorID :one
-SELECT * FROM tecnico_registros WHERE id = $1;
+SELECT r.* FROM tecnico_registros r
+JOIN tecnicos t ON t.id = r.tecnico_id
+WHERE r.id = $1 AND t.setor_id = $2;
 
 -- name: AtualizarRegistroTecnico :one
 UPDATE tecnico_registros
 SET entrada = $2, saida = $3, observacao = $4, atualizado_em = now()
-WHERE id = $1
+WHERE tecnico_registros.id = $1
+  AND tecnico_registros.tecnico_id IN (SELECT t.id FROM tecnicos t WHERE t.setor_id = sqlc.arg('setor_id'))
 RETURNING *;
 
 -- name: AtualizarAtividadesRegistro :one
 UPDATE tecnico_registros
 SET atividades = $2, atualizado_em = now()
-WHERE id = $1
+WHERE tecnico_registros.id = $1
+  AND tecnico_registros.tecnico_id IN (SELECT t.id FROM tecnicos t WHERE t.setor_id = sqlc.arg('setor_id'))
 RETURNING *;
 
 -- name: DeletarRegistroTecnico :exec
@@ -65,8 +71,9 @@ DELETE FROM tecnico_registros WHERE id = $1;
 -- name: ContarRegistrosTecnicos :one
 SELECT count(*)
 FROM tecnico_registros r
-WHERE
-    (sqlc.narg('tecnico_id')::uuid IS NULL OR r.tecnico_id = sqlc.narg('tecnico_id'))
+JOIN tecnicos t ON t.id = r.tecnico_id
+WHERE t.setor_id = sqlc.arg('setor_id')
+    AND (sqlc.narg('tecnico_id')::uuid IS NULL OR r.tecnico_id = sqlc.narg('tecnico_id'))
     AND (sqlc.narg('data_inicio')::timestamptz IS NULL OR r.entrada >= sqlc.narg('data_inicio'))
     AND (sqlc.narg('data_fim')::timestamptz IS NULL OR r.entrada < sqlc.narg('data_fim'));
 
@@ -80,8 +87,8 @@ FROM tecnico_registros r
 JOIN tecnicos t ON t.id = r.tecnico_id
 JOIN usuarios ue ON ue.id = r.entrada_registrada_por
 LEFT JOIN usuarios us ON us.id = r.saida_registrada_por
-WHERE
-    (sqlc.narg('tecnico_id')::uuid IS NULL OR r.tecnico_id = sqlc.narg('tecnico_id'))
+WHERE t.setor_id = sqlc.arg('setor_id')
+    AND (sqlc.narg('tecnico_id')::uuid IS NULL OR r.tecnico_id = sqlc.narg('tecnico_id'))
     AND (sqlc.narg('data_inicio')::timestamptz IS NULL OR r.entrada >= sqlc.narg('data_inicio'))
     AND (sqlc.narg('data_fim')::timestamptz IS NULL OR r.entrada < sqlc.narg('data_fim'))
 ORDER BY r.entrada DESC
@@ -102,8 +109,8 @@ SELECT
     max(COALESCE(r.saida, r.entrada))::timestamptz AS ultima_marcacao
 FROM tecnicos t
 JOIN tecnico_registros r ON r.tecnico_id = t.id
-WHERE
-    (sqlc.narg('tecnico_id')::uuid IS NULL OR r.tecnico_id = sqlc.narg('tecnico_id'))
+WHERE t.setor_id = sqlc.arg('setor_id')
+    AND (sqlc.narg('tecnico_id')::uuid IS NULL OR r.tecnico_id = sqlc.narg('tecnico_id'))
     AND (sqlc.narg('data_inicio')::timestamptz IS NULL OR r.entrada >= sqlc.narg('data_inicio'))
     AND (sqlc.narg('data_fim')::timestamptz IS NULL OR r.entrada < sqlc.narg('data_fim'))
 GROUP BY t.id, t.nome, t.empresa

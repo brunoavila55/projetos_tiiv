@@ -14,17 +14,19 @@ import (
 const atualizarAtividadesRegistro = `-- name: AtualizarAtividadesRegistro :one
 UPDATE tecnico_registros
 SET atividades = $2, atualizado_em = now()
-WHERE id = $1
+WHERE tecnico_registros.id = $1
+  AND tecnico_registros.tecnico_id IN (SELECT t.id FROM tecnicos t WHERE t.setor_id = $3)
 RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em, atividades
 `
 
 type AtualizarAtividadesRegistroParams struct {
 	ID         pgtype.UUID `json:"id"`
 	Atividades string      `json:"atividades"`
+	SetorID    pgtype.UUID `json:"setor_id"`
 }
 
 func (q *Queries) AtualizarAtividadesRegistro(ctx context.Context, arg AtualizarAtividadesRegistroParams) (TecnicoRegistros, error) {
-	row := q.db.QueryRow(ctx, atualizarAtividadesRegistro, arg.ID, arg.Atividades)
+	row := q.db.QueryRow(ctx, atualizarAtividadesRegistro, arg.ID, arg.Atividades, arg.SetorID)
 	var i TecnicoRegistros
 	err := row.Scan(
 		&i.ID,
@@ -44,7 +46,8 @@ func (q *Queries) AtualizarAtividadesRegistro(ctx context.Context, arg Atualizar
 const atualizarRegistroTecnico = `-- name: AtualizarRegistroTecnico :one
 UPDATE tecnico_registros
 SET entrada = $2, saida = $3, observacao = $4, atualizado_em = now()
-WHERE id = $1
+WHERE tecnico_registros.id = $1
+  AND tecnico_registros.tecnico_id IN (SELECT t.id FROM tecnicos t WHERE t.setor_id = $5)
 RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em, atividades
 `
 
@@ -53,6 +56,7 @@ type AtualizarRegistroTecnicoParams struct {
 	Entrada    pgtype.Timestamptz `json:"entrada"`
 	Saida      pgtype.Timestamptz `json:"saida"`
 	Observacao string             `json:"observacao"`
+	SetorID    pgtype.UUID        `json:"setor_id"`
 }
 
 func (q *Queries) AtualizarRegistroTecnico(ctx context.Context, arg AtualizarRegistroTecnicoParams) (TecnicoRegistros, error) {
@@ -61,6 +65,7 @@ func (q *Queries) AtualizarRegistroTecnico(ctx context.Context, arg AtualizarReg
 		arg.Entrada,
 		arg.Saida,
 		arg.Observacao,
+		arg.SetorID,
 	)
 	var i TecnicoRegistros
 	err := row.Scan(
@@ -81,8 +86,8 @@ func (q *Queries) AtualizarRegistroTecnico(ctx context.Context, arg AtualizarReg
 const atualizarTecnico = `-- name: AtualizarTecnico :one
 UPDATE tecnicos
 SET nome = $2, empresa = $3, ativo = $4
-WHERE id = $1
-RETURNING id, nome, empresa, ativo, criado_em
+WHERE id = $1 AND setor_id = $5
+RETURNING id, nome, empresa, ativo, criado_em, setor_id
 `
 
 type AtualizarTecnicoParams struct {
@@ -90,6 +95,7 @@ type AtualizarTecnicoParams struct {
 	Nome    string      `json:"nome"`
 	Empresa string      `json:"empresa"`
 	Ativo   bool        `json:"ativo"`
+	SetorID pgtype.UUID `json:"setor_id"`
 }
 
 func (q *Queries) AtualizarTecnico(ctx context.Context, arg AtualizarTecnicoParams) (Tecnicos, error) {
@@ -98,6 +104,7 @@ func (q *Queries) AtualizarTecnico(ctx context.Context, arg AtualizarTecnicoPara
 		arg.Nome,
 		arg.Empresa,
 		arg.Ativo,
+		arg.SetorID,
 	)
 	var i Tecnicos
 	err := row.Scan(
@@ -106,16 +113,24 @@ func (q *Queries) AtualizarTecnico(ctx context.Context, arg AtualizarTecnicoPara
 		&i.Empresa,
 		&i.Ativo,
 		&i.CriadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
 
 const buscarRegistroTecnicoPorID = `-- name: BuscarRegistroTecnicoPorID :one
-SELECT id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em, atividades FROM tecnico_registros WHERE id = $1
+SELECT r.id, r.tecnico_id, r.entrada, r.saida, r.observacao, r.entrada_registrada_por, r.saida_registrada_por, r.criado_em, r.atualizado_em, r.atividades FROM tecnico_registros r
+JOIN tecnicos t ON t.id = r.tecnico_id
+WHERE r.id = $1 AND t.setor_id = $2
 `
 
-func (q *Queries) BuscarRegistroTecnicoPorID(ctx context.Context, id pgtype.UUID) (TecnicoRegistros, error) {
-	row := q.db.QueryRow(ctx, buscarRegistroTecnicoPorID, id)
+type BuscarRegistroTecnicoPorIDParams struct {
+	ID      pgtype.UUID `json:"id"`
+	SetorID pgtype.UUID `json:"setor_id"`
+}
+
+func (q *Queries) BuscarRegistroTecnicoPorID(ctx context.Context, arg BuscarRegistroTecnicoPorIDParams) (TecnicoRegistros, error) {
+	row := q.db.QueryRow(ctx, buscarRegistroTecnicoPorID, arg.ID, arg.SetorID)
 	var i TecnicoRegistros
 	err := row.Scan(
 		&i.ID,
@@ -135,12 +150,25 @@ func (q *Queries) BuscarRegistroTecnicoPorID(ctx context.Context, id pgtype.UUID
 const buscarTecnicoPorID = `-- name: BuscarTecnicoPorID :one
 SELECT id, nome, empresa, ativo, criado_em
 FROM tecnicos
-WHERE id = $1
+WHERE id = $1 AND setor_id = $2
 `
 
-func (q *Queries) BuscarTecnicoPorID(ctx context.Context, id pgtype.UUID) (Tecnicos, error) {
-	row := q.db.QueryRow(ctx, buscarTecnicoPorID, id)
-	var i Tecnicos
+type BuscarTecnicoPorIDParams struct {
+	ID      pgtype.UUID `json:"id"`
+	SetorID pgtype.UUID `json:"setor_id"`
+}
+
+type BuscarTecnicoPorIDRow struct {
+	ID       pgtype.UUID        `json:"id"`
+	Nome     string             `json:"nome"`
+	Empresa  string             `json:"empresa"`
+	Ativo    bool               `json:"ativo"`
+	CriadoEm pgtype.Timestamptz `json:"criado_em"`
+}
+
+func (q *Queries) BuscarTecnicoPorID(ctx context.Context, arg BuscarTecnicoPorIDParams) (BuscarTecnicoPorIDRow, error) {
+	row := q.db.QueryRow(ctx, buscarTecnicoPorID, arg.ID, arg.SetorID)
+	var i BuscarTecnicoPorIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Nome,
@@ -154,38 +182,46 @@ func (q *Queries) BuscarTecnicoPorID(ctx context.Context, id pgtype.UUID) (Tecni
 const contarRegistrosTecnicos = `-- name: ContarRegistrosTecnicos :one
 SELECT count(*)
 FROM tecnico_registros r
-WHERE
-    ($1::uuid IS NULL OR r.tecnico_id = $1)
-    AND ($2::timestamptz IS NULL OR r.entrada >= $2)
-    AND ($3::timestamptz IS NULL OR r.entrada < $3)
+JOIN tecnicos t ON t.id = r.tecnico_id
+WHERE t.setor_id = $1
+    AND ($2::uuid IS NULL OR r.tecnico_id = $2)
+    AND ($3::timestamptz IS NULL OR r.entrada >= $3)
+    AND ($4::timestamptz IS NULL OR r.entrada < $4)
 `
 
 type ContarRegistrosTecnicosParams struct {
+	SetorID    pgtype.UUID        `json:"setor_id"`
 	TecnicoID  pgtype.UUID        `json:"tecnico_id"`
 	DataInicio pgtype.Timestamptz `json:"data_inicio"`
 	DataFim    pgtype.Timestamptz `json:"data_fim"`
 }
 
 func (q *Queries) ContarRegistrosTecnicos(ctx context.Context, arg ContarRegistrosTecnicosParams) (int64, error) {
-	row := q.db.QueryRow(ctx, contarRegistrosTecnicos, arg.TecnicoID, arg.DataInicio, arg.DataFim)
+	row := q.db.QueryRow(ctx, contarRegistrosTecnicos,
+		arg.SetorID,
+		arg.TecnicoID,
+		arg.DataInicio,
+		arg.DataFim,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const criarTecnico = `-- name: CriarTecnico :one
-INSERT INTO tecnicos (nome, empresa)
-VALUES ($1, $2)
-RETURNING id, nome, empresa, ativo, criado_em
+INSERT INTO tecnicos (nome, empresa, setor_id)
+VALUES ($1, $2, $3)
+RETURNING id, nome, empresa, ativo, criado_em, setor_id
 `
 
 type CriarTecnicoParams struct {
-	Nome    string `json:"nome"`
-	Empresa string `json:"empresa"`
+	Nome    string      `json:"nome"`
+	Empresa string      `json:"empresa"`
+	SetorID pgtype.UUID `json:"setor_id"`
 }
 
 func (q *Queries) CriarTecnico(ctx context.Context, arg CriarTecnicoParams) (Tecnicos, error) {
-	row := q.db.QueryRow(ctx, criarTecnico, arg.Nome, arg.Empresa)
+	row := q.db.QueryRow(ctx, criarTecnico, arg.Nome, arg.Empresa, arg.SetorID)
 	var i Tecnicos
 	err := row.Scan(
 		&i.ID,
@@ -193,6 +229,7 @@ func (q *Queries) CriarTecnico(ctx context.Context, arg CriarTecnicoParams) (Tec
 		&i.Empresa,
 		&i.Ativo,
 		&i.CriadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -216,10 +253,10 @@ FROM tecnico_registros r
 JOIN tecnicos t ON t.id = r.tecnico_id
 JOIN usuarios ue ON ue.id = r.entrada_registrada_por
 LEFT JOIN usuarios us ON us.id = r.saida_registrada_por
-WHERE
-    ($3::uuid IS NULL OR r.tecnico_id = $3)
-    AND ($4::timestamptz IS NULL OR r.entrada >= $4)
-    AND ($5::timestamptz IS NULL OR r.entrada < $5)
+WHERE t.setor_id = $3
+    AND ($4::uuid IS NULL OR r.tecnico_id = $4)
+    AND ($5::timestamptz IS NULL OR r.entrada >= $5)
+    AND ($6::timestamptz IS NULL OR r.entrada < $6)
 ORDER BY r.entrada DESC
 LIMIT $1 OFFSET $2
 `
@@ -227,6 +264,7 @@ LIMIT $1 OFFSET $2
 type ListarRegistrosTecnicosParams struct {
 	Limit      int32              `json:"limit"`
 	Offset     int32              `json:"offset"`
+	SetorID    pgtype.UUID        `json:"setor_id"`
 	TecnicoID  pgtype.UUID        `json:"tecnico_id"`
 	DataInicio pgtype.Timestamptz `json:"data_inicio"`
 	DataFim    pgtype.Timestamptz `json:"data_fim"`
@@ -250,6 +288,7 @@ func (q *Queries) ListarRegistrosTecnicos(ctx context.Context, arg ListarRegistr
 	rows, err := q.db.Query(ctx, listarRegistrosTecnicos,
 		arg.Limit,
 		arg.Offset,
+		arg.SetorID,
 		arg.TecnicoID,
 		arg.DataInicio,
 		arg.DataFim,
@@ -292,9 +331,15 @@ SELECT
     r.atividades AS atividades_abertas
 FROM tecnicos t
 LEFT JOIN tecnico_registros r ON r.tecnico_id = t.id AND r.saida IS NULL
-WHERE ($1::boolean IS NULL OR t.ativo = $1)
+WHERE t.setor_id = $1
+  AND ($2::boolean IS NULL OR t.ativo = $2)
 ORDER BY t.nome ASC
 `
+
+type ListarTecnicosParams struct {
+	SetorID pgtype.UUID `json:"setor_id"`
+	Ativo   pgtype.Bool `json:"ativo"`
+}
 
 type ListarTecnicosRow struct {
 	ID                pgtype.UUID        `json:"id"`
@@ -307,8 +352,8 @@ type ListarTecnicosRow struct {
 	AtividadesAbertas pgtype.Text        `json:"atividades_abertas"`
 }
 
-func (q *Queries) ListarTecnicos(ctx context.Context, ativo pgtype.Bool) ([]ListarTecnicosRow, error) {
-	rows, err := q.db.Query(ctx, listarTecnicos, ativo)
+func (q *Queries) ListarTecnicos(ctx context.Context, arg ListarTecnicosParams) ([]ListarTecnicosRow, error) {
+	rows, err := q.db.Query(ctx, listarTecnicos, arg.SetorID, arg.Ativo)
 	if err != nil {
 		return nil, err
 	}
@@ -384,6 +429,7 @@ SET saida = $2,
                       ELSE $5::text END,
     atualizado_em = now()
 WHERE tecnico_id = $1 AND saida IS NULL
+  AND tecnico_id IN (SELECT t.id FROM tecnicos t WHERE t.setor_id = $6)
 RETURNING id, tecnico_id, entrada, saida, observacao, entrada_registrada_por, saida_registrada_por, criado_em, atualizado_em, atividades
 `
 
@@ -393,6 +439,7 @@ type RegistrarSaidaTecnicoParams struct {
 	SaidaRegistradaPor pgtype.UUID        `json:"saida_registrada_por"`
 	Observacao         string             `json:"observacao"`
 	Atividades         string             `json:"atividades"`
+	SetorID            pgtype.UUID        `json:"setor_id"`
 }
 
 func (q *Queries) RegistrarSaidaTecnico(ctx context.Context, arg RegistrarSaidaTecnicoParams) (TecnicoRegistros, error) {
@@ -402,6 +449,7 @@ func (q *Queries) RegistrarSaidaTecnico(ctx context.Context, arg RegistrarSaidaT
 		arg.SaidaRegistradaPor,
 		arg.Observacao,
 		arg.Atividades,
+		arg.SetorID,
 	)
 	var i TecnicoRegistros
 	err := row.Scan(
@@ -432,15 +480,16 @@ SELECT
     max(COALESCE(r.saida, r.entrada))::timestamptz AS ultima_marcacao
 FROM tecnicos t
 JOIN tecnico_registros r ON r.tecnico_id = t.id
-WHERE
-    ($1::uuid IS NULL OR r.tecnico_id = $1)
-    AND ($2::timestamptz IS NULL OR r.entrada >= $2)
-    AND ($3::timestamptz IS NULL OR r.entrada < $3)
+WHERE t.setor_id = $1
+    AND ($2::uuid IS NULL OR r.tecnico_id = $2)
+    AND ($3::timestamptz IS NULL OR r.entrada >= $3)
+    AND ($4::timestamptz IS NULL OR r.entrada < $4)
 GROUP BY t.id, t.nome, t.empresa
 ORDER BY t.nome ASC
 `
 
 type RelatorioTecnicosParams struct {
+	SetorID    pgtype.UUID        `json:"setor_id"`
 	TecnicoID  pgtype.UUID        `json:"tecnico_id"`
 	DataInicio pgtype.Timestamptz `json:"data_inicio"`
 	DataFim    pgtype.Timestamptz `json:"data_fim"`
@@ -461,7 +510,12 @@ type RelatorioTecnicosRow struct {
 // Consolidado por técnico no período (pela data de entrada). Registros ainda
 // em aberto contam como visita, mas não somam horas.
 func (q *Queries) RelatorioTecnicos(ctx context.Context, arg RelatorioTecnicosParams) ([]RelatorioTecnicosRow, error) {
-	rows, err := q.db.Query(ctx, relatorioTecnicos, arg.TecnicoID, arg.DataInicio, arg.DataFim)
+	rows, err := q.db.Query(ctx, relatorioTecnicos,
+		arg.SetorID,
+		arg.TecnicoID,
+		arg.DataInicio,
+		arg.DataFim,
+	)
 	if err != nil {
 		return nil, err
 	}

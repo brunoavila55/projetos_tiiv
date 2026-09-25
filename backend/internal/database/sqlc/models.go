@@ -218,6 +218,7 @@ type Tecnicos struct {
 	Empresa  string             `json:"empresa"`
 	Ativo    bool               `json:"ativo"`
 	CriadoEm pgtype.Timestamptz `json:"criado_em"`
+	SetorID  pgtype.UUID        `json:"setor_id"`
 }
 
 type TelasTv struct {

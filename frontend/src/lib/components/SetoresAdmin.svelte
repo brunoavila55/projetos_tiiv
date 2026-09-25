@@ -82,7 +82,7 @@
 			<div>
 				<h3 id="setores-titulo" class="modal-title">Setores</h3>
 				<p class="text-sm text-ink-3 mt-0.5">
-					Cada setor tem seus próprios tickets, tarefas, calendário, plantão, procedimentos, avisos e links. Monitor, estoque e técnicos são de todos.
+					Cada setor tem seus próprios tickets, tarefas, calendário, plantão, técnicos, procedimentos, avisos e links. Monitor e estoque são de todos.
 				</p>
 			</div>
 			<button onclick={onfechar} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">

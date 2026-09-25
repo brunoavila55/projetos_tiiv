@@ -162,7 +162,10 @@ func (h *TecnicoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tecnicos, err := h.db.Queries.ListarTecnicos(r.Context(), database.BoolToPgtypeBool(ativoParam))
+	tecnicos, err := h.db.Queries.ListarTecnicos(r.Context(), sqlc.ListarTecnicosParams{
+		SetorID: setorDe(r),
+		Ativo:   database.BoolToPgtypeBool(ativoParam),
+	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar técnicos")
 		return
@@ -212,6 +215,7 @@ func (h *TecnicoHandler) Criar(w http.ResponseWriter, r *http.Request) {
 	t, err := h.db.Queries.CriarTecnico(r.Context(), sqlc.CriarTecnicoParams{
 		Nome:    req.Nome,
 		Empresa: strings.TrimSpace(req.Empresa),
+		SetorID: setorDe(r),
 	})
 	if err != nil {
 		if codigoErroPg(err) == "23505" {
@@ -244,7 +248,7 @@ func (h *TecnicoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	atual, err := h.db.Queries.BuscarTecnicoPorID(r.Context(), id)
+	atual, err := h.db.Queries.BuscarTecnicoPorID(r.Context(), sqlc.BuscarTecnicoPorIDParams{ID: id, SetorID: setorDe(r)})
 	if err != nil {
 		response.JSONError(w, http.StatusNotFound, "técnico não encontrado")
 		return
@@ -259,6 +263,7 @@ func (h *TecnicoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		Nome:    req.Nome,
 		Empresa: strings.TrimSpace(req.Empresa),
 		Ativo:   ativo,
+		SetorID: setorDe(r),
 	})
 	if err != nil {
 		if codigoErroPg(err) == "23505" {
@@ -321,7 +326,7 @@ func (h *TecnicoHandler) RegistrarEntrada(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	tecnico, err := h.db.Queries.BuscarTecnicoPorID(r.Context(), tecnicoID)
+	tecnico, err := h.db.Queries.BuscarTecnicoPorID(r.Context(), sqlc.BuscarTecnicoPorIDParams{ID: tecnicoID, SetorID: user.Setor})
 	if err != nil {
 		response.JSONError(w, http.StatusNotFound, "técnico não encontrado")
 		return
@@ -385,6 +390,7 @@ func (h *TecnicoHandler) RegistrarSaida(w http.ResponseWriter, r *http.Request) 
 		SaidaRegistradaPor: uID,
 		Observacao:         req.Observacao,
 		Atividades:         req.Atividades,
+		SetorID:            user.Setor,
 	})
 	if err != nil {
 		switch {
@@ -417,6 +423,7 @@ func (h *TecnicoHandler) consultarRegistros(r *http.Request, limite, offset int)
 		TecnicoID:  tecnicoID,
 		DataInicio: inicio,
 		DataFim:    fim,
+		SetorID:    setorDe(r),
 	})
 	if err != nil {
 		return nil, errors.New("erro ao listar registros")
@@ -468,6 +475,7 @@ func (h *TecnicoHandler) ListarRegistros(w http.ResponseWriter, r *http.Request)
 		TecnicoID:  tecnicoID,
 		DataInicio: inicio,
 		DataFim:    fim,
+		SetorID:    setorDe(r),
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao contar registros")
@@ -534,6 +542,7 @@ func (h *TecnicoHandler) AtualizarRegistro(w http.ResponseWriter, r *http.Reques
 		Entrada:    database.TimeToTimestamptz(entrada),
 		Saida:      saida,
 		Observacao: strings.TrimSpace(req.Observacao),
+		SetorID:    setorDe(r),
 	})
 	if err != nil {
 		switch {
@@ -557,7 +566,7 @@ func (h *TecnicoHandler) DeletarRegistro(w http.ResponseWriter, r *http.Request)
 		response.JSONError(w, http.StatusBadRequest, "ID inválido")
 		return
 	}
-	if _, err := h.db.Queries.BuscarRegistroTecnicoPorID(r.Context(), id); err != nil {
+	if _, err := h.db.Queries.BuscarRegistroTecnicoPorID(r.Context(), sqlc.BuscarRegistroTecnicoPorIDParams{ID: id, SetorID: setorDe(r)}); err != nil {
 		response.JSONError(w, http.StatusNotFound, "registro não encontrado")
 		return
 	}
@@ -587,6 +596,7 @@ func (h *TecnicoHandler) consultarRelatorio(r *http.Request) ([]RelatorioTecnico
 		TecnicoID:  tecnicoID,
 		DataInicio: inicio,
 		DataFim:    fim,
+		SetorID:    setorDe(r),
 	})
 	if err != nil {
 		return nil, errors.New("erro ao gerar relatório")
@@ -638,6 +648,7 @@ func (h *TecnicoHandler) AtualizarAtividades(w http.ResponseWriter, r *http.Requ
 	reg, err := h.db.Queries.AtualizarAtividadesRegistro(r.Context(), sqlc.AtualizarAtividadesRegistroParams{
 		ID:         id,
 		Atividades: req.Atividades,
+		SetorID:    setorDe(r),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		response.JSONError(w, http.StatusNotFound, "registro não encontrado")
