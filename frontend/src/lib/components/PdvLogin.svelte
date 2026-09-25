@@ -212,10 +212,7 @@
 	<div class="relative min-h-dvh flex flex-col">
 		<header class="flex items-center justify-between gap-4 px-5 sm:px-10 pt-5 sm:pt-7 text-white">
 			<div class="flex items-center gap-2.5">
-				<svg viewBox="0 0 28 28" class="size-9" aria-hidden="true">
-					<rect width="28" height="28" rx="8" fill="var(--accent)" />
-					<path d="M8 9h12M14 9v11" stroke="var(--on-accent)" stroke-width="2.6" stroke-linecap="round" />
-				</svg>
+				<img src="/logo.svg" alt="" class="size-10 [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.35))]" />
 				<span class="text-lg font-bold tracking-[-0.01em] [text-shadow:0_1px_2px_rgb(0_0_0/0.3)]">Projetos NOC</span>
 			</div>
 			<div class="flex items-center gap-4">

@@ -103,10 +103,7 @@
 
 {#snippet marca()}
 	<a href="/" class="flex items-center gap-2.5 text-ink" onclick={() => (mobileMenuOpen = false)}>
-		<svg viewBox="0 0 28 28" class="size-7" aria-hidden="true">
-			<rect width="28" height="28" rx="7" fill="var(--accent)" />
-			<path d="M8 9h12M14 9v11" stroke="var(--on-accent)" stroke-width="2.6" stroke-linecap="round" />
-		</svg>
+		<img src="/logo.svg" alt="" class="size-8" />
 		<span class="text-[17px] font-bold tracking-[-0.01em]">Projetos NOC</span>
 	</a>
 {/snippet}

@@ -154,10 +154,7 @@
 		<!-- Cabeçalho: marca, estado geral e relógio -->
 		<header class="flex items-center gap-6 px-8 pt-6 pb-5">
 			<div class="flex items-center gap-3 min-w-0 w-[26%]">
-				<svg viewBox="0 0 28 28" class="size-10 shrink-0" aria-hidden="true">
-					<rect width="28" height="28" rx="7" fill="var(--accent)" />
-					<path d="M8 9h12M14 9v11" stroke="var(--on-accent)" stroke-width="2.6" stroke-linecap="round" />
-				</svg>
+				<img src="/logo.svg" alt="" class="size-12 shrink-0" />
 				<div class="min-w-0">
 					<div class="text-[1.5rem] font-bold leading-tight tracking-[-0.01em]">Projetos NOC</div>
 					<div class="text-[0.95rem] text-ink-3 truncate">{dados.setor} · {dados.tela}</div>
