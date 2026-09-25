@@ -36,21 +36,24 @@ type MonitorRequest struct {
 	IntervaloSeg int32  `json:"intervalo_seg"`
 	AbrirTicket  bool   `json:"abrir_ticket"`
 	Ativo        *bool  `json:"ativo"`
+	// Fila que recebe o ticket de queda; vazio = setor de quem cadastra
+	SetorTicketID string `json:"setor_ticket_id"`
 }
 
 type MonitorResponse struct {
-	ID           string  `json:"id"`
-	Nome         string  `json:"nome"`
-	Tipo         string  `json:"tipo"`
-	Alvo         string  `json:"alvo"`
-	IntervaloSeg int32   `json:"intervalo_seg"`
-	AbrirTicket  bool    `json:"abrir_ticket"`
-	Ativo        bool    `json:"ativo"`
-	Status       string  `json:"status"`
-	LatenciaMs   *int32  `json:"latencia_ms"`
-	UltimoErro   string  `json:"ultimo_erro"`
-	VerificadoEm *string `json:"verificado_em"`
-	StatusDesde  string  `json:"status_desde"`
+	ID            string  `json:"id"`
+	Nome          string  `json:"nome"`
+	Tipo          string  `json:"tipo"`
+	Alvo          string  `json:"alvo"`
+	IntervaloSeg  int32   `json:"intervalo_seg"`
+	AbrirTicket   bool    `json:"abrir_ticket"`
+	SetorTicketID string  `json:"setor_ticket_id"`
+	Ativo         bool    `json:"ativo"`
+	Status        string  `json:"status"`
+	LatenciaMs    *int32  `json:"latencia_ms"`
+	UltimoErro    string  `json:"ultimo_erro"`
+	VerificadoEm  *string `json:"verificado_em"`
+	StatusDesde   string  `json:"status_desde"`
 	// Percentual do tempo no ar nas últimas 24 h (ou desde o cadastro)
 	Disponibilidade24h *float64 `json:"disponibilidade_24h"`
 }
@@ -81,17 +84,18 @@ type ResumoMonitoresResponse struct {
 
 func paraMonitorResponse(m sqlc.Monitores, segundosFora float64) MonitorResponse {
 	res := MonitorResponse{
-		ID:           database.UUIDToString(m.ID),
-		Nome:         m.Nome,
-		Tipo:         m.Tipo,
-		Alvo:         m.Alvo,
-		IntervaloSeg: m.IntervaloSeg,
-		AbrirTicket:  m.AbrirTicket,
-		Ativo:        m.Ativo,
-		Status:       m.Status,
-		UltimoErro:   m.UltimoErro,
-		VerificadoEm: formatarTimestamptz(m.VerificadoEm),
-		StatusDesde:  m.StatusDesde.Time.Format(time.RFC3339),
+		ID:            database.UUIDToString(m.ID),
+		Nome:          m.Nome,
+		Tipo:          m.Tipo,
+		Alvo:          m.Alvo,
+		IntervaloSeg:  m.IntervaloSeg,
+		AbrirTicket:   m.AbrirTicket,
+		SetorTicketID: database.UUIDToString(m.SetorTicketID),
+		Ativo:         m.Ativo,
+		Status:        m.Status,
+		UltimoErro:    m.UltimoErro,
+		VerificadoEm:  formatarTimestamptz(m.VerificadoEm),
+		StatusDesde:   m.StatusDesde.Time.Format(time.RFC3339),
 	}
 	if m.LatenciaMs.Valid {
 		res.LatenciaMs = &m.LatenciaMs.Int32
@@ -165,6 +169,22 @@ func lerMonitorRequest(w http.ResponseWriter, r *http.Request) (MonitorRequest, 
 	return req, true
 }
 
+// setorDoTicket resolve a fila dos tickets de queda (padrao quando não vem)
+func (h *MonitorHandler) setorDoTicket(w http.ResponseWriter, r *http.Request, pedido string, padrao pgtype.UUID) (pgtype.UUID, bool) {
+	if pedido == "" {
+		return padrao, true
+	}
+	sID, err := database.StringToUUID(pedido)
+	if err == nil {
+		_, err = h.db.Queries.BuscarSetor(r.Context(), sID)
+	}
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "setor dos tickets não encontrado")
+		return pgtype.UUID{}, false
+	}
+	return sID, true
+}
+
 func (h *MonitorHandler) obterPorURL(w http.ResponseWriter, r *http.Request) (sqlc.Monitores, bool) {
 	id, err := database.StringToUUID(chi.URLParam(r, "id"))
 	if err != nil {
@@ -231,14 +251,19 @@ func (h *MonitorHandler) Criar(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	setorTicket, ok := h.setorDoTicket(w, r, req.SetorTicketID, user.Setor)
+	if !ok {
+		return
+	}
 	uID, _ := database.StringToUUID(user.ID)
 	m, err := h.db.Queries.CriarMonitor(r.Context(), sqlc.CriarMonitorParams{
-		Nome:         req.Nome,
-		Tipo:         req.Tipo,
-		Alvo:         req.Alvo,
-		IntervaloSeg: req.IntervaloSeg,
-		AbrirTicket:  req.AbrirTicket,
-		CriadoPor:    uID,
+		Nome:          req.Nome,
+		Tipo:          req.Tipo,
+		Alvo:          req.Alvo,
+		IntervaloSeg:  req.IntervaloSeg,
+		AbrirTicket:   req.AbrirTicket,
+		CriadoPor:     uID,
+		SetorTicketID: setorTicket,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao criar monitor")
@@ -262,6 +287,10 @@ func (h *MonitorHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 	if req.Ativo != nil {
 		ativo = *req.Ativo
 	}
+	setorTicket, ok := h.setorDoTicket(w, r, req.SetorTicketID, antigo.SetorTicketID)
+	if !ok {
+		return
+	}
 
 	tx, err := h.db.Pool.Begin(r.Context())
 	if err != nil {
@@ -272,13 +301,14 @@ func (h *MonitorHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 	q := h.db.Queries.WithTx(tx)
 
 	if _, err := q.AtualizarMonitor(r.Context(), sqlc.AtualizarMonitorParams{
-		ID:           antigo.ID,
-		Nome:         req.Nome,
-		Tipo:         req.Tipo,
-		Alvo:         req.Alvo,
-		IntervaloSeg: req.IntervaloSeg,
-		AbrirTicket:  req.AbrirTicket,
-		Ativo:        ativo,
+		ID:            antigo.ID,
+		Nome:          req.Nome,
+		Tipo:          req.Tipo,
+		Alvo:          req.Alvo,
+		IntervaloSeg:  req.IntervaloSeg,
+		AbrirTicket:   req.AbrirTicket,
+		Ativo:         ativo,
+		SetorTicketID: setorTicket,
 	}); err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao atualizar monitor")
 		return

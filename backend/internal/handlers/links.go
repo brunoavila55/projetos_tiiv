@@ -45,7 +45,7 @@ type LinkResponse struct {
 }
 
 func podeAlterarLink(user *middleware.AuthUser, criadoPor pgtype.UUID) bool {
-	return user.Papel == "admin" || database.UUIDToString(criadoPor) == user.ID
+	return user.EhAdmin() || database.UUIDToString(criadoPor) == user.ID
 }
 
 // validarLink normaliza o corpo; só aceita http(s), o que barra javascript: e afins
@@ -90,7 +90,7 @@ func (h *LinkHandler) Listar(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusUnauthorized, "não autenticado")
 		return
 	}
-	rows, err := h.db.Queries.ListarLinks(r.Context())
+	rows, err := h.db.Queries.ListarLinks(r.Context(), user.Setor)
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar links")
 		return
@@ -128,6 +128,7 @@ func (h *LinkHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		Descricao: req.Descricao,
 		Categoria: req.Categoria,
 		CriadoPor: uID,
+		SetorID:   user.Setor,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao criar link")
@@ -148,7 +149,7 @@ func (h *LinkHandler) buscarLinkAlteravel(w http.ResponseWriter, r *http.Request
 		response.JSONError(w, http.StatusBadRequest, "ID inválido")
 		return pgtype.UUID{}, false
 	}
-	l, err := h.db.Queries.ObterLink(r.Context(), id)
+	l, err := h.db.Queries.ObterLink(r.Context(), sqlc.ObterLinkParams{ID: id, SetorID: user.Setor})
 	if errors.Is(err, pgx.ErrNoRows) {
 		response.JSONError(w, http.StatusNotFound, "link não encontrado")
 		return pgtype.UUID{}, false

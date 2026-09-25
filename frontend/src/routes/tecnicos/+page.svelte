@@ -508,7 +508,7 @@
 									<th>O que fez</th>
 									<th>Observação</th>
 									<th>Marcado por</th>
-									{#if auth.user?.papel === 'admin'}
+									{#if auth.ehAdmin}
 										<th class="text-right"><span class="sr-only">Ações</span></th>
 									{/if}
 								</tr>
@@ -545,7 +545,7 @@
 											{r.entrada_registrada_por_nome}{#if r.saida_registrada_por_nome && r.saida_registrada_por_nome !== r.entrada_registrada_por_nome}
 												/ {r.saida_registrada_por_nome}{/if}
 										</td>
-										{#if auth.user?.papel === 'admin'}
+										{#if auth.ehAdmin}
 											<td class="text-right whitespace-nowrap">
 												<button onclick={() => abrirEditarRegistro(r)} class="icon-btn" title="Corrigir horários" aria-label="Corrigir horários">
 													<Edit3 class="size-4" />

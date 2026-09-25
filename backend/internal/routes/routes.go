@@ -43,7 +43,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8080"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", handlers.CabecalhoChaveTV},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -65,6 +65,8 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	ticketHandler := handlers.NewTicketHandler(db)
 	procedimentoHandler := handlers.NewProcedimentoHandler(db)
 	assistenteHandler := handlers.NewAssistenteHandler(db, cfg)
+	tvHandler := handlers.NewTVHandler(db)
+	setorHandler := handlers.NewSetorHandler(db)
 
 	// Rotas sob /api
 	r.Route("/api", func(api chi.Router) {
@@ -73,10 +75,14 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 		// Abertura de ticket sem login (tela de acesso)
 		api.Post("/tickets/publico", ticketHandler.CriarPublico)
+		api.Get("/setores/publico", setorHandler.ListarPublico)
 
 		// Tira-dúvidas da tela de acesso (sem login)
 		api.Get("/assistente/status", assistenteHandler.Status)
 		api.Post("/assistente/publico", assistenteHandler.Perguntar)
+
+		// Modo TV: chave da tela (X-TV-Chave) ou sessão de operador
+		api.With(authMiddleware.OptionalAuth).Get("/tv/painel", tvHandler.Painel)
 
 		api.Route("/auth", func(auth chi.Router) {
 			auth.Get("/usuarios", authHandler.ListarUsuariosPublico)
@@ -91,6 +97,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 				protected.Get("/me", authHandler.Me)
 				protected.Put("/tema", authHandler.AtualizarTema)
 				protected.Post("/trocar-pin", usuarioHandler.TrocarProprioPIN)
+				protected.With(authMiddleware.RequireSuperadmin).Put("/setor", setorHandler.TrocarSetor)
 			})
 		})
 
@@ -100,6 +107,21 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Painel inicial
 			protected.Get("/painel", painelHandler.ObterDadosPainel)
+
+			// Operadores do setor atual (responsável, participantes, escala)
+			protected.Get("/equipe", setorHandler.ListarEquipe)
+
+			// Setores (lista para todos; cadastro só do superadmin)
+			protected.Route("/setores", func(st chi.Router) {
+				st.Get("/", setorHandler.Listar)
+
+				st.Group(func(superSt chi.Router) {
+					superSt.Use(authMiddleware.RequireSuperadmin)
+					superSt.Post("/", setorHandler.Criar)
+					superSt.Put("/{id}", setorHandler.Atualizar)
+					superSt.Delete("/{id}", setorHandler.Deletar)
+				})
+			})
 
 			// Mural de avisos (autor ou admin editam e excluem)
 			protected.Route("/avisos", func(a chi.Router) {
@@ -122,6 +144,14 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 					adminMon.Put("/{id}", monitorHandler.Atualizar)
 					adminMon.Delete("/{id}", monitorHandler.Deletar)
 				})
+			})
+
+			// Telas do modo TV (Apenas Admin)
+			protected.Route("/tv/telas", func(tv chi.Router) {
+				tv.Use(authMiddleware.RequireAdmin)
+				tv.Get("/", tvHandler.ListarTelas)
+				tv.Post("/", tvHandler.CriarTela)
+				tv.Delete("/{id}", tvHandler.DeletarTela)
 			})
 
 			// Links úteis (autor ou admin editam e excluem)

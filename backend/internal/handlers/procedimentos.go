@@ -73,6 +73,7 @@ func (h *ProcedimentoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 		Busca:     database.StringToText(q.Get("busca")),
 		Categoria: database.StringToText(q.Get("categoria")),
 		Ativo:     database.BoolToPgtypeBool(ativo),
+		SetorID:   setorDe(r),
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar procedimentos")
@@ -95,7 +96,7 @@ func (h *ProcedimentoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 
 // ListarCategorias: GET /api/procedimentos/categorias
 func (h *ProcedimentoHandler) ListarCategorias(w http.ResponseWriter, r *http.Request) {
-	cats, err := h.db.Queries.ListarCategoriasProcedimentos(r.Context())
+	cats, err := h.db.Queries.ListarCategoriasProcedimentos(r.Context(), setorDe(r))
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar categorias")
 		return
@@ -117,7 +118,7 @@ func (h *ProcedimentoHandler) Obter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProcedimentoHandler) responderProcedimento(w http.ResponseWriter, r *http.Request, id pgtype.UUID, status int) {
-	p, err := h.db.Queries.BuscarProcedimentoPorID(r.Context(), id)
+	p, err := h.db.Queries.BuscarProcedimentoPorID(r.Context(), sqlc.BuscarProcedimentoPorIDParams{ID: id, SetorID: setorDe(r)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		response.JSONError(w, http.StatusNotFound, "procedimento não encontrado")
 		return
@@ -200,6 +201,7 @@ func (h *ProcedimentoHandler) Criar(w http.ResponseWriter, r *http.Request) {
 			Corpo:     req.Corpo,
 			Ativo:     ativo,
 			CriadoPor: uID,
+			SetorID:   setorDe(r),
 		})
 		if err != nil {
 			return err
@@ -231,7 +233,7 @@ func (h *ProcedimentoHandler) Atualizar(w http.ResponseWriter, r *http.Request) 
 	}
 
 	err = h.emTransacao(r, func(qtx *sqlc.Queries) error {
-		atual, err := qtx.BuscarProcedimentoPorID(r.Context(), id)
+		atual, err := qtx.BuscarProcedimentoPorID(r.Context(), sqlc.BuscarProcedimentoPorIDParams{ID: id, SetorID: setorDe(r)})
 		if err != nil {
 			return err
 		}
@@ -271,7 +273,7 @@ func (h *ProcedimentoHandler) ListarRevisoes(w http.ResponseWriter, r *http.Requ
 		response.JSONError(w, http.StatusBadRequest, "ID inválido")
 		return
 	}
-	rows, err := h.db.Queries.ListarRevisoesProcedimento(r.Context(), id)
+	rows, err := h.db.Queries.ListarRevisoesProcedimento(r.Context(), sqlc.ListarRevisoesProcedimentoParams{ProcedimentoID: id, SetorID: setorDe(r)})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar histórico")
 		return
@@ -312,7 +314,7 @@ func (h *ProcedimentoHandler) Restaurar(w http.ResponseWriter, r *http.Request) 
 	}
 
 	err = h.emTransacao(r, func(qtx *sqlc.Queries) error {
-		rv, err := qtx.BuscarRevisaoProcedimento(r.Context(), sqlc.BuscarRevisaoProcedimentoParams{ID: rid, ProcedimentoID: id})
+		rv, err := qtx.BuscarRevisaoProcedimento(r.Context(), sqlc.BuscarRevisaoProcedimentoParams{ID: rid, ProcedimentoID: id, SetorID: setorDe(r)})
 		if err != nil {
 			return err
 		}
@@ -339,6 +341,7 @@ func (h *ProcedimentoHandler) gravar(r *http.Request, qtx *sqlc.Queries, id pgty
 		Corpo:         corpo,
 		Ativo:         ativo,
 		AtualizadoPor: uID,
+		SetorID:       setorDe(r),
 	})
 	if err != nil {
 		return err

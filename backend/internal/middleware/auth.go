@@ -74,6 +74,8 @@ func (m *AuthMiddleware) sessaoDaRequisicao(r *http.Request) (user *AuthUser, ms
 		Tema:          sessao.UsuarioTema,
 		SessaoID:      database.UUIDToString(sessao.ID),
 		DeveTrocarPin: sessao.UsuarioDeveTrocarPin,
+		Setor:         sessao.SetorID,
+		SetorNome:     sessao.SetorNome,
 	}, ""
 }
 
@@ -121,8 +123,26 @@ func (m *AuthMiddleware) RequireAdmin(next http.Handler) http.Handler {
 			return
 		}
 
-		if user.Papel != "admin" {
+		if !user.EhAdmin() {
 			response.JSONError(w, http.StatusForbidden, "acesso negado: privilégios de administrador necessários")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// RequireSuperadmin: gestão de setores e de pessoas entre setores
+func (m *AuthMiddleware) RequireSuperadmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := GetAuthUser(r.Context())
+		if !ok || user == nil {
+			response.JSONError(w, http.StatusUnauthorized, "não autenticado")
+			return
+		}
+
+		if !user.EhSuperadmin() {
+			response.JSONError(w, http.StatusForbidden, "acesso negado: apenas o superadmin gerencia setores")
 			return
 		}
 

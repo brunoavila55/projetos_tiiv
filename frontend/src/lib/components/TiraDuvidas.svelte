@@ -17,7 +17,16 @@
 		fontes?: Fonte[];
 	}
 
-	let { onAbrirTicket }: { onAbrirTicket: (descricao: string) => void } = $props();
+	// setorId é o mesmo do formulário de ticket: a dúvida e o ticket vão para o mesmo setor
+	let {
+		onAbrirTicket,
+		setores = [],
+		setorId = $bindable('')
+	}: {
+		onAbrirTicket: (descricao: string) => void;
+		setores?: { id: string; nome: string }[];
+		setorId?: string;
+	} = $props();
 
 	// "desligado" = sem credenciais da Cloudflare; o botão nem aparece
 	let status = $state<'carregando' | 'disponivel' | 'cota' | 'desligado'>('carregando');
@@ -56,6 +65,10 @@
 	async function enviar() {
 		const texto = pergunta.trim();
 		if (!texto || enviando || status !== 'disponivel') return;
+		if (setores.length > 1 && !setorId) {
+			erro = 'Escolha o setor da sua dúvida';
+			return;
+		}
 
 		mensagens.push({ papel: 'usuario', texto });
 		pergunta = '';
@@ -67,7 +80,10 @@
 			const res = await apiFetch<{ resposta: string; fontes: Fonte[] }>('/api/assistente/publico', {
 				method: 'POST',
 				silent: true,
-				body: JSON.stringify({ mensagens: mensagens.map(({ papel, texto }) => ({ papel, texto })) })
+				body: JSON.stringify({
+					mensagens: mensagens.map(({ papel, texto }) => ({ papel, texto })),
+					setor_id: setorId || undefined
+				})
 			});
 			mensagens.push({ papel: 'assistente', texto: res.resposta, fontes: res.fontes });
 		} catch (err) {
@@ -136,6 +152,27 @@
 					</button>
 				</div>
 			</div>
+
+			{#if setores.length > 1}
+				<div class="flex items-center gap-2 px-5 py-2.5 border-b border-line">
+					<label for="td-setor" class="text-[13px] font-semibold text-ink-3 shrink-0">Setor</label>
+					<!-- Cada setor tem os próprios procedimentos: trocar recomeça a conversa -->
+					<select
+						id="td-setor"
+						bind:value={setorId}
+						onchange={() => {
+							mensagens = [];
+							erro = null;
+						}}
+						class="field field-sm"
+					>
+						<option value="" disabled>Escolha o setor</option>
+						{#each setores as st (st.id)}
+							<option value={st.id}>{st.nome}</option>
+						{/each}
+					</select>
+				</div>
+			{/if}
 
 			<div bind:this={lista} class="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-sunken" aria-live="polite">
 				<div class="max-w-[88%] rounded-2xl rounded-tl-md bg-surface border border-line px-3.5 py-2.5 text-sm">

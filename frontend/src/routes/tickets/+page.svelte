@@ -156,7 +156,7 @@
 									<Hand class="size-4" />
 									<span>Resgatar</span>
 								</button>
-								{#if auth.user?.papel === 'admin'}
+								{#if auth.ehAdmin}
 									<button onclick={() => descartar(t)} disabled={processando === t.id} class="btn btn-ghost" title="Descartar ticket (spam ou duplicado)">
 										<Ban class="size-4" />
 										<span>Descartar</span>

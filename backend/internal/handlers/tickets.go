@@ -39,6 +39,8 @@ type CriarTicketRequest struct {
 	Titulo          string `json:"titulo"`
 	Descricao       string `json:"descricao"`
 	Prioridade      string `json:"prioridade"`
+	// Setor escolhido na tela de acesso; vazio vale quando só um aceita pedidos
+	SetorID string `json:"setor_id"`
 }
 
 func validarTexto(valor, campo string, obrigatorio bool, max int) (string, error) {
@@ -85,6 +87,16 @@ func (h *TicketHandler) CriarPublico(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setor, err := setorDoPedido(r.Context(), h.db.Queries, req.SetorID)
+	if errors.Is(err, errSetorPedido) {
+		response.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao registrar o ticket")
+		return
+	}
+
 	ip := ipDaRequisicao(r)
 	if !h.limites.permitir(ip) {
 		response.JSONError(w, http.StatusTooManyRequests, "muitos tickets enviados deste computador; aguarde alguns minutos")
@@ -97,6 +109,7 @@ func (h *TicketHandler) CriarPublico(w http.ResponseWriter, r *http.Request) {
 		Descricao:       req.Descricao,
 		Prioridade:      req.Prioridade,
 		OrigemIp:        ip,
+		SetorID:         setor,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao registrar o ticket")
@@ -132,7 +145,10 @@ func (h *TicketHandler) Listar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := h.db.Queries.ListarTickets(r.Context(), database.StringToText(status))
+	rows, err := h.db.Queries.ListarTickets(r.Context(), sqlc.ListarTicketsParams{
+		SetorID: setorDe(r),
+		Status:  database.StringToText(status),
+	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar tickets")
 		return
@@ -166,7 +182,7 @@ func (h *TicketHandler) Listar(w http.ResponseWriter, r *http.Request) {
 
 // Resumo: GET /api/tickets/resumo — contador para o menu
 func (h *TicketHandler) Resumo(w http.ResponseWriter, r *http.Request) {
-	abertos, err := h.db.Queries.ContarTicketsAbertos(r.Context())
+	abertos, err := h.db.Queries.ContarTicketsAbertos(r.Context(), setorDe(r))
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao contar tickets")
 		return
@@ -186,7 +202,7 @@ func (h *TicketHandler) tratar(r *http.Request, id pgtype.UUID, acao func(qtx *s
 	defer tx.Rollback(r.Context())
 	qtx := h.db.Queries.WithTx(tx)
 
-	tk, err := qtx.BloquearTicket(r.Context(), id)
+	tk, err := qtx.BloquearTicket(r.Context(), sqlc.BloquearTicketParams{ID: id, SetorID: setorDe(r)})
 	if err != nil {
 		return err
 	}
@@ -236,6 +252,7 @@ func (h *TicketHandler) Resgatar(w http.ResponseWriter, r *http.Request) {
 			Prioridade:    tk.Prioridade,
 			CriadoPor:     uID,
 			ResponsavelID: uID,
+			SetorID:       tk.SetorID,
 		})
 		if err != nil {
 			return err

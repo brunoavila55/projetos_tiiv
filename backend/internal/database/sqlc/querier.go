@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	AbrirQueda(ctx context.Context, arg AbrirQuedaParams) (pgtype.UUID, error)
+	// Só entra quem é do setor do evento (ou quem o criou)
 	AdicionarParticipanteEvento(ctx context.Context, arg AdicionarParticipanteEventoParams) error
 	AtualizarAtividadesRegistro(ctx context.Context, arg AtualizarAtividadesRegistroParams) (TecnicoRegistros, error)
 	AtualizarAviso(ctx context.Context, arg AtualizarAvisoParams) (Avisos, error)
@@ -26,6 +27,7 @@ type Querier interface {
 	AtualizarProprioPin(ctx context.Context, arg AtualizarProprioPinParams) error
 	AtualizarRegistroTecnico(ctx context.Context, arg AtualizarRegistroTecnicoParams) (TecnicoRegistros, error)
 	AtualizarSaldoItemEstoque(ctx context.Context, arg AtualizarSaldoItemEstoqueParams) (ItensEstoque, error)
+	AtualizarSetor(ctx context.Context, arg AtualizarSetorParams) (Setores, error)
 	AtualizarStatusTarefa(ctx context.Context, arg AtualizarStatusTarefaParams) (Tarefas, error)
 	AtualizarTarefa(ctx context.Context, arg AtualizarTarefaParams) (Tarefas, error)
 	AtualizarTecnico(ctx context.Context, arg AtualizarTecnicoParams) (Tecnicos, error)
@@ -34,27 +36,30 @@ type Querier interface {
 	AtualizarUsuario(ctx context.Context, arg AtualizarUsuarioParams) (AtualizarUsuarioRow, error)
 	BloquearItemEstoqueParaAtualizacao(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
 	BloquearMonitor(ctx context.Context, id pgtype.UUID) (Monitores, error)
-	BloquearTicket(ctx context.Context, id pgtype.UUID) (Tickets, error)
+	BloquearTicket(ctx context.Context, arg BloquearTicketParams) (Tickets, error)
 	BuscarComentarioPorID(ctx context.Context, id pgtype.UUID) (TarefaComentarios, error)
 	// A mesma pessoa não pode ter dois turnos do mesmo tipo sobrepostos
 	BuscarConflitoPlantao(ctx context.Context, arg BuscarConflitoPlantaoParams) (BuscarConflitoPlantaoRow, error)
-	BuscarEventoPorID(ctx context.Context, id pgtype.UUID) (Eventos, error)
+	BuscarEventoPorID(ctx context.Context, arg BuscarEventoPorIDParams) (BuscarEventoPorIDRow, error)
 	BuscarItemEstoquePorID(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
-	BuscarProcedimentoPorID(ctx context.Context, id pgtype.UUID) (BuscarProcedimentoPorIDRow, error)
+	BuscarProcedimentoPorID(ctx context.Context, arg BuscarProcedimentoPorIDParams) (BuscarProcedimentoPorIDRow, error)
 	// Busca para o tira-dúvidas: full-text em português (termos em OU) somado à
 	// semelhança por trigramas, que tolera erros de digitação.
 	BuscarProcedimentosRelevantes(ctx context.Context, arg BuscarProcedimentosRelevantesParams) ([]BuscarProcedimentosRelevantesRow, error)
 	BuscarRegistroTecnicoPorID(ctx context.Context, id pgtype.UUID) (TecnicoRegistros, error)
 	BuscarRevisaoProcedimento(ctx context.Context, arg BuscarRevisaoProcedimentoParams) (ProcedimentoRevisoes, error)
+	// Setor de trabalho: o escolhido na sessão (só superadmin) ou o do usuário
 	BuscarSessaoPorHash(ctx context.Context, tokenHash string) (BuscarSessaoPorHashRow, error)
-	BuscarTarefaPorID(ctx context.Context, id pgtype.UUID) (BuscarTarefaPorIDRow, error)
+	BuscarSetor(ctx context.Context, id pgtype.UUID) (Setores, error)
+	BuscarTarefaPorID(ctx context.Context, arg BuscarTarefaPorIDParams) (BuscarTarefaPorIDRow, error)
 	BuscarTecnicoPorID(ctx context.Context, id pgtype.UUID) (Tecnicos, error)
+	BuscarTelaTVPorHash(ctx context.Context, chaveHash string) (BuscarTelaTVPorHashRow, error)
 	BuscarUsuarioPorID(ctx context.Context, id pgtype.UUID) (BuscarUsuarioPorIDRow, error)
 	BuscarUsuarioPorIDComPin(ctx context.Context, id pgtype.UUID) (BuscarUsuarioPorIDComPinRow, error)
-	ContarAdminsAtivos(ctx context.Context) (int64, error)
 	ContarMovimentacoesItem(ctx context.Context, itemID pgtype.UUID) (int64, error)
 	ContarRegistrosTecnicos(ctx context.Context, arg ContarRegistrosTecnicosParams) (int64, error)
-	ContarTicketsAbertos(ctx context.Context) (int64, error)
+	ContarSuperadminsAtivos(ctx context.Context) (int64, error)
+	ContarTicketsAbertos(ctx context.Context, setorID pgtype.UUID) (int64, error)
 	ContarUsuarios(ctx context.Context) (int64, error)
 	CriarAviso(ctx context.Context, arg CriarAvisoParams) (Avisos, error)
 	CriarComentarioTarefa(ctx context.Context, arg CriarComentarioTarefaParams) (TarefaComentarios, error)
@@ -66,11 +71,14 @@ type Querier interface {
 	CriarPlantao(ctx context.Context, arg CriarPlantaoParams) (Plantoes, error)
 	CriarProcedimento(ctx context.Context, arg CriarProcedimentoParams) (Procedimentos, error)
 	CriarRevisaoProcedimento(ctx context.Context, arg CriarRevisaoProcedimentoParams) error
-	CriarSessao(ctx context.Context, arg CriarSessaoParams) (Sessoes, error)
+	CriarSessao(ctx context.Context, arg CriarSessaoParams) (CriarSessaoRow, error)
+	CriarSetor(ctx context.Context, arg CriarSetorParams) (Setores, error)
 	CriarTarefa(ctx context.Context, arg CriarTarefaParams) (Tarefas, error)
 	CriarTecnico(ctx context.Context, arg CriarTecnicoParams) (Tecnicos, error)
+	CriarTelaTV(ctx context.Context, arg CriarTelaTVParams) (TelasTv, error)
 	CriarTicket(ctx context.Context, arg CriarTicketParams) (Tickets, error)
 	CriarUsuario(ctx context.Context, arg CriarUsuarioParams) (CriarUsuarioRow, error)
+	DefinirSetorSessao(ctx context.Context, arg DefinirSetorSessaoParams) error
 	DeletarAviso(ctx context.Context, id pgtype.UUID) error
 	DeletarComentarioTarefa(ctx context.Context, id pgtype.UUID) error
 	DeletarEvento(ctx context.Context, id pgtype.UUID) error
@@ -83,18 +91,22 @@ type Querier interface {
 	DeletarSessaoPorHash(ctx context.Context, tokenHash string) error
 	DeletarSessoesExpiradas(ctx context.Context) error
 	DeletarSessoesPorUsuario(ctx context.Context, usuarioID pgtype.UUID) error
+	DeletarSetor(ctx context.Context, id pgtype.UUID) (int64, error)
 	DeletarTarefa(ctx context.Context, id pgtype.UUID) error
+	DeletarTelaTV(ctx context.Context, arg DeletarTelaTVParams) (int64, error)
 	DesativarItemEstoque(ctx context.Context, id pgtype.UUID) error
 	DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (DesbloquearUsuarioRow, error)
 	FecharQuedaAberta(ctx context.Context, monitorID pgtype.UUID) error
-	ListarAvisosAtivos(ctx context.Context) ([]ListarAvisosAtivosRow, error)
+	ListarAvisosAtivos(ctx context.Context, setorID pgtype.UUID) ([]ListarAvisosAtivosRow, error)
 	ListarCategoriasEstoque(ctx context.Context) ([]string, error)
-	ListarCategoriasProcedimentos(ctx context.Context) ([]string, error)
+	ListarCategoriasProcedimentos(ctx context.Context, setorID pgtype.UUID) ([]string, error)
 	ListarComentariosTarefa(ctx context.Context, tarefaID pgtype.UUID) ([]ListarComentariosTarefaRow, error)
+	// Operadores ativos do setor (responsável de tarefa, participantes, escala)
+	ListarEquipeSetor(ctx context.Context, setorID pgtype.UUID) ([]ListarEquipeSetorRow, error)
 	ListarEventosIntervalo(ctx context.Context, arg ListarEventosIntervaloParams) ([]ListarEventosIntervaloRow, error)
 	ListarItensAbaixoDoMinimo(ctx context.Context) ([]ItensEstoque, error)
 	ListarItensEstoque(ctx context.Context, arg ListarItensEstoqueParams) ([]ListarItensEstoqueRow, error)
-	ListarLinks(ctx context.Context) ([]ListarLinksRow, error)
+	ListarLinks(ctx context.Context, setorID pgtype.UUID) ([]ListarLinksRow, error)
 	ListarMonitores(ctx context.Context) ([]Monitores, error)
 	ListarMonitoresOffline(ctx context.Context) ([]ListarMonitoresOfflineRow, error)
 	ListarMonitoresParaVerificar(ctx context.Context) ([]Monitores, error)
@@ -105,25 +117,32 @@ type Querier interface {
 	ListarProcedimentos(ctx context.Context, arg ListarProcedimentosParams) ([]ListarProcedimentosRow, error)
 	ListarQuedasMonitor(ctx context.Context, monitorID pgtype.UUID) ([]ListarQuedasMonitorRow, error)
 	ListarRegistrosTecnicos(ctx context.Context, arg ListarRegistrosTecnicosParams) ([]ListarRegistrosTecnicosRow, error)
-	ListarRevisoesProcedimento(ctx context.Context, procedimentoID pgtype.UUID) ([]ListarRevisoesProcedimentoRow, error)
+	ListarRevisoesProcedimento(ctx context.Context, arg ListarRevisoesProcedimentoParams) ([]ListarRevisoesProcedimentoRow, error)
+	ListarSetores(ctx context.Context) ([]ListarSetoresRow, error)
+	// Setores que aparecem na tela de acesso (ticket e tira-dúvidas)
+	ListarSetoresPedidos(ctx context.Context) ([]ListarSetoresPedidosRow, error)
 	ListarTarefas(ctx context.Context, arg ListarTarefasParams) ([]ListarTarefasRow, error)
-	ListarTarefasPendentesUsuario(ctx context.Context, responsavelID pgtype.UUID) ([]ListarTarefasPendentesUsuarioRow, error)
+	ListarTarefasPendentesUsuario(ctx context.Context, arg ListarTarefasPendentesUsuarioParams) ([]ListarTarefasPendentesUsuarioRow, error)
 	ListarTecnicos(ctx context.Context, ativo pgtype.Bool) ([]ListarTecnicosRow, error)
-	ListarTickets(ctx context.Context, status pgtype.Text) ([]ListarTicketsRow, error)
-	ListarTodosUsuarios(ctx context.Context) ([]ListarTodosUsuariosRow, error)
+	ListarTelasTV(ctx context.Context, setorID pgtype.UUID) ([]ListarTelasTVRow, error)
+	ListarTickets(ctx context.Context, arg ListarTicketsParams) ([]ListarTicketsRow, error)
+	ListarTodosUsuarios(ctx context.Context, setorID pgtype.UUID) ([]ListarTodosUsuariosRow, error)
 	ListarUsuariosAtivos(ctx context.Context) ([]ListarUsuariosAtivosRow, error)
 	MarcarTicketTratado(ctx context.Context, arg MarcarTicketTratadoParams) (Tickets, error)
 	MarcarTrocaPinObrigatoria(ctx context.Context, id pgtype.UUID) error
-	ObterAviso(ctx context.Context, id pgtype.UUID) (Avisos, error)
+	ObterAviso(ctx context.Context, arg ObterAvisoParams) (Avisos, error)
 	ObterFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (ObterFotoUsuarioRow, error)
-	ObterLink(ctx context.Context, id pgtype.UUID) (Links, error)
+	ObterLink(ctx context.Context, arg ObterLinkParams) (Links, error)
 	ObterMonitor(ctx context.Context, id pgtype.UUID) (Monitores, error)
-	ObterPlantao(ctx context.Context, id pgtype.UUID) (Plantoes, error)
+	ObterPlantao(ctx context.Context, arg ObterPlantaoParams) (Plantoes, error)
 	ObterUltimaMovimentacaoItem(ctx context.Context, itemID pgtype.UUID) (MovimentacoesEstoque, error)
 	ObterUsoAssistente(ctx context.Context) (ObterUsoAssistenteRow, error)
 	ObterVersaoFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (pgtype.Timestamptz, error)
+	PrimeiroSetor(ctx context.Context) (Setores, error)
 	// Turno em andamento ou o próximo da pessoa
 	ProximoPlantaoUsuario(ctx context.Context, arg ProximoPlantaoUsuarioParams) (ProximoPlantaoUsuarioRow, error)
+	// Grava no máximo uma vez por minuto (a TV consulta a cada poucos segundos)
+	RegistrarAcessoTelaTV(ctx context.Context, arg RegistrarAcessoTelaTVParams) error
 	RegistrarEntradaTecnico(ctx context.Context, arg RegistrarEntradaTecnicoParams) (TecnicoRegistros, error)
 	RegistrarSaidaTecnico(ctx context.Context, arg RegistrarSaidaTecnicoParams) (TecnicoRegistros, error)
 	RegistrarUsoAssistente(ctx context.Context, neurons float64) error
@@ -148,6 +167,7 @@ type Querier interface {
 	SegundosForaUltimas24h(ctx context.Context) ([]SegundosForaUltimas24hRow, error)
 	// Serializa as gravações da escala para a checagem de conflito valer
 	TravarEscala(ctx context.Context) error
+	UsuarioAtivoNoSetor(ctx context.Context, arg UsuarioAtivoNoSetorParams) (bool, error)
 	VincularTicketQueda(ctx context.Context, arg VincularTicketQuedaParams) error
 	ZerarTentativasFalhas(ctx context.Context, id pgtype.UUID) error
 }

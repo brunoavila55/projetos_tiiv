@@ -8,6 +8,7 @@
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import RadioPainel from '$lib/components/RadioPainel.svelte';
 	import { radio } from '$lib/radio.svelte';
+	import { page } from '$app/state';
 
 	let { children } = $props();
 
@@ -28,7 +29,10 @@
 	<title>Projetos NOC</title>
 </svelte:head>
 
-{#if auth.loading}
+<!-- Modo TV: tela própria, sem menu e sem exigir login (usa a chave da tela) -->
+{#if page.url.pathname === '/tv'}
+	{@render children()}
+{:else if auth.loading}
 	<div class="min-h-screen bg-paper flex items-center justify-center">
 		<div class="flex items-center gap-3 text-sm text-ink-3">
 			<div class="spinner size-5"></div>

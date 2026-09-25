@@ -4,7 +4,8 @@
 	import { auth } from '$lib/auth.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { monitoresStore } from '$lib/monitores.svelte';
-	import { Activity, Plus, Pencil, Trash2, RefreshCw, History, X, Ticket } from 'lucide-svelte';
+	import TelasTV from '$lib/components/TelasTV.svelte';
+	import { Activity, Plus, Pencil, Trash2, RefreshCw, History, X, Ticket, Tv } from 'lucide-svelte';
 
 	type Tipo = 'ping' | 'tcp' | 'http';
 	type Status = 'pendente' | 'online' | 'offline';
@@ -16,6 +17,7 @@
 		alvo: string;
 		intervalo_seg: number;
 		abrir_ticket: boolean;
+		setor_ticket_id: string;
 		ativo: boolean;
 		status: Status;
 		latencia_ms: number | null;
@@ -47,7 +49,7 @@
 		{ valor: 900, rotulo: '15 minutos' }
 	];
 
-	const ehAdmin = $derived(auth.user?.papel === 'admin');
+	const ehAdmin = $derived(auth.ehAdmin);
 
 	let monitores = $state<Monitor[]>([]);
 	let loading = $state(true);
@@ -138,6 +140,7 @@
 
 	// ---------- Cadastro (admin) ----------
 	let modalAberto = $state(false);
+	let telasAberto = $state(false);
 	let salvando = $state(false);
 	let editId = $state<string | null>(null);
 	let fNome = $state('');
@@ -145,7 +148,19 @@
 	let fAlvo = $state('');
 	let fIntervalo = $state(60);
 	let fTicket = $state(false);
+	let fSetorTicket = $state('');
 	let fAtivo = $state(true);
+
+	// Monitores são de todos; o ticket de queda cai na fila de um setor
+	let setores = $state<{ id: string; nome: string }[]>([]);
+	async function carregarSetores() {
+		if (setores.length) return;
+		try {
+			setores = await apiFetch<{ id: string; nome: string }[]>('/api/setores');
+		} catch {
+			// apiFetch já mostrou o erro
+		}
+	}
 
 	function abrirNovo() {
 		editId = null;
@@ -154,7 +169,9 @@
 		fAlvo = '';
 		fIntervalo = 60;
 		fTicket = false;
+		fSetorTicket = auth.user?.setor.id ?? '';
 		fAtivo = true;
+		carregarSetores();
 		modalAberto = true;
 	}
 
@@ -165,7 +182,9 @@
 		fAlvo = m.alvo;
 		fIntervalo = m.intervalo_seg;
 		fTicket = m.abrir_ticket;
+		fSetorTicket = m.setor_ticket_id;
 		fAtivo = m.ativo;
+		carregarSetores();
 		modalAberto = true;
 	}
 
@@ -182,6 +201,7 @@
 				alvo: fAlvo.trim(),
 				intervalo_seg: fIntervalo,
 				abrir_ticket: fTicket,
+				setor_ticket_id: fSetorTicket,
 				ativo: fAtivo
 			};
 			if (editId) {
@@ -221,12 +241,19 @@
 			<h1 class="page-title">Monitor</h1>
 			<p class="page-sub">Disponibilidade de hosts e serviços da rede, verificada pelo servidor. Duas falhas seguidas marcam o alvo como fora do ar.</p>
 		</div>
-		{#if ehAdmin}
-			<button onclick={abrirNovo} class="btn btn-primary">
-				<Plus class="size-4" />
-				<span>Novo monitor</span>
-			</button>
-		{/if}
+		<div class="flex flex-wrap gap-2">
+			<a href="/tv" class="btn btn-secondary">
+				<Tv class="size-4" />
+				<span>Modo TV</span>
+			</a>
+			{#if ehAdmin}
+				<button onclick={() => (telasAberto = true)} class="btn btn-secondary">Telas de TV</button>
+				<button onclick={abrirNovo} class="btn btn-primary">
+					<Plus class="size-4" />
+					<span>Novo monitor</span>
+				</button>
+			{/if}
+		</div>
 	</div>
 
 	{#if loading}
@@ -408,6 +435,17 @@
 						</span>
 					</label>
 
+					{#if fTicket && setores.length > 1}
+						<div>
+							<label class="label" for="mo-setor">Fila que recebe o ticket</label>
+							<select id="mo-setor" bind:value={fSetorTicket} class="field">
+								{#each setores as st (st.id)}
+									<option value={st.id}>{st.nome}</option>
+								{/each}
+							</select>
+						</div>
+					{/if}
+
 					{#if editId}
 						<label class="flex items-start gap-2.5 text-sm text-ink cursor-pointer">
 							<input type="checkbox" bind:checked={fAtivo} class="check mt-0.5" />
@@ -427,5 +465,9 @@
 				</div>
 			</div>
 		</div>
+	{/if}
+
+	{#if telasAberto}
+		<TelasTV onfechar={() => (telasAberto = false)} />
 	{/if}
 </div>

@@ -82,8 +82,9 @@ func (h *EventoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	eventos, err := h.db.Queries.ListarEventosIntervalo(r.Context(), sqlc.ListarEventosIntervaloParams{
-		Fim:    database.TimeToTimestamptz(inicio),
-		Inicio: database.TimeToTimestamptz(fim),
+		Fim:     database.TimeToTimestamptz(inicio),
+		Inicio:  database.TimeToTimestamptz(fim),
+		SetorID: user.Setor,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao consultar eventos")
@@ -137,7 +138,7 @@ func (h *EventoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		podeEditar := (user.Papel == "admin") || (eCriadoPor == user.ID)
+		podeEditar := (user.EhAdmin()) || (eCriadoPor == user.ID)
 		result = append(result, expandirOcorrencias(e, partList, podeEditar, inicio, fim)...)
 	}
 
@@ -303,6 +304,7 @@ func (h *EventoHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		CriadoPor:      criadorUUID,
 		Recorrencia:    recorrencia,
 		RecorrenciaFim: recFim,
+		SetorID:        user.Setor,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao criar evento")
@@ -350,14 +352,14 @@ func (h *EventoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	evento, err := h.db.Queries.BuscarEventoPorID(r.Context(), eID)
+	evento, err := h.db.Queries.BuscarEventoPorID(r.Context(), sqlc.BuscarEventoPorIDParams{ID: eID, SetorID: user.Setor})
 	if err != nil {
 		response.JSONError(w, http.StatusNotFound, "evento não encontrado")
 		return
 	}
 
 	criadorStr := database.UUIDToString(evento.CriadoPor)
-	if user.Papel != "admin" && criadorStr != user.ID {
+	if !user.EhAdmin() && criadorStr != user.ID {
 		response.JSONError(w, http.StatusForbidden, "apenas o criador do evento ou administrador pode alterá-lo")
 		return
 	}
@@ -443,14 +445,14 @@ func (h *EventoHandler) Deletar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	evento, err := h.db.Queries.BuscarEventoPorID(r.Context(), eID)
+	evento, err := h.db.Queries.BuscarEventoPorID(r.Context(), sqlc.BuscarEventoPorIDParams{ID: eID, SetorID: user.Setor})
 	if err != nil {
 		response.JSONError(w, http.StatusNotFound, "evento não encontrado")
 		return
 	}
 
 	criadorStr := database.UUIDToString(evento.CriadoPor)
-	if user.Papel != "admin" && criadorStr != user.ID {
+	if !user.EhAdmin() && criadorStr != user.ID {
 		response.JSONError(w, http.StatusForbidden, "apenas o criador do evento ou administrador pode excluí-lo")
 		return
 	}

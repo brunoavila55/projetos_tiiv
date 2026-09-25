@@ -15,7 +15,7 @@ const atualizarAviso = `-- name: AtualizarAviso :one
 UPDATE avisos
 SET titulo = $2, mensagem = $3, nivel = $4, expira_em = $5, atualizado_em = now()
 WHERE id = $1
-RETURNING id, titulo, mensagem, nivel, expira_em, criado_por, criado_em, atualizado_em
+RETURNING id, titulo, mensagem, nivel, expira_em, criado_por, criado_em, atualizado_em, setor_id
 `
 
 type AtualizarAvisoParams struct {
@@ -44,14 +44,15 @@ func (q *Queries) AtualizarAviso(ctx context.Context, arg AtualizarAvisoParams) 
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
 
 const criarAviso = `-- name: CriarAviso :one
-INSERT INTO avisos (titulo, mensagem, nivel, expira_em, criado_por)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, titulo, mensagem, nivel, expira_em, criado_por, criado_em, atualizado_em
+INSERT INTO avisos (titulo, mensagem, nivel, expira_em, criado_por, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, titulo, mensagem, nivel, expira_em, criado_por, criado_em, atualizado_em, setor_id
 `
 
 type CriarAvisoParams struct {
@@ -60,6 +61,7 @@ type CriarAvisoParams struct {
 	Nivel     string             `json:"nivel"`
 	ExpiraEm  pgtype.Timestamptz `json:"expira_em"`
 	CriadoPor pgtype.UUID        `json:"criado_por"`
+	SetorID   pgtype.UUID        `json:"setor_id"`
 }
 
 func (q *Queries) CriarAviso(ctx context.Context, arg CriarAvisoParams) (Avisos, error) {
@@ -69,6 +71,7 @@ func (q *Queries) CriarAviso(ctx context.Context, arg CriarAvisoParams) (Avisos,
 		arg.Nivel,
 		arg.ExpiraEm,
 		arg.CriadoPor,
+		arg.SetorID,
 	)
 	var i Avisos
 	err := row.Scan(
@@ -80,6 +83,7 @@ func (q *Queries) CriarAviso(ctx context.Context, arg CriarAvisoParams) (Avisos,
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -100,7 +104,7 @@ SELECT
     u.nome AS criador_nome, u.cor AS criador_cor
 FROM avisos a
 JOIN usuarios u ON u.id = a.criado_por
-WHERE a.expira_em IS NULL OR a.expira_em > now()
+WHERE a.setor_id = $1 AND (a.expira_em IS NULL OR a.expira_em > now())
 ORDER BY
     CASE a.nivel WHEN 'critico' THEN 1 WHEN 'atencao' THEN 2 ELSE 3 END,
     a.criado_em DESC
@@ -120,8 +124,8 @@ type ListarAvisosAtivosRow struct {
 	CriadorCor   string             `json:"criador_cor"`
 }
 
-func (q *Queries) ListarAvisosAtivos(ctx context.Context) ([]ListarAvisosAtivosRow, error) {
-	rows, err := q.db.Query(ctx, listarAvisosAtivos)
+func (q *Queries) ListarAvisosAtivos(ctx context.Context, setorID pgtype.UUID) ([]ListarAvisosAtivosRow, error) {
+	rows, err := q.db.Query(ctx, listarAvisosAtivos, setorID)
 	if err != nil {
 		return nil, err
 	}
@@ -152,11 +156,16 @@ func (q *Queries) ListarAvisosAtivos(ctx context.Context) ([]ListarAvisosAtivosR
 }
 
 const obterAviso = `-- name: ObterAviso :one
-SELECT id, titulo, mensagem, nivel, expira_em, criado_por, criado_em, atualizado_em FROM avisos WHERE id = $1
+SELECT id, titulo, mensagem, nivel, expira_em, criado_por, criado_em, atualizado_em, setor_id FROM avisos WHERE id = $1 AND setor_id = $2
 `
 
-func (q *Queries) ObterAviso(ctx context.Context, id pgtype.UUID) (Avisos, error) {
-	row := q.db.QueryRow(ctx, obterAviso, id)
+type ObterAvisoParams struct {
+	ID      pgtype.UUID `json:"id"`
+	SetorID pgtype.UUID `json:"setor_id"`
+}
+
+func (q *Queries) ObterAviso(ctx context.Context, arg ObterAvisoParams) (Avisos, error) {
+	row := q.db.QueryRow(ctx, obterAviso, arg.ID, arg.SetorID)
 	var i Avisos
 	err := row.Scan(
 		&i.ID,
@@ -167,6 +176,7 @@ func (q *Queries) ObterAviso(ctx context.Context, id pgtype.UUID) (Avisos, error
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }

@@ -5,18 +5,18 @@ SELECT
     u.nome AS criador_nome, u.cor AS criador_cor
 FROM avisos a
 JOIN usuarios u ON u.id = a.criado_por
-WHERE a.expira_em IS NULL OR a.expira_em > now()
+WHERE a.setor_id = $1 AND (a.expira_em IS NULL OR a.expira_em > now())
 ORDER BY
     CASE a.nivel WHEN 'critico' THEN 1 WHEN 'atencao' THEN 2 ELSE 3 END,
     a.criado_em DESC
 LIMIT 50;
 
 -- name: ObterAviso :one
-SELECT * FROM avisos WHERE id = $1;
+SELECT * FROM avisos WHERE id = $1 AND setor_id = $2;
 
 -- name: CriarAviso :one
-INSERT INTO avisos (titulo, mensagem, nivel, expira_em, criado_por)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO avisos (titulo, mensagem, nivel, expira_em, criado_por, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: AtualizarAviso :one

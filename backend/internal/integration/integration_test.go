@@ -1,6 +1,8 @@
 package integration_test
 
 import (
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -52,7 +54,7 @@ func setupTestEnvCom(t *testing.T, ajustar func(*config.Config)) *TestEnv {
 	}
 
 	// Num banco novo o admin inicial nasce com troca de PIN obrigatória
-	if _, err := db.Pool.Exec(ctx, `UPDATE usuarios SET deve_trocar_pin = false WHERE papel = 'admin'`); err != nil {
+	if _, err := db.Pool.Exec(ctx, `UPDATE usuarios SET deve_trocar_pin = false WHERE papel = 'superadmin'`); err != nil {
 		t.Fatalf("falha ao preparar admin de teste: %v", err)
 	}
 
@@ -144,7 +146,7 @@ func TestAuth_LockoutAfter5FailedAttempts(t *testing.T) {
 	defer env.teardown()
 
 	// 1. Obter admin e logar
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("nenhum usuário no banco: %v", err)
 	}
@@ -216,7 +218,7 @@ func TestPermissions_RoleAndAuthorship(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("nenhum usuário no banco")
 	}
@@ -325,7 +327,7 @@ func TestEstoque_Concurrency20ParallelOutputs(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("nenhum usuário no banco")
 	}
@@ -432,7 +434,7 @@ func TestCalendario_IntervalFilter(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, _ := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, _ := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	adminCookie, _, _ := env.login(t, database.UUIDToString(users[0].ID), env.cfg.AdminPIN)
 
 	hoje := time.Now().Truncate(24 * time.Hour)
@@ -532,7 +534,7 @@ func TestAuth_TemaUpdate(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("usuários não encontrados: %v", err)
 	}
@@ -583,7 +585,7 @@ func TestCSV_Exports(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("usuários não encontrados: %v", err)
 	}
@@ -622,7 +624,7 @@ func TestTarefas_Comentarios(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("usuários não encontrados: %v", err)
 	}
@@ -696,7 +698,7 @@ func TestEventos_Recurrence(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("usuários não encontrados: %v", err)
 	}
@@ -757,13 +759,13 @@ func TestUsuarios_Foto(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("usuários não encontrados: %v", err)
 	}
 	var adminID string
 	for _, u := range users {
-		if u.Papel == "admin" && u.Ativo {
+		if u.Papel == "superadmin" && u.Ativo {
 			adminID = database.UUIDToString(u.ID)
 			break
 		}
@@ -866,7 +868,7 @@ func TestTecnicos_EntradaSaidaRelatorio(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("usuários não encontrados: %v", err)
 	}
@@ -968,7 +970,7 @@ func TestVisibilidade_TarefasIndividuais(t *testing.T) {
 	defer env.teardown()
 	ctx := context.Background()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(ctx)
+	users, err := env.db.Queries.ListarTodosUsuarios(ctx, pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("nenhum usuário no banco")
 	}
@@ -1045,7 +1047,7 @@ func TestEstoque_ExcluirItem(t *testing.T) {
 	defer env.teardown()
 	ctx := context.Background()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(ctx)
+	users, err := env.db.Queries.ListarTodosUsuarios(ctx, pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("nenhum usuário no banco")
 	}
@@ -1116,7 +1118,7 @@ func TestPIN_ExatamenteQuatroDigitos(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := env.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("nenhum usuário no banco")
 	}
@@ -1148,7 +1150,7 @@ func TestTickets_AberturaPublicaEResgate(t *testing.T) {
 	defer env.teardown()
 	ctx := context.Background()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(ctx)
+	users, err := env.db.Queries.ListarTodosUsuarios(ctx, pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("nenhum usuário no banco")
 	}
@@ -1262,7 +1264,7 @@ func TestProcedimentos_HistoricoETiraDuvidas(t *testing.T) {
 	defer env.teardown()
 	ctx := context.Background()
 
-	users, err := env.db.Queries.ListarTodosUsuarios(ctx)
+	users, err := env.db.Queries.ListarTodosUsuarios(ctx, pgtype.UUID{})
 	if err != nil || len(users) == 0 {
 		t.Fatalf("nenhum usuário no banco")
 	}

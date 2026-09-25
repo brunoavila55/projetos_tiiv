@@ -1,6 +1,8 @@
 package integration_test
 
 import (
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -19,12 +21,12 @@ import (
 // loginAdmin loga com o admin ativo do banco de teste
 func (e *TestEnv) loginAdmin(t *testing.T) (*http.Cookie, string) {
 	t.Helper()
-	users, err := e.db.Queries.ListarTodosUsuarios(context.Background())
+	users, err := e.db.Queries.ListarTodosUsuarios(context.Background(), pgtype.UUID{})
 	if err != nil {
 		t.Fatalf("usuários não encontrados: %v", err)
 	}
 	for _, u := range users {
-		if u.Papel == "admin" && u.Ativo {
+		if u.Papel == "superadmin" && u.Ativo {
 			id := database.UUIDToString(u.ID)
 			cookie, status, _ := e.login(t, id, e.cfg.AdminPIN)
 			if status == http.StatusOK {

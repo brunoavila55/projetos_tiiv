@@ -31,20 +31,21 @@ func (q *Queries) AbrirQueda(ctx context.Context, arg AbrirQuedaParams) (pgtype.
 
 const atualizarMonitor = `-- name: AtualizarMonitor :one
 UPDATE monitores
-SET nome = $2, tipo = $3, alvo = $4, intervalo_seg = $5, abrir_ticket = $6, ativo = $7,
+SET nome = $2, tipo = $3, alvo = $4, intervalo_seg = $5, abrir_ticket = $6, ativo = $7, setor_ticket_id = $8,
     atualizado_em = now()
 WHERE id = $1
-RETURNING id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em
+RETURNING id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em, setor_ticket_id
 `
 
 type AtualizarMonitorParams struct {
-	ID           pgtype.UUID `json:"id"`
-	Nome         string      `json:"nome"`
-	Tipo         string      `json:"tipo"`
-	Alvo         string      `json:"alvo"`
-	IntervaloSeg int32       `json:"intervalo_seg"`
-	AbrirTicket  bool        `json:"abrir_ticket"`
-	Ativo        bool        `json:"ativo"`
+	ID            pgtype.UUID `json:"id"`
+	Nome          string      `json:"nome"`
+	Tipo          string      `json:"tipo"`
+	Alvo          string      `json:"alvo"`
+	IntervaloSeg  int32       `json:"intervalo_seg"`
+	AbrirTicket   bool        `json:"abrir_ticket"`
+	Ativo         bool        `json:"ativo"`
+	SetorTicketID pgtype.UUID `json:"setor_ticket_id"`
 }
 
 func (q *Queries) AtualizarMonitor(ctx context.Context, arg AtualizarMonitorParams) (Monitores, error) {
@@ -56,6 +57,7 @@ func (q *Queries) AtualizarMonitor(ctx context.Context, arg AtualizarMonitorPara
 		arg.IntervaloSeg,
 		arg.AbrirTicket,
 		arg.Ativo,
+		arg.SetorTicketID,
 	)
 	var i Monitores
 	err := row.Scan(
@@ -75,12 +77,13 @@ func (q *Queries) AtualizarMonitor(ctx context.Context, arg AtualizarMonitorPara
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorTicketID,
 	)
 	return i, err
 }
 
 const bloquearMonitor = `-- name: BloquearMonitor :one
-SELECT id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em FROM monitores WHERE id = $1 FOR UPDATE
+SELECT id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em, setor_ticket_id FROM monitores WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) BloquearMonitor(ctx context.Context, id pgtype.UUID) (Monitores, error) {
@@ -103,23 +106,25 @@ func (q *Queries) BloquearMonitor(ctx context.Context, id pgtype.UUID) (Monitore
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorTicketID,
 	)
 	return i, err
 }
 
 const criarMonitor = `-- name: CriarMonitor :one
-INSERT INTO monitores (nome, tipo, alvo, intervalo_seg, abrir_ticket, criado_por)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em
+INSERT INTO monitores (nome, tipo, alvo, intervalo_seg, abrir_ticket, criado_por, setor_ticket_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em, setor_ticket_id
 `
 
 type CriarMonitorParams struct {
-	Nome         string      `json:"nome"`
-	Tipo         string      `json:"tipo"`
-	Alvo         string      `json:"alvo"`
-	IntervaloSeg int32       `json:"intervalo_seg"`
-	AbrirTicket  bool        `json:"abrir_ticket"`
-	CriadoPor    pgtype.UUID `json:"criado_por"`
+	Nome          string      `json:"nome"`
+	Tipo          string      `json:"tipo"`
+	Alvo          string      `json:"alvo"`
+	IntervaloSeg  int32       `json:"intervalo_seg"`
+	AbrirTicket   bool        `json:"abrir_ticket"`
+	CriadoPor     pgtype.UUID `json:"criado_por"`
+	SetorTicketID pgtype.UUID `json:"setor_ticket_id"`
 }
 
 func (q *Queries) CriarMonitor(ctx context.Context, arg CriarMonitorParams) (Monitores, error) {
@@ -130,6 +135,7 @@ func (q *Queries) CriarMonitor(ctx context.Context, arg CriarMonitorParams) (Mon
 		arg.IntervaloSeg,
 		arg.AbrirTicket,
 		arg.CriadoPor,
+		arg.SetorTicketID,
 	)
 	var i Monitores
 	err := row.Scan(
@@ -149,6 +155,7 @@ func (q *Queries) CriarMonitor(ctx context.Context, arg CriarMonitorParams) (Mon
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorTicketID,
 	)
 	return i, err
 }
@@ -172,7 +179,7 @@ func (q *Queries) FecharQuedaAberta(ctx context.Context, monitorID pgtype.UUID) 
 }
 
 const listarMonitores = `-- name: ListarMonitores :many
-SELECT id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em FROM monitores
+SELECT id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em, setor_ticket_id FROM monitores
 ORDER BY
     ativo DESC,
     CASE status WHEN 'offline' THEN 1 WHEN 'pendente' THEN 2 ELSE 3 END,
@@ -205,6 +212,7 @@ func (q *Queries) ListarMonitores(ctx context.Context) ([]Monitores, error) {
 			&i.CriadoPor,
 			&i.CriadoEm,
 			&i.AtualizadoEm,
+			&i.SetorTicketID,
 		); err != nil {
 			return nil, err
 		}
@@ -259,7 +267,7 @@ func (q *Queries) ListarMonitoresOffline(ctx context.Context) ([]ListarMonitores
 }
 
 const listarMonitoresParaVerificar = `-- name: ListarMonitoresParaVerificar :many
-SELECT id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em FROM monitores
+SELECT id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em, setor_ticket_id FROM monitores
 WHERE ativo
   AND (verificado_em IS NULL OR verificado_em <= now() - make_interval(secs => intervalo_seg))
 `
@@ -290,6 +298,7 @@ func (q *Queries) ListarMonitoresParaVerificar(ctx context.Context) ([]Monitores
 			&i.CriadoPor,
 			&i.CriadoEm,
 			&i.AtualizadoEm,
+			&i.SetorTicketID,
 		); err != nil {
 			return nil, err
 		}
@@ -345,7 +354,7 @@ func (q *Queries) ListarQuedasMonitor(ctx context.Context, monitorID pgtype.UUID
 }
 
 const obterMonitor = `-- name: ObterMonitor :one
-SELECT id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em FROM monitores WHERE id = $1
+SELECT id, nome, tipo, alvo, intervalo_seg, abrir_ticket, ativo, status, falhas_seguidas, latencia_ms, ultimo_erro, verificado_em, status_desde, criado_por, criado_em, atualizado_em, setor_ticket_id FROM monitores WHERE id = $1
 `
 
 func (q *Queries) ObterMonitor(ctx context.Context, id pgtype.UUID) (Monitores, error) {
@@ -368,6 +377,7 @@ func (q *Queries) ObterMonitor(ctx context.Context, id pgtype.UUID) (Monitores, 
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorTicketID,
 	)
 	return i, err
 }

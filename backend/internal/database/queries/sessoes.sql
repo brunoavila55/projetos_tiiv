@@ -16,9 +16,13 @@ SELECT
     u.papel AS usuario_papel,
     u.ativo AS usuario_ativo,
     u.tema AS usuario_tema,
-    u.deve_trocar_pin AS usuario_deve_trocar_pin
+    u.deve_trocar_pin AS usuario_deve_trocar_pin,
+    st.id AS setor_id,
+    st.nome AS setor_nome
 FROM sessoes s
 JOIN usuarios u ON u.id = s.usuario_id
+-- Setor de trabalho: o escolhido na sessão (só superadmin) ou o do usuário
+JOIN setores st ON st.id = COALESCE(CASE WHEN u.papel = 'superadmin' THEN s.setor_id END, u.setor_id)
 WHERE s.token_hash = $1 AND u.ativo = true;
 
 -- name: AtualizarUltimoUsoSessao :exec

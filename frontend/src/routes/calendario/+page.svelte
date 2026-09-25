@@ -54,7 +54,7 @@
 	let mostrarEscala = $state(true);
 	// Faixa visível no calendário (atualizada pelo datesSet)
 	let faixa = $state<{ inicio: Date; fim: Date } | null>(null);
-	const ehAdmin = $derived(auth.user?.papel === 'admin');
+	const ehAdmin = $derived(auth.ehAdmin);
 	let eventos = $state<EventoItem[]>([]);
 	let usuarios = $state<UsuarioPublico[]>([]);
 	let filtroMeus = $state<boolean>(false);
@@ -208,7 +208,7 @@
 
 	async function carregarUsuarios() {
 		try {
-			usuarios = await apiFetch<UsuarioPublico[]>('/api/auth/usuarios');
+			usuarios = await apiFetch<UsuarioPublico[]>('/api/equipe');
 		} catch (err) {
 			console.error('Erro ao carregar usuários:', err);
 		}

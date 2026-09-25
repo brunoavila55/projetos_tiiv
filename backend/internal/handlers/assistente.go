@@ -95,6 +95,8 @@ type MensagemConversa struct {
 
 type PerguntarRequest struct {
 	Mensagens []MensagemConversa `json:"mensagens"`
+	// Setor cujos procedimentos respondem; vazio vale quando só um aceita pedidos
+	SetorID string `json:"setor_id"`
 }
 
 type FonteResposta struct {
@@ -125,6 +127,15 @@ func (h *AssistenteHandler) Perguntar(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusBadRequest, msg)
 		return
 	}
+	setor, err := setorDoPedido(r.Context(), h.db.Queries, req.SetorID)
+	if errors.Is(err, errSetorPedido) {
+		response.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao consultar o assistente")
+		return
+	}
 
 	if !h.limites.permitir(ipDaRequisicao(r)) {
 		response.JSONError(w, http.StatusTooManyRequests, "muitas perguntas seguidas; aguarde alguns minutos")
@@ -142,8 +153,9 @@ func (h *AssistenteHandler) Perguntar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	procs, err := h.db.Queries.BuscarProcedimentosRelevantes(r.Context(), sqlc.BuscarProcedimentosRelevantesParams{
-		Texto:  textoDeBusca(req.Mensagens),
-		Limite: procedimentosNoPrompt,
+		Texto:   textoDeBusca(req.Mensagens),
+		SetorID: setor,
+		Limite:  procedimentosNoPrompt,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao buscar procedimentos")

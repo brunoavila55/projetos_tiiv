@@ -13,17 +13,21 @@ import (
 
 const adicionarParticipanteEvento = `-- name: AdicionarParticipanteEvento :exec
 INSERT INTO evento_participantes (evento_id, usuario_id)
-VALUES ($1, $2)
+SELECT e.id, u.id
+FROM eventos e
+JOIN usuarios u ON u.id = $1
+WHERE e.id = $2 AND (u.setor_id = e.setor_id OR u.id = e.criado_por)
 ON CONFLICT DO NOTHING
 `
 
 type AdicionarParticipanteEventoParams struct {
-	EventoID  pgtype.UUID `json:"evento_id"`
 	UsuarioID pgtype.UUID `json:"usuario_id"`
+	EventoID  pgtype.UUID `json:"evento_id"`
 }
 
+// Só entra quem é do setor do evento (ou quem o criou)
 func (q *Queries) AdicionarParticipanteEvento(ctx context.Context, arg AdicionarParticipanteEventoParams) error {
-	_, err := q.db.Exec(ctx, adicionarParticipanteEvento, arg.EventoID, arg.UsuarioID)
+	_, err := q.db.Exec(ctx, adicionarParticipanteEvento, arg.UsuarioID, arg.EventoID)
 	return err
 }
 
@@ -31,7 +35,7 @@ const atualizarEvento = `-- name: AtualizarEvento :one
 UPDATE eventos
 SET titulo = $2, descricao = $3, inicio = $4, fim = $5, dia_inteiro = $6, recorrencia = $7, recorrencia_fim = $8, atualizado_em = now()
 WHERE id = $1
-RETURNING id, titulo, descricao, inicio, fim, dia_inteiro, criado_por, criado_em, atualizado_em, recorrencia, recorrencia_fim
+RETURNING id, titulo, descricao, inicio, fim, dia_inteiro, criado_por, criado_em, atualizado_em, recorrencia, recorrencia_fim, setor_id
 `
 
 type AtualizarEventoParams struct {
@@ -69,6 +73,7 @@ func (q *Queries) AtualizarEvento(ctx context.Context, arg AtualizarEventoParams
 		&i.AtualizadoEm,
 		&i.Recorrencia,
 		&i.RecorrenciaFim,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -76,12 +81,31 @@ func (q *Queries) AtualizarEvento(ctx context.Context, arg AtualizarEventoParams
 const buscarEventoPorID = `-- name: BuscarEventoPorID :one
 SELECT e.id, e.titulo, e.descricao, e.inicio, e.fim, e.dia_inteiro, e.criado_por, e.criado_em, e.atualizado_em, e.recorrencia, e.recorrencia_fim
 FROM eventos e
-WHERE e.id = $1
+WHERE e.id = $1 AND e.setor_id = $2
 `
 
-func (q *Queries) BuscarEventoPorID(ctx context.Context, id pgtype.UUID) (Eventos, error) {
-	row := q.db.QueryRow(ctx, buscarEventoPorID, id)
-	var i Eventos
+type BuscarEventoPorIDParams struct {
+	ID      pgtype.UUID `json:"id"`
+	SetorID pgtype.UUID `json:"setor_id"`
+}
+
+type BuscarEventoPorIDRow struct {
+	ID             pgtype.UUID        `json:"id"`
+	Titulo         string             `json:"titulo"`
+	Descricao      string             `json:"descricao"`
+	Inicio         pgtype.Timestamptz `json:"inicio"`
+	Fim            pgtype.Timestamptz `json:"fim"`
+	DiaInteiro     bool               `json:"dia_inteiro"`
+	CriadoPor      pgtype.UUID        `json:"criado_por"`
+	CriadoEm       pgtype.Timestamptz `json:"criado_em"`
+	AtualizadoEm   pgtype.Timestamptz `json:"atualizado_em"`
+	Recorrencia    string             `json:"recorrencia"`
+	RecorrenciaFim pgtype.Timestamptz `json:"recorrencia_fim"`
+}
+
+func (q *Queries) BuscarEventoPorID(ctx context.Context, arg BuscarEventoPorIDParams) (BuscarEventoPorIDRow, error) {
+	row := q.db.QueryRow(ctx, buscarEventoPorID, arg.ID, arg.SetorID)
+	var i BuscarEventoPorIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Titulo,
@@ -99,9 +123,9 @@ func (q *Queries) BuscarEventoPorID(ctx context.Context, id pgtype.UUID) (Evento
 }
 
 const criarEvento = `-- name: CriarEvento :one
-INSERT INTO eventos (titulo, descricao, inicio, fim, dia_inteiro, criado_por, recorrencia, recorrencia_fim)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, titulo, descricao, inicio, fim, dia_inteiro, criado_por, criado_em, atualizado_em, recorrencia, recorrencia_fim
+INSERT INTO eventos (titulo, descricao, inicio, fim, dia_inteiro, criado_por, recorrencia, recorrencia_fim, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, titulo, descricao, inicio, fim, dia_inteiro, criado_por, criado_em, atualizado_em, recorrencia, recorrencia_fim, setor_id
 `
 
 type CriarEventoParams struct {
@@ -113,6 +137,7 @@ type CriarEventoParams struct {
 	CriadoPor      pgtype.UUID        `json:"criado_por"`
 	Recorrencia    string             `json:"recorrencia"`
 	RecorrenciaFim pgtype.Timestamptz `json:"recorrencia_fim"`
+	SetorID        pgtype.UUID        `json:"setor_id"`
 }
 
 func (q *Queries) CriarEvento(ctx context.Context, arg CriarEventoParams) (Eventos, error) {
@@ -125,6 +150,7 @@ func (q *Queries) CriarEvento(ctx context.Context, arg CriarEventoParams) (Event
 		arg.CriadoPor,
 		arg.Recorrencia,
 		arg.RecorrenciaFim,
+		arg.SetorID,
 	)
 	var i Eventos
 	err := row.Scan(
@@ -139,6 +165,7 @@ func (q *Queries) CriarEvento(ctx context.Context, arg CriarEventoParams) (Event
 		&i.AtualizadoEm,
 		&i.Recorrencia,
 		&i.RecorrenciaFim,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -160,14 +187,16 @@ SELECT
     u.nome AS criador_nome, u.cor AS criador_cor
 FROM eventos e
 JOIN usuarios u ON u.id = e.criado_por
-WHERE (e.fim >= $1 AND e.inicio <= $2)
-   OR (e.recorrencia != 'nenhuma' AND e.inicio <= $2 AND (e.recorrencia_fim IS NULL OR e.recorrencia_fim >= $1))
+WHERE e.setor_id = $3
+  AND ((e.fim >= $1 AND e.inicio <= $2)
+   OR (e.recorrencia != 'nenhuma' AND e.inicio <= $2 AND (e.recorrencia_fim IS NULL OR e.recorrencia_fim >= $1)))
 ORDER BY e.inicio ASC
 `
 
 type ListarEventosIntervaloParams struct {
-	Fim    pgtype.Timestamptz `json:"fim"`
-	Inicio pgtype.Timestamptz `json:"inicio"`
+	Fim     pgtype.Timestamptz `json:"fim"`
+	Inicio  pgtype.Timestamptz `json:"inicio"`
+	SetorID pgtype.UUID        `json:"setor_id"`
 }
 
 type ListarEventosIntervaloRow struct {
@@ -187,7 +216,7 @@ type ListarEventosIntervaloRow struct {
 }
 
 func (q *Queries) ListarEventosIntervalo(ctx context.Context, arg ListarEventosIntervaloParams) ([]ListarEventosIntervaloRow, error) {
-	rows, err := q.db.Query(ctx, listarEventosIntervalo, arg.Fim, arg.Inicio)
+	rows, err := q.db.Query(ctx, listarEventosIntervalo, arg.Fim, arg.Inicio, arg.SetorID)
 	if err != nil {
 		return nil, err
 	}

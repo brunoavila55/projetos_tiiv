@@ -88,6 +88,8 @@ type UserProfileResponse struct {
 	FotoVersao *int64 `json:"foto_versao"`
 	// Admin inicial: precisa trocar o PIN antes de usar o sistema
 	DeveTrocarPin bool `json:"deve_trocar_pin"`
+	// Setor de trabalho (o superadmin pode trocar)
+	Setor SetorPublico `json:"setor"`
 }
 
 // Login: POST /api/auth/login
@@ -191,6 +193,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   int(h.cfg.SessionMaxTTL.Seconds()),
 	})
 
+	// Sessão nova começa no setor da própria pessoa
+	var setor SetorPublico
+	if s, err := h.db.Queries.BuscarSetor(r.Context(), user.SetorID); err == nil {
+		setor = SetorPublico{ID: database.UUIDToString(s.ID), Nome: s.Nome}
+	}
+
 	response.JSON(w, http.StatusOK, UserProfileResponse{
 		ID:         database.UUIDToString(user.ID),
 		Nome:       user.Nome,
@@ -200,6 +208,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		FotoVersao: buscarFotoVersao(r.Context(), h.db.Queries, user.ID),
 
 		DeveTrocarPin: user.DeveTrocarPin,
+		Setor:         setor,
 	})
 }
 
@@ -251,6 +260,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		FotoVersao: fotoV,
 
 		DeveTrocarPin: user.DeveTrocarPin,
+		Setor:         SetorPublico{ID: database.UUIDToString(user.Setor), Nome: user.SetorNome},
 	})
 }
 

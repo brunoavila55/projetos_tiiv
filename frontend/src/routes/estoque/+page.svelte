@@ -289,7 +289,7 @@
 			<h1 class="page-title">Estoque</h1>
 			<p class="page-sub">Saldos calculados a partir de cada entrada, saída e ajuste registrados.</p>
 		</div>
-		{#if auth.user?.papel === 'admin'}
+		{#if auth.ehAdmin}
 			<button onclick={abrirCriarItem} class="btn btn-primary">
 				<Plus class="size-4" />
 				<span>Cadastrar item</span>
@@ -387,7 +387,7 @@
 											<button onclick={() => verHistoricoItem(it)} class="icon-btn" title="Histórico do item" aria-label="Histórico do item">
 												<History class="size-4" />
 											</button>
-											{#if auth.user?.papel === 'admin'}
+											{#if auth.ehAdmin}
 												<button onclick={() => abrirEditarItem(it)} class="icon-btn" title="Editar item" aria-label="Editar item">
 													<Edit3 class="size-4" />
 												</button>

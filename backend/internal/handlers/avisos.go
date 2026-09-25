@@ -48,12 +48,12 @@ type AvisoResponse struct {
 }
 
 func podeAlterarAviso(user *middleware.AuthUser, criadoPor pgtype.UUID) bool {
-	return user.Papel == "admin" || database.UUIDToString(criadoPor) == user.ID
+	return user.EhAdmin() || database.UUIDToString(criadoPor) == user.ID
 }
 
 // listarAvisosAtivos também alimenta o GET /api/painel.
 func listarAvisosAtivos(ctx context.Context, q *sqlc.Queries, user *middleware.AuthUser) ([]AvisoResponse, error) {
-	rows, err := q.ListarAvisosAtivos(ctx)
+	rows, err := q.ListarAvisosAtivos(ctx, user.Setor)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +145,7 @@ func (h *AvisoHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		Nivel:     req.Nivel,
 		ExpiraEm:  expira,
 		CriadoPor: uID,
+		SetorID:   user.Setor,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao criar aviso")
@@ -166,7 +167,7 @@ func (h *AvisoHandler) buscarAvisoAlteravel(w http.ResponseWriter, r *http.Reque
 		return pgtype.UUID{}, false
 	}
 
-	a, err := h.db.Queries.ObterAviso(r.Context(), id)
+	a, err := h.db.Queries.ObterAviso(r.Context(), sqlc.ObterAvisoParams{ID: id, SetorID: user.Setor})
 	if errors.Is(err, pgx.ErrNoRows) {
 		response.JSONError(w, http.StatusNotFound, "aviso não encontrado")
 		return pgtype.UUID{}, false

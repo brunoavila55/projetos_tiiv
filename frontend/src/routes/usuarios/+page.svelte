@@ -4,6 +4,7 @@
 	import { auth } from '$lib/auth.svelte';
 	import { enviarFoto, removerFoto } from '$lib/foto';
 	import Avatar from '$lib/components/Avatar.svelte';
+	import SetoresAdmin from '$lib/components/SetoresAdmin.svelte';
 	import { 
 		UserPlus, 
 		KeyRound, 
@@ -13,19 +14,29 @@
 		X, 
 		Check,
 		Camera,
-		AlertCircle
+		AlertCircle,
+		Building2
 	} from 'lucide-svelte';
+
+	type Papel = 'superadmin' | 'admin' | 'usuario';
+
+	interface SetorOpcao {
+		id: string;
+		nome: string;
+	}
 
 	interface UsuarioItem {
 		id: string;
 		nome: string;
 		cor: string;
-		papel: 'admin' | 'usuario';
+		papel: Papel;
 		ativo: boolean;
 		tentativas_falhas: number;
 		bloqueado_ate: string | null;
 		criado_em: string;
 		foto_versao: number | null;
+		setor_id: string;
+		setor_nome?: string;
 	}
 
 	let usuarios = $state<UsuarioItem[]>([]);
@@ -38,19 +49,27 @@
 	let modalEditarAberto = $state(false);
 	let modalPinAberto = $state(false);
 	let usuarioSelecionado = $state<UsuarioItem | null>(null);
+	let modalSetoresAberto = $state(false);
+
+	// Superadmin vê todos os setores; admin só o próprio
+	let setores = $state<SetorOpcao[]>([]);
+	let filtroSetor = $state('');
+	const visiveis = $derived(filtroSetor ? usuarios.filter((u) => u.setor_id === filtroSetor) : usuarios);
 
 	// Formulário Criar
 	let formNome = $state('');
 	let formCor = $state('#1F5C5A');
 	let formPin = $state('');
-	let formPapel = $state<'admin' | 'usuario'>('usuario');
+	let formPapel = $state<Papel>('usuario');
+	let formSetor = $state('');
 	let formFoto = $state<File | null>(null);
 	let formFotoPreview = $state<string | null>(null);
 
 	// Formulário Editar
 	let editNome = $state('');
 	let editCor = $state('#1F5C5A');
-	let editPapel = $state<'admin' | 'usuario'>('usuario');
+	let editPapel = $state<Papel>('usuario');
+	let editSetor = $state('');
 	let editAtivo = $state(true);
 	let enviandoFoto = $state(false);
 
@@ -76,11 +95,20 @@
 		}
 	}
 
+	async function carregarSetores() {
+		try {
+			setores = await apiFetch<SetorOpcao[]>('/api/setores');
+		} catch {
+			// apiFetch já mostrou o erro
+		}
+	}
+
 	function abrirCriar() {
 		formNome = '';
 		formCor = paletaCores[Math.floor(Math.random() * paletaCores.length)];
 		formPin = '';
 		formPapel = 'usuario';
+		formSetor = filtroSetor || auth.user?.setor.id || '';
 		definirFotoNova(null);
 		modalCriarAberto = true;
 	}
@@ -143,7 +171,8 @@
 					nome: formNome,
 					cor: formCor,
 					pin: formPin,
-					papel: formPapel
+					papel: formPapel,
+					setor_id: auth.ehSuperadmin ? formSetor : undefined
 				})
 			});
 			if (formFoto) {
@@ -168,6 +197,7 @@
 		editNome = u.nome;
 		editCor = u.cor;
 		editPapel = u.papel;
+		editSetor = u.setor_id;
 		editAtivo = u.ativo;
 		modalEditarAberto = true;
 	}
@@ -181,7 +211,8 @@
 					nome: editNome,
 					cor: editCor,
 					papel: editPapel,
-					ativo: editAtivo
+					ativo: editAtivo,
+					setor_id: auth.ehSuperadmin ? editSetor : undefined
 				})
 			});
 			modalEditarAberto = false;
@@ -228,8 +259,11 @@
 	}
 
 	onMount(() => {
-		if (auth.user?.papel === 'admin') {
+		if (auth.ehAdmin) {
 			carregar();
+		}
+		if (auth.ehSuperadmin) {
+			carregarSetores();
 		}
 	});
 </script>
@@ -263,6 +297,27 @@
 	</div>
 {/snippet}
 
+{#snippet opcoesPapel()}
+	<option value="usuario">Operador</option>
+	<option value="admin">Administrador do setor</option>
+	{#if auth.ehSuperadmin}
+		<option value="superadmin">Superadmin (todos os setores)</option>
+	{/if}
+{/snippet}
+
+{#snippet campoSetor(id: string, valor: string, escolher: (v: string) => void)}
+	{#if auth.ehSuperadmin}
+		<div>
+			<label class="label" for={id}>Setor</label>
+			<select {id} value={valor} onchange={(e) => escolher(e.currentTarget.value)} class="field">
+				{#each setores as s (s.id)}
+					<option value={s.id}>{s.nome}</option>
+				{/each}
+			</select>
+		</div>
+	{/if}
+{/snippet}
+
 {#snippet seletorCor(atual: string, escolher: (c: string) => void)}
 	<div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Cor">
 		{#each paletaCores as c}
@@ -283,7 +338,7 @@
 	</div>
 {/snippet}
 
-{#if auth.user?.papel !== 'admin'}
+{#if !auth.ehAdmin}
 	<div class="panel empty max-w-lg mx-auto mt-12">
 		<ShieldAlert class="size-10 text-danger" strokeWidth={1.5} />
 		<h2 class="empty-title">Acesso restrito</h2>
@@ -295,12 +350,32 @@
 		<div class="page-head">
 			<div>
 				<h1 class="page-title">Operadores</h1>
-				<p class="page-sub">Quem pode entrar no terminal, com que papel e com qual PIN.</p>
+				<p class="page-sub">
+					{#if auth.ehSuperadmin}
+						Quem pode entrar no terminal, em qual setor, com que papel e com qual PIN.
+					{:else}
+						Quem do setor {auth.user?.setor.nome} pode entrar no terminal, com que papel e com qual PIN.
+					{/if}
+				</p>
 			</div>
-			<button onclick={abrirCriar} class="btn btn-primary">
-				<UserPlus class="size-4" />
-				<span>Cadastrar operador</span>
-			</button>
+			<div class="flex flex-wrap gap-2">
+				{#if auth.ehSuperadmin}
+					<select bind:value={filtroSetor} class="field w-auto" aria-label="Filtrar por setor">
+						<option value="">Todos os setores</option>
+						{#each setores as s (s.id)}
+							<option value={s.id}>{s.nome}</option>
+						{/each}
+					</select>
+					<button onclick={() => (modalSetoresAberto = true)} class="btn btn-secondary">
+						<Building2 class="size-4" />
+						<span>Setores</span>
+					</button>
+				{/if}
+				<button onclick={abrirCriar} class="btn btn-primary">
+					<UserPlus class="size-4" />
+					<span>Cadastrar operador</span>
+				</button>
+			</div>
 		</div>
 
 		{#if successMsg}
@@ -326,6 +401,9 @@
 						<thead>
 							<tr>
 								<th>Operador</th>
+								{#if auth.ehSuperadmin}
+									<th>Setor</th>
+								{/if}
 								<th>Papel</th>
 								<th>Situação</th>
 								<th>Acesso</th>
@@ -333,7 +411,7 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each usuarios as u (u.id)}
+							{#each visiveis as u (u.id)}
 								<tr class={u.ativo ? '' : 'opacity-60'}>
 									<td>
 										<div class="flex items-center gap-3">
@@ -341,8 +419,13 @@
 											<span class="font-semibold text-ink">{u.nome}</span>
 										</div>
 									</td>
+									{#if auth.ehSuperadmin}
+										<td class="text-ink-2">{u.setor_nome}</td>
+									{/if}
 									<td>
-										{#if u.papel === 'admin'}
+										{#if u.papel === 'superadmin'}
+											<span class="tag tag-accent">Superadmin</span>
+										{:else if u.papel === 'admin'}
 											<span class="tag tag-accent">Administrador</span>
 										{:else}
 											<span class="text-ink-2">Operador</span>
@@ -390,6 +473,10 @@
 		{/if}
 	</div>
 
+	{#if modalSetoresAberto}
+		<SetoresAdmin onfechar={() => (modalSetoresAberto = false)} onalterado={() => { carregarSetores(); carregar(); }} />
+	{/if}
+
 	<!-- Modal novo operador -->
 	{#if modalCriarAberto}
 		<div class="modal-backdrop">
@@ -432,11 +519,12 @@
 						<div>
 							<label class="label" for="u-papel">Papel</label>
 							<select id="u-papel" bind:value={formPapel} class="field">
-								<option value="usuario">Operador</option>
-								<option value="admin">Administrador</option>
+								{@render opcoesPapel()}
 							</select>
 						</div>
 					</div>
+
+					{@render campoSetor('u-setor', formSetor, (v) => (formSetor = v))}
 
 					<div>
 						<span class="label">Cor no terminal e no calendário</span>
@@ -483,10 +571,11 @@
 					<div>
 						<label class="label" for="e-papel">Papel</label>
 						<select id="e-papel" bind:value={editPapel} class="field">
-							<option value="usuario">Operador</option>
-							<option value="admin">Administrador</option>
+							{@render opcoesPapel()}
 						</select>
 					</div>
+
+					{@render campoSetor('e-setor', editSetor, (v) => (editSetor = v))}
 
 					<div>
 						<span class="label">Cor</span>

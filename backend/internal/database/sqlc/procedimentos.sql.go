@@ -14,8 +14,8 @@ import (
 const atualizarProcedimento = `-- name: AtualizarProcedimento :one
 UPDATE procedimentos
 SET titulo = $2, categoria = $3, corpo = $4, ativo = $5, atualizado_por = $6, atualizado_em = now()
-WHERE id = $1
-RETURNING id, titulo, categoria, corpo, ativo, criado_por, atualizado_por, criado_em, atualizado_em
+WHERE id = $1 AND setor_id = $7
+RETURNING id, titulo, categoria, corpo, ativo, criado_por, atualizado_por, criado_em, atualizado_em, setor_id
 `
 
 type AtualizarProcedimentoParams struct {
@@ -25,6 +25,7 @@ type AtualizarProcedimentoParams struct {
 	Corpo         string      `json:"corpo"`
 	Ativo         bool        `json:"ativo"`
 	AtualizadoPor pgtype.UUID `json:"atualizado_por"`
+	SetorID       pgtype.UUID `json:"setor_id"`
 }
 
 func (q *Queries) AtualizarProcedimento(ctx context.Context, arg AtualizarProcedimentoParams) (Procedimentos, error) {
@@ -35,6 +36,7 @@ func (q *Queries) AtualizarProcedimento(ctx context.Context, arg AtualizarProced
 		arg.Corpo,
 		arg.Ativo,
 		arg.AtualizadoPor,
+		arg.SetorID,
 	)
 	var i Procedimentos
 	err := row.Scan(
@@ -47,6 +49,7 @@ func (q *Queries) AtualizarProcedimento(ctx context.Context, arg AtualizarProced
 		&i.AtualizadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -57,8 +60,13 @@ SELECT
     u.nome AS atualizado_por_nome
 FROM procedimentos p
 JOIN usuarios u ON u.id = p.atualizado_por
-WHERE p.id = $1
+WHERE p.id = $1 AND p.setor_id = $2
 `
+
+type BuscarProcedimentoPorIDParams struct {
+	ID      pgtype.UUID `json:"id"`
+	SetorID pgtype.UUID `json:"setor_id"`
+}
 
 type BuscarProcedimentoPorIDRow struct {
 	ID                pgtype.UUID        `json:"id"`
@@ -71,8 +79,8 @@ type BuscarProcedimentoPorIDRow struct {
 	AtualizadoPorNome string             `json:"atualizado_por_nome"`
 }
 
-func (q *Queries) BuscarProcedimentoPorID(ctx context.Context, id pgtype.UUID) (BuscarProcedimentoPorIDRow, error) {
-	row := q.db.QueryRow(ctx, buscarProcedimentoPorID, id)
+func (q *Queries) BuscarProcedimentoPorID(ctx context.Context, arg BuscarProcedimentoPorIDParams) (BuscarProcedimentoPorIDRow, error) {
+	row := q.db.QueryRow(ctx, buscarProcedimentoPorID, arg.ID, arg.SetorID)
 	var i BuscarProcedimentoPorIDRow
 	err := row.Scan(
 		&i.ID,
@@ -90,8 +98,8 @@ func (q *Queries) BuscarProcedimentoPorID(ctx context.Context, id pgtype.UUID) (
 const buscarProcedimentosRelevantes = `-- name: BuscarProcedimentosRelevantes :many
 WITH consulta AS (
     SELECT
-        unaccent(lower($2::text)) AS txt,
-        NULLIF(replace(plainto_tsquery('portuguese', unaccent(lower($2::text)))::text, ' & ', ' | '), '')::tsquery AS tsq
+        unaccent(lower($3::text)) AS txt,
+        NULLIF(replace(plainto_tsquery('portuguese', unaccent(lower($3::text)))::text, ' & ', ' | '), '')::tsquery AS tsq
 )
 SELECT p.id, p.titulo, p.categoria, p.corpo, pontos.relevancia
 FROM procedimentos p
@@ -106,14 +114,15 @@ CROSS JOIN LATERAL (
         word_similarity(c.txt, unaccent(lower(p.titulo || ' ' || p.corpo)))
     )::float8 AS relevancia
 ) pontos
-WHERE p.ativo
+WHERE p.ativo AND p.setor_id = $1
 ORDER BY pontos.relevancia DESC
-LIMIT $1::int
+LIMIT $2::int
 `
 
 type BuscarProcedimentosRelevantesParams struct {
-	Limite int32  `json:"limite"`
-	Texto  string `json:"texto"`
+	SetorID pgtype.UUID `json:"setor_id"`
+	Limite  int32       `json:"limite"`
+	Texto   string      `json:"texto"`
 }
 
 type BuscarProcedimentosRelevantesRow struct {
@@ -127,7 +136,7 @@ type BuscarProcedimentosRelevantesRow struct {
 // Busca para o tira-dúvidas: full-text em português (termos em OU) somado à
 // semelhança por trigramas, que tolera erros de digitação.
 func (q *Queries) BuscarProcedimentosRelevantes(ctx context.Context, arg BuscarProcedimentosRelevantesParams) ([]BuscarProcedimentosRelevantesRow, error) {
-	rows, err := q.db.Query(ctx, buscarProcedimentosRelevantes, arg.Limite, arg.Texto)
+	rows, err := q.db.Query(ctx, buscarProcedimentosRelevantes, arg.SetorID, arg.Limite, arg.Texto)
 	if err != nil {
 		return nil, err
 	}
@@ -153,17 +162,19 @@ func (q *Queries) BuscarProcedimentosRelevantes(ctx context.Context, arg BuscarP
 }
 
 const buscarRevisaoProcedimento = `-- name: BuscarRevisaoProcedimento :one
-SELECT id, procedimento_id, titulo, categoria, corpo, ativo, nota, editado_por, criado_em FROM procedimento_revisoes
-WHERE id = $1 AND procedimento_id = $2
+SELECT r.id, r.procedimento_id, r.titulo, r.categoria, r.corpo, r.ativo, r.nota, r.editado_por, r.criado_em FROM procedimento_revisoes r
+JOIN procedimentos p ON p.id = r.procedimento_id
+WHERE r.id = $1 AND r.procedimento_id = $2 AND p.setor_id = $3
 `
 
 type BuscarRevisaoProcedimentoParams struct {
 	ID             pgtype.UUID `json:"id"`
 	ProcedimentoID pgtype.UUID `json:"procedimento_id"`
+	SetorID        pgtype.UUID `json:"setor_id"`
 }
 
 func (q *Queries) BuscarRevisaoProcedimento(ctx context.Context, arg BuscarRevisaoProcedimentoParams) (ProcedimentoRevisoes, error) {
-	row := q.db.QueryRow(ctx, buscarRevisaoProcedimento, arg.ID, arg.ProcedimentoID)
+	row := q.db.QueryRow(ctx, buscarRevisaoProcedimento, arg.ID, arg.ProcedimentoID, arg.SetorID)
 	var i ProcedimentoRevisoes
 	err := row.Scan(
 		&i.ID,
@@ -180,9 +191,9 @@ func (q *Queries) BuscarRevisaoProcedimento(ctx context.Context, arg BuscarRevis
 }
 
 const criarProcedimento = `-- name: CriarProcedimento :one
-INSERT INTO procedimentos (titulo, categoria, corpo, ativo, criado_por, atualizado_por)
-VALUES ($1, $2, $3, $4, $5, $5)
-RETURNING id, titulo, categoria, corpo, ativo, criado_por, atualizado_por, criado_em, atualizado_em
+INSERT INTO procedimentos (titulo, categoria, corpo, ativo, criado_por, atualizado_por, setor_id)
+VALUES ($1, $2, $3, $4, $5, $5, $6)
+RETURNING id, titulo, categoria, corpo, ativo, criado_por, atualizado_por, criado_em, atualizado_em, setor_id
 `
 
 type CriarProcedimentoParams struct {
@@ -191,6 +202,7 @@ type CriarProcedimentoParams struct {
 	Corpo     string      `json:"corpo"`
 	Ativo     bool        `json:"ativo"`
 	CriadoPor pgtype.UUID `json:"criado_por"`
+	SetorID   pgtype.UUID `json:"setor_id"`
 }
 
 func (q *Queries) CriarProcedimento(ctx context.Context, arg CriarProcedimentoParams) (Procedimentos, error) {
@@ -200,6 +212,7 @@ func (q *Queries) CriarProcedimento(ctx context.Context, arg CriarProcedimentoPa
 		arg.Corpo,
 		arg.Ativo,
 		arg.CriadoPor,
+		arg.SetorID,
 	)
 	var i Procedimentos
 	err := row.Scan(
@@ -212,6 +225,7 @@ func (q *Queries) CriarProcedimento(ctx context.Context, arg CriarProcedimentoPa
 		&i.AtualizadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -247,12 +261,12 @@ func (q *Queries) CriarRevisaoProcedimento(ctx context.Context, arg CriarRevisao
 const listarCategoriasProcedimentos = `-- name: ListarCategoriasProcedimentos :many
 SELECT DISTINCT categoria
 FROM procedimentos
-WHERE categoria <> ''
+WHERE categoria <> '' AND setor_id = $1
 ORDER BY categoria ASC
 `
 
-func (q *Queries) ListarCategoriasProcedimentos(ctx context.Context) ([]string, error) {
-	rows, err := q.db.Query(ctx, listarCategoriasProcedimentos)
+func (q *Queries) ListarCategoriasProcedimentos(ctx context.Context, setorID pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listarCategoriasProcedimentos, setorID)
 	if err != nil {
 		return nil, err
 	}
@@ -278,14 +292,16 @@ SELECT
 FROM procedimentos p
 JOIN usuarios u ON u.id = p.atualizado_por
 WHERE
-    ($1::text IS NULL OR
-     unaccent(lower(p.titulo || ' ' || p.categoria || ' ' || p.corpo)) ILIKE '%' || unaccent(lower($1)) || '%')
-    AND ($2::text IS NULL OR p.categoria = $2)
-    AND ($3::boolean IS NULL OR p.ativo = $3)
+    p.setor_id = $1
+    AND ($2::text IS NULL OR
+     unaccent(lower(p.titulo || ' ' || p.categoria || ' ' || p.corpo)) ILIKE '%' || unaccent(lower($2)) || '%')
+    AND ($3::text IS NULL OR p.categoria = $3)
+    AND ($4::boolean IS NULL OR p.ativo = $4)
 ORDER BY p.ativo DESC, p.categoria ASC, p.titulo ASC
 `
 
 type ListarProcedimentosParams struct {
+	SetorID   pgtype.UUID `json:"setor_id"`
 	Busca     pgtype.Text `json:"busca"`
 	Categoria pgtype.Text `json:"categoria"`
 	Ativo     pgtype.Bool `json:"ativo"`
@@ -301,7 +317,12 @@ type ListarProcedimentosRow struct {
 }
 
 func (q *Queries) ListarProcedimentos(ctx context.Context, arg ListarProcedimentosParams) ([]ListarProcedimentosRow, error) {
-	rows, err := q.db.Query(ctx, listarProcedimentos, arg.Busca, arg.Categoria, arg.Ativo)
+	rows, err := q.db.Query(ctx, listarProcedimentos,
+		arg.SetorID,
+		arg.Busca,
+		arg.Categoria,
+		arg.Ativo,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -333,9 +354,15 @@ SELECT
     u.nome AS editado_por_nome
 FROM procedimento_revisoes r
 JOIN usuarios u ON u.id = r.editado_por
-WHERE r.procedimento_id = $1
+JOIN procedimentos p ON p.id = r.procedimento_id
+WHERE r.procedimento_id = $1 AND p.setor_id = $2
 ORDER BY r.criado_em DESC
 `
+
+type ListarRevisoesProcedimentoParams struct {
+	ProcedimentoID pgtype.UUID `json:"procedimento_id"`
+	SetorID        pgtype.UUID `json:"setor_id"`
+}
 
 type ListarRevisoesProcedimentoRow struct {
 	ID             pgtype.UUID        `json:"id"`
@@ -348,8 +375,8 @@ type ListarRevisoesProcedimentoRow struct {
 	EditadoPorNome string             `json:"editado_por_nome"`
 }
 
-func (q *Queries) ListarRevisoesProcedimento(ctx context.Context, procedimentoID pgtype.UUID) ([]ListarRevisoesProcedimentoRow, error) {
-	rows, err := q.db.Query(ctx, listarRevisoesProcedimento, procedimentoID)
+func (q *Queries) ListarRevisoesProcedimento(ctx context.Context, arg ListarRevisoesProcedimentoParams) ([]ListarRevisoesProcedimentoRow, error) {
+	rows, err := q.db.Query(ctx, listarRevisoesProcedimento, arg.ProcedimentoID, arg.SetorID)
 	if err != nil {
 		return nil, err
 	}

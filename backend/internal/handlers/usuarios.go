@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 
 	"tiiv/backend/internal/config"
@@ -37,11 +39,72 @@ type UsuarioItemResponse struct {
 	BloqueadoAte     *string `json:"bloqueado_ate"`
 	CriadoEm         string  `json:"criado_em"`
 	FotoVersao       *int64  `json:"foto_versao"`
+	SetorID          string  `json:"setor_id"`
+	SetorNome        string  `json:"setor_nome,omitempty"`
+}
+
+// alvoGerenciavel carrega o usuário da URL e confere se quem pede pode geri-lo:
+// o superadmin gere todos; o admin só as pessoas do próprio setor, e nunca um
+// superadmin.
+func (h *UsuarioHandler) alvoGerenciavel(w http.ResponseWriter, r *http.Request) (sqlc.BuscarUsuarioPorIDRow, bool) {
+	user, _ := middleware.GetAuthUser(r.Context())
+	uID, err := database.StringToUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+		return sqlc.BuscarUsuarioPorIDRow{}, false
+	}
+	alvo, err := h.db.Queries.BuscarUsuarioPorID(r.Context(), uID)
+	if err != nil || (!user.EhSuperadmin() && alvo.SetorID != user.Setor) {
+		response.JSONError(w, http.StatusNotFound, "usuário não encontrado")
+		return sqlc.BuscarUsuarioPorIDRow{}, false
+	}
+	if !user.EhSuperadmin() && alvo.Papel == "superadmin" {
+		response.JSONError(w, http.StatusForbidden, "só um superadmin altera outro superadmin")
+		return sqlc.BuscarUsuarioPorIDRow{}, false
+	}
+	return alvo, true
+}
+
+// papelPermitido: admin cria admins e operadores do setor; só o superadmin
+// cria outro superadmin
+func papelPermitido(user *middleware.AuthUser, papel string) bool {
+	switch papel {
+	case "usuario", "admin":
+		return true
+	case "superadmin":
+		return user.EhSuperadmin()
+	}
+	return false
+}
+
+// setorEscolhido: o superadmin põe a pessoa em qualquer setor (vazio mantém
+// o atual); o admin só no próprio
+func (h *UsuarioHandler) setorEscolhido(r *http.Request, user *middleware.AuthUser, pedido string, atual pgtype.UUID) (pgtype.UUID, error) {
+	if !user.EhSuperadmin() {
+		return user.Setor, nil
+	}
+	if pedido == "" {
+		return atual, nil
+	}
+	sID, err := database.StringToUUID(pedido)
+	if err != nil {
+		return pgtype.UUID{}, errors.New("setor inválido")
+	}
+	if _, err := h.db.Queries.BuscarSetor(r.Context(), sID); err != nil {
+		return pgtype.UUID{}, errors.New("setor não encontrado")
+	}
+	return sID, nil
 }
 
 // Listar: GET /api/usuarios (Admin)
 func (h *UsuarioHandler) Listar(w http.ResponseWriter, r *http.Request) {
-	usuarios, err := h.db.Queries.ListarTodosUsuarios(r.Context())
+	user, _ := middleware.GetAuthUser(r.Context())
+	// Superadmin vê todo mundo (com o setor de cada um); admin, o próprio setor
+	var filtro pgtype.UUID
+	if !user.EhSuperadmin() {
+		filtro = user.Setor
+	}
+	usuarios, err := h.db.Queries.ListarTodosUsuarios(r.Context(), filtro)
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar usuários")
 		return
@@ -65,6 +128,8 @@ func (h *UsuarioHandler) Listar(w http.ResponseWriter, r *http.Request) {
 			BloqueadoAte:     bloqueadoAte,
 			CriadoEm:         u.CriadoEm.Time.Format("2006-01-02T15:04:05Z07:00"),
 			FotoVersao:       fotoVersao(u.FotoAtualizadaEm),
+			SetorID:          database.UUIDToString(u.SetorID),
+			SetorNome:        u.SetorNome,
 		})
 	}
 
@@ -76,10 +141,13 @@ type CriarUsuarioRequest struct {
 	Cor   string `json:"cor"`
 	PIN   string `json:"pin"`
 	Papel string `json:"papel"`
+	// Só o superadmin escolhe; vazio = o setor que ele está vendo
+	SetorID string `json:"setor_id"`
 }
 
 // Criar: POST /api/usuarios (Admin)
 func (h *UsuarioHandler) Criar(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.GetAuthUser(r.Context())
 	var req CriarUsuarioRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.JSONError(w, http.StatusBadRequest, "corpo da requisição inválido")
@@ -101,8 +169,18 @@ func (h *UsuarioHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Papel != "admin" && req.Papel != "usuario" {
+	if req.Papel == "" {
 		req.Papel = "usuario"
+	}
+	if !papelPermitido(user, req.Papel) {
+		response.JSONError(w, http.StatusBadRequest, "papel inválido")
+		return
+	}
+
+	setor, err := h.setorEscolhido(r, user, req.SetorID, user.Setor)
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	pinHash, err := bcrypt.GenerateFromPassword([]byte(req.PIN), bcrypt.DefaultCost)
@@ -117,6 +195,7 @@ func (h *UsuarioHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		PinHash: string(pinHash),
 		Papel:   req.Papel,
 		Ativo:   true,
+		SetorID: setor,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao criar usuário")
@@ -131,6 +210,7 @@ func (h *UsuarioHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		Ativo:            u.Ativo,
 		TentativasFalhas: u.TentativasFalhas,
 		CriadoEm:         u.CriadoEm.Time.Format("2006-01-02T15:04:05Z07:00"),
+		SetorID:          database.UUIDToString(u.SetorID),
 	})
 }
 
@@ -139,16 +219,18 @@ type AtualizarUsuarioRequest struct {
 	Cor   string `json:"cor"`
 	Papel string `json:"papel"`
 	Ativo bool   `json:"ativo"`
+	// Só o superadmin move a pessoa de setor; vazio mantém
+	SetorID string `json:"setor_id"`
 }
 
 // Atualizar: PUT /api/usuarios/{id} (Admin)
 func (h *UsuarioHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	uID, err := database.StringToUUID(idStr)
-	if err != nil {
-		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+	user, _ := middleware.GetAuthUser(r.Context())
+	atual, ok := h.alvoGerenciavel(w, r)
+	if !ok {
 		return
 	}
+	uID := atual.ID
 
 	var req AtualizarUsuarioRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -166,31 +248,36 @@ func (h *UsuarioHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Papel != "admin" && req.Papel != "usuario" {
+	if req.Papel == "" {
 		req.Papel = "usuario"
 	}
-
-	// Verificar se é o último admin ativo antes de permitir desativar ou rebaixar
-	atual, err := h.db.Queries.BuscarUsuarioPorID(r.Context(), uID)
-	if err != nil {
-		response.JSONError(w, http.StatusNotFound, "usuário não encontrado")
+	if !papelPermitido(user, req.Papel) {
+		response.JSONError(w, http.StatusBadRequest, "papel inválido")
 		return
 	}
 
-	if atual.Papel == "admin" && atual.Ativo && (req.Papel != "admin" || !req.Ativo) {
-		adminCount, err := h.db.Queries.ContarAdminsAtivos(r.Context())
-		if err == nil && adminCount <= 1 {
-			response.JSONError(w, http.StatusBadRequest, "não é possível desativar ou rebaixar o único administrador ativo do sistema")
+	setor, err := h.setorEscolhido(r, user, req.SetorID, atual.SetorID)
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// O sistema precisa de ao menos um superadmin ativo (é quem cria setores)
+	if atual.Papel == "superadmin" && atual.Ativo && (req.Papel != "superadmin" || !req.Ativo) {
+		total, err := h.db.Queries.ContarSuperadminsAtivos(r.Context())
+		if err == nil && total <= 1 {
+			response.JSONError(w, http.StatusBadRequest, "não é possível desativar ou rebaixar o único superadmin ativo do sistema")
 			return
 		}
 	}
 
 	u, err := h.db.Queries.AtualizarUsuario(r.Context(), sqlc.AtualizarUsuarioParams{
-		ID:    uID,
-		Nome:  req.Nome,
-		Cor:   req.Cor,
-		Papel: req.Papel,
-		Ativo: req.Ativo,
+		ID:      uID,
+		Nome:    req.Nome,
+		Cor:     req.Cor,
+		Papel:   req.Papel,
+		Ativo:   req.Ativo,
+		SetorID: setor,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao atualizar usuário")
@@ -210,6 +297,7 @@ func (h *UsuarioHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		Ativo:            u.Ativo,
 		TentativasFalhas: u.TentativasFalhas,
 		CriadoEm:         u.CriadoEm.Time.Format("2006-01-02T15:04:05Z07:00"),
+		SetorID:          database.UUIDToString(u.SetorID),
 	})
 }
 
@@ -219,12 +307,11 @@ type RedefinirPinRequest struct {
 
 // RedefinirPIN: POST /api/usuarios/{id}/pin (Admin)
 func (h *UsuarioHandler) RedefinirPIN(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	uID, err := database.StringToUUID(idStr)
-	if err != nil {
-		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+	alvo, ok := h.alvoGerenciavel(w, r)
+	if !ok {
 		return
 	}
+	uID := alvo.ID
 
 	var req RedefinirPinRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -260,12 +347,11 @@ func (h *UsuarioHandler) RedefinirPIN(w http.ResponseWriter, r *http.Request) {
 
 // Desbloquear: POST /api/usuarios/{id}/desbloquear (Admin)
 func (h *UsuarioHandler) Desbloquear(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	uID, err := database.StringToUUID(idStr)
-	if err != nil {
-		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+	alvo, ok := h.alvoGerenciavel(w, r)
+	if !ok {
 		return
 	}
+	uID := alvo.ID
 
 	u, err := h.db.Queries.DesbloquearUsuario(r.Context(), uID)
 	if err != nil {
@@ -281,6 +367,7 @@ func (h *UsuarioHandler) Desbloquear(w http.ResponseWriter, r *http.Request) {
 		Ativo:            u.Ativo,
 		TentativasFalhas: u.TentativasFalhas,
 		CriadoEm:         u.CriadoEm.Time.Format("2006-01-02T15:04:05Z07:00"),
+		SetorID:          database.UUIDToString(u.SetorID),
 	})
 }
 

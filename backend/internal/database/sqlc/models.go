@@ -33,6 +33,7 @@ type Avisos struct {
 	CriadoPor    pgtype.UUID        `json:"criado_por"`
 	CriadoEm     pgtype.Timestamptz `json:"criado_em"`
 	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
+	SetorID      pgtype.UUID        `json:"setor_id"`
 }
 
 type EventoParticipantes struct {
@@ -52,6 +53,7 @@ type Eventos struct {
 	AtualizadoEm   pgtype.Timestamptz `json:"atualizado_em"`
 	Recorrencia    string             `json:"recorrencia"`
 	RecorrenciaFim pgtype.Timestamptz `json:"recorrencia_fim"`
+	SetorID        pgtype.UUID        `json:"setor_id"`
 }
 
 type ItensEstoque struct {
@@ -74,6 +76,7 @@ type Links struct {
 	CriadoPor    pgtype.UUID        `json:"criado_por"`
 	CriadoEm     pgtype.Timestamptz `json:"criado_em"`
 	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
+	SetorID      pgtype.UUID        `json:"setor_id"`
 }
 
 type MonitorQuedas struct {
@@ -102,6 +105,7 @@ type Monitores struct {
 	CriadoPor      pgtype.UUID        `json:"criado_por"`
 	CriadoEm       pgtype.Timestamptz `json:"criado_em"`
 	AtualizadoEm   pgtype.Timestamptz `json:"atualizado_em"`
+	SetorTicketID  pgtype.UUID        `json:"setor_ticket_id"`
 }
 
 type MovimentacoesEstoque struct {
@@ -125,6 +129,7 @@ type Plantoes struct {
 	CriadoPor    pgtype.UUID        `json:"criado_por"`
 	CriadoEm     pgtype.Timestamptz `json:"criado_em"`
 	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
+	SetorID      pgtype.UUID        `json:"setor_id"`
 }
 
 type ProcedimentoRevisoes struct {
@@ -149,6 +154,7 @@ type Procedimentos struct {
 	AtualizadoPor pgtype.UUID        `json:"atualizado_por"`
 	CriadoEm      pgtype.Timestamptz `json:"criado_em"`
 	AtualizadoEm  pgtype.Timestamptz `json:"atualizado_em"`
+	SetorID       pgtype.UUID        `json:"setor_id"`
 }
 
 type Sessoes struct {
@@ -158,6 +164,14 @@ type Sessoes struct {
 	ExpiraEm    pgtype.Timestamptz `json:"expira_em"`
 	UltimoUsoEm pgtype.Timestamptz `json:"ultimo_uso_em"`
 	CriadoEm    pgtype.Timestamptz `json:"criado_em"`
+	SetorID     pgtype.UUID        `json:"setor_id"`
+}
+
+type Setores struct {
+	ID            pgtype.UUID        `json:"id"`
+	Nome          string             `json:"nome"`
+	AceitaPedidos bool               `json:"aceita_pedidos"`
+	CriadoEm      pgtype.Timestamptz `json:"criado_em"`
 }
 
 type TarefaComentarios struct {
@@ -180,6 +194,7 @@ type Tarefas struct {
 	ConcluidaEm   pgtype.Timestamptz `json:"concluida_em"`
 	CriadoEm      pgtype.Timestamptz `json:"criado_em"`
 	AtualizadoEm  pgtype.Timestamptz `json:"atualizado_em"`
+	SetorID       pgtype.UUID        `json:"setor_id"`
 }
 
 type TecnicoRegistros struct {
@@ -203,6 +218,17 @@ type Tecnicos struct {
 	CriadoEm pgtype.Timestamptz `json:"criado_em"`
 }
 
+type TelasTv struct {
+	ID             pgtype.UUID        `json:"id"`
+	Nome           string             `json:"nome"`
+	ChaveHash      string             `json:"chave_hash"`
+	CriadoPor      pgtype.UUID        `json:"criado_por"`
+	CriadoEm       pgtype.Timestamptz `json:"criado_em"`
+	UltimoAcessoEm pgtype.Timestamptz `json:"ultimo_acesso_em"`
+	UltimoIp       string             `json:"ultimo_ip"`
+	SetorID        pgtype.UUID        `json:"setor_id"`
+}
+
 type Tickets struct {
 	ID              pgtype.UUID        `json:"id"`
 	Numero          int64              `json:"numero"`
@@ -216,6 +242,7 @@ type Tickets struct {
 	TratadoEm       pgtype.Timestamptz `json:"tratado_em"`
 	OrigemIp        string             `json:"origem_ip"`
 	CriadoEm        pgtype.Timestamptz `json:"criado_em"`
+	SetorID         pgtype.UUID        `json:"setor_id"`
 }
 
 type UsuarioFotos struct {
@@ -239,4 +266,5 @@ type Usuarios struct {
 	DeveTrocarPin     bool               `json:"deve_trocar_pin"`
 	UltimaTentativaEm pgtype.Timestamptz `json:"ultima_tentativa_em"`
 	Bloqueios         int32              `json:"bloqueios"`
+	SetorID           pgtype.UUID        `json:"setor_id"`
 }

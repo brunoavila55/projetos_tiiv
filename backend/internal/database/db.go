@@ -101,13 +101,21 @@ func (db *DB) ensureInitialAdmin(ctx context.Context, cfg *config.Config) error 
 			return fmt.Errorf("erro ao gerar hash do PIN do admin: %w", err)
 		}
 
-		// Cor padrão bonita para o admin: Azul #2563EB
+		// A migração de setores já cria o primeiro setor (NOC)
+		setor, err := db.Queries.PrimeiroSetor(ctx)
+		if err != nil {
+			return fmt.Errorf("erro ao buscar setor do admin inicial: %w", err)
+		}
+
+		// Cor padrão bonita para o admin: Azul #2563EB. Nasce superadmin, que
+		// é quem cria os demais setores.
 		admin, err := db.Queries.CriarUsuario(ctx, sqlc.CriarUsuarioParams{
 			Nome:    cfg.AdminNome,
 			Cor:     "#2563EB",
 			PinHash: string(hash),
-			Papel:   "admin",
+			Papel:   "superadmin",
 			Ativo:   true,
+			SetorID: setor.ID,
 		})
 		if err != nil {
 			return fmt.Errorf("erro ao inserir admin inicial: %w", err)

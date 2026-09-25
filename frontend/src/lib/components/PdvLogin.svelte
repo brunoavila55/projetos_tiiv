@@ -123,6 +123,19 @@
 	let tkDescricao = $state('');
 	let tkPrioridade = $state<'baixa' | 'media' | 'alta'>('media');
 
+	// Setores que recebem pedidos; com um só, a escolha nem aparece
+	let setoresPedido = $state<{ id: string; nome: string }[]>([]);
+	let tkSetor = $state('');
+
+	async function carregarSetores() {
+		try {
+			setoresPedido = await apiFetch<{ id: string; nome: string }[]>('/api/setores/publico', { silent: true });
+			if (setoresPedido.length === 1) tkSetor = setoresPedido[0].id;
+		} catch {
+			// Sem a lista, o servidor ainda aceita o pedido quando há um setor só
+		}
+	}
+
 	// Mantém o nome para quem abre vários tickets seguidos
 	function novoTicket() {
 		ticketEnviado = null;
@@ -145,7 +158,8 @@
 					solicitante_nome: tkNome,
 					titulo: tkTitulo,
 					descricao: tkDescricao,
-					prioridade: tkPrioridade
+					prioridade: tkPrioridade,
+					setor_id: tkSetor || undefined
 				})
 			});
 			ticketEnviado = res.numero;
@@ -167,6 +181,7 @@
 	let agora = $state(new Date());
 
 	onMount(() => {
+		carregarSetores();
 		const relogio = setInterval(() => (agora = new Date()), 15_000);
 		window.addEventListener('keydown', handleKeyDown);
 		return () => {
@@ -240,6 +255,17 @@
 					</div>
 
 					<form class="mt-7 space-y-4" onsubmit={enviarTicket}>
+						{#if setoresPedido.length > 1}
+							<div>
+								<label class="label" for="tk-setor">Para qual setor?</label>
+								<select id="tk-setor" bind:value={tkSetor} required class="field h-11">
+									<option value="" disabled>Escolha o setor</option>
+									{#each setoresPedido as st (st.id)}
+										<option value={st.id}>{st.nome}</option>
+									{/each}
+								</select>
+							</div>
+						{/if}
 						<div>
 							<label class="label" for="tk-nome">Seu nome</label>
 							<input id="tk-nome" bind:value={tkNome} required maxlength="120" autocomplete="name" class="field h-11" />
@@ -280,7 +306,7 @@
 
 	</div>
 
-	<TiraDuvidas onAbrirTicket={ticketDoTiraDuvidas} />
+	<TiraDuvidas onAbrirTicket={ticketDoTiraDuvidas} setores={setoresPedido} bind:setorId={tkSetor} />
 
 	<!-- Acesso da equipe (painel lateral) -->
 	{#if acessoAberto}

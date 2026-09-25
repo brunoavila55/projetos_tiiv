@@ -40,9 +40,12 @@ SELECT
     u.papel AS usuario_papel,
     u.ativo AS usuario_ativo,
     u.tema AS usuario_tema,
-    u.deve_trocar_pin AS usuario_deve_trocar_pin
+    u.deve_trocar_pin AS usuario_deve_trocar_pin,
+    st.id AS setor_id,
+    st.nome AS setor_nome
 FROM sessoes s
 JOIN usuarios u ON u.id = s.usuario_id
+JOIN setores st ON st.id = COALESCE(CASE WHEN u.papel = 'superadmin' THEN s.setor_id END, u.setor_id)
 WHERE s.token_hash = $1 AND u.ativo = true
 `
 
@@ -59,8 +62,11 @@ type BuscarSessaoPorHashRow struct {
 	UsuarioAtivo         bool               `json:"usuario_ativo"`
 	UsuarioTema          string             `json:"usuario_tema"`
 	UsuarioDeveTrocarPin bool               `json:"usuario_deve_trocar_pin"`
+	SetorID              pgtype.UUID        `json:"setor_id"`
+	SetorNome            string             `json:"setor_nome"`
 }
 
+// Setor de trabalho: o escolhido na sessão (só superadmin) ou o do usuário
 func (q *Queries) BuscarSessaoPorHash(ctx context.Context, tokenHash string) (BuscarSessaoPorHashRow, error) {
 	row := q.db.QueryRow(ctx, buscarSessaoPorHash, tokenHash)
 	var i BuscarSessaoPorHashRow
@@ -77,6 +83,8 @@ func (q *Queries) BuscarSessaoPorHash(ctx context.Context, tokenHash string) (Bu
 		&i.UsuarioAtivo,
 		&i.UsuarioTema,
 		&i.UsuarioDeveTrocarPin,
+		&i.SetorID,
+		&i.SetorNome,
 	)
 	return i, err
 }
@@ -94,14 +102,23 @@ type CriarSessaoParams struct {
 	UltimoUsoEm pgtype.Timestamptz `json:"ultimo_uso_em"`
 }
 
-func (q *Queries) CriarSessao(ctx context.Context, arg CriarSessaoParams) (Sessoes, error) {
+type CriarSessaoRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	TokenHash   string             `json:"token_hash"`
+	UsuarioID   pgtype.UUID        `json:"usuario_id"`
+	ExpiraEm    pgtype.Timestamptz `json:"expira_em"`
+	UltimoUsoEm pgtype.Timestamptz `json:"ultimo_uso_em"`
+	CriadoEm    pgtype.Timestamptz `json:"criado_em"`
+}
+
+func (q *Queries) CriarSessao(ctx context.Context, arg CriarSessaoParams) (CriarSessaoRow, error) {
 	row := q.db.QueryRow(ctx, criarSessao,
 		arg.TokenHash,
 		arg.UsuarioID,
 		arg.ExpiraEm,
 		arg.UltimoUsoEm,
 	)
-	var i Sessoes
+	var i CriarSessaoRow
 	err := row.Scan(
 		&i.ID,
 		&i.TokenHash,

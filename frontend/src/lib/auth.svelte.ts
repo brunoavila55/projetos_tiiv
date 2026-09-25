@@ -1,11 +1,18 @@
 import { apiFetch, ApiError } from './api';
 import { themeStore } from './theme.svelte';
 
+export interface Setor {
+	id: string;
+	nome: string;
+}
+
 export interface UserProfile {
 	id: string;
 	nome: string;
 	cor: string;
-	papel: 'admin' | 'usuario';
+	papel: 'superadmin' | 'admin' | 'usuario';
+	// Setor de trabalho: tudo o que é separado por setor vem filtrado por ele
+	setor: Setor;
 	tema?: 'claro' | 'escuro' | 'sistema';
 	foto_versao?: number | null;
 	// Admin inicial: precisa trocar o PIN antes de usar o sistema
@@ -24,6 +31,10 @@ class AuthStore {
 	loading = $state<boolean>(true);
 	lastActivity = $state<number>(Date.now());
 	private idleTimer: any = null;
+
+	// Admin do setor ou superadmin
+	ehAdmin = $derived(this.user?.papel === 'admin' || this.user?.papel === 'superadmin');
+	ehSuperadmin = $derived(this.user?.papel === 'superadmin');
 
 	constructor() {
 		if (typeof window !== 'undefined') {
@@ -60,6 +71,16 @@ class AuthStore {
 			themeStore.initFromUser(u.tema);
 		}
 		return u;
+	}
+
+	// Superadmin: passa a ver outro setor nesta sessão. A página é recarregada
+	// para nenhuma tela ficar com dados do setor anterior.
+	async trocarSetor(setorId: string) {
+		await apiFetch<Setor>('/api/auth/setor', {
+			method: 'PUT',
+			body: JSON.stringify({ setor_id: setorId })
+		});
+		window.location.reload();
 	}
 
 	async logout() {

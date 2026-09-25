@@ -20,7 +20,7 @@ SET status = $1::varchar,
     END,
     atualizado_em = now()
 WHERE id = $2::uuid
-RETURNING id, titulo, descricao, status, prioridade, prazo, criado_por, responsavel_id, concluida_em, criado_em, atualizado_em
+RETURNING id, titulo, descricao, status, prioridade, prazo, criado_por, responsavel_id, concluida_em, criado_em, atualizado_em, setor_id
 `
 
 type AtualizarStatusTarefaParams struct {
@@ -43,6 +43,7 @@ func (q *Queries) AtualizarStatusTarefa(ctx context.Context, arg AtualizarStatus
 		&i.ConcluidaEm,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -51,7 +52,7 @@ const atualizarTarefa = `-- name: AtualizarTarefa :one
 UPDATE tarefas
 SET titulo = $2, descricao = $3, prioridade = $4, prazo = $5, responsavel_id = $6, atualizado_em = now()
 WHERE id = $1
-RETURNING id, titulo, descricao, status, prioridade, prazo, criado_por, responsavel_id, concluida_em, criado_em, atualizado_em
+RETURNING id, titulo, descricao, status, prioridade, prazo, criado_por, responsavel_id, concluida_em, criado_em, atualizado_em, setor_id
 `
 
 type AtualizarTarefaParams struct {
@@ -85,6 +86,7 @@ func (q *Queries) AtualizarTarefa(ctx context.Context, arg AtualizarTarefaParams
 		&i.ConcluidaEm,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -117,8 +119,13 @@ SELECT
 FROM tarefas t
 JOIN usuarios uc ON uc.id = t.criado_por
 LEFT JOIN usuarios ur ON ur.id = t.responsavel_id
-WHERE t.id = $1
+WHERE t.id = $1 AND t.setor_id = $2
 `
+
+type BuscarTarefaPorIDParams struct {
+	ID      pgtype.UUID `json:"id"`
+	SetorID pgtype.UUID `json:"setor_id"`
+}
 
 type BuscarTarefaPorIDRow struct {
 	ID              pgtype.UUID        `json:"id"`
@@ -138,8 +145,8 @@ type BuscarTarefaPorIDRow struct {
 	ResponsavelCor  pgtype.Text        `json:"responsavel_cor"`
 }
 
-func (q *Queries) BuscarTarefaPorID(ctx context.Context, id pgtype.UUID) (BuscarTarefaPorIDRow, error) {
-	row := q.db.QueryRow(ctx, buscarTarefaPorID, id)
+func (q *Queries) BuscarTarefaPorID(ctx context.Context, arg BuscarTarefaPorIDParams) (BuscarTarefaPorIDRow, error) {
+	row := q.db.QueryRow(ctx, buscarTarefaPorID, arg.ID, arg.SetorID)
 	var i BuscarTarefaPorIDRow
 	err := row.Scan(
 		&i.ID,
@@ -187,9 +194,9 @@ func (q *Queries) CriarComentarioTarefa(ctx context.Context, arg CriarComentario
 }
 
 const criarTarefa = `-- name: CriarTarefa :one
-INSERT INTO tarefas (titulo, descricao, prioridade, prazo, criado_por, responsavel_id)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, titulo, descricao, status, prioridade, prazo, criado_por, responsavel_id, concluida_em, criado_em, atualizado_em
+INSERT INTO tarefas (titulo, descricao, prioridade, prazo, criado_por, responsavel_id, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, titulo, descricao, status, prioridade, prazo, criado_por, responsavel_id, concluida_em, criado_em, atualizado_em, setor_id
 `
 
 type CriarTarefaParams struct {
@@ -199,6 +206,7 @@ type CriarTarefaParams struct {
 	Prazo         pgtype.Timestamptz `json:"prazo"`
 	CriadoPor     pgtype.UUID        `json:"criado_por"`
 	ResponsavelID pgtype.UUID        `json:"responsavel_id"`
+	SetorID       pgtype.UUID        `json:"setor_id"`
 }
 
 func (q *Queries) CriarTarefa(ctx context.Context, arg CriarTarefaParams) (Tarefas, error) {
@@ -209,6 +217,7 @@ func (q *Queries) CriarTarefa(ctx context.Context, arg CriarTarefaParams) (Taref
 		arg.Prazo,
 		arg.CriadoPor,
 		arg.ResponsavelID,
+		arg.SetorID,
 	)
 	var i Tarefas
 	err := row.Scan(
@@ -223,6 +232,7 @@ func (q *Queries) CriarTarefa(ctx context.Context, arg CriarTarefaParams) (Taref
 		&i.ConcluidaEm,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -305,11 +315,12 @@ FROM tarefas t
 JOIN usuarios uc ON uc.id = t.criado_por
 LEFT JOIN usuarios ur ON ur.id = t.responsavel_id
 WHERE 
-    ($1::uuid IS NULL OR t.responsavel_id = $1)
-    AND ($2::uuid IS NULL OR t.criado_por = $2)
-    AND ($3::text IS NULL OR t.status = $3)
+    t.setor_id = $1
+    AND ($2::uuid IS NULL OR t.responsavel_id = $2)
+    AND ($3::uuid IS NULL OR t.criado_por = $3)
+    AND ($4::text IS NULL OR t.status = $4)
     -- Visibilidade de operador comum: só tarefas que criou ou pelas quais responde
-    AND ($4::uuid IS NULL OR t.criado_por = $4 OR t.responsavel_id = $4)
+    AND ($5::uuid IS NULL OR t.criado_por = $5 OR t.responsavel_id = $5)
 ORDER BY 
     CASE WHEN t.status = 'concluida' THEN 1 ELSE 0 END ASC,
     CASE WHEN t.prazo IS NOT NULL AND t.prazo < now() AND t.status != 'concluida' THEN 0 ELSE 1 END ASC,
@@ -324,6 +335,7 @@ ORDER BY
 `
 
 type ListarTarefasParams struct {
+	SetorID       pgtype.UUID `json:"setor_id"`
 	ResponsavelID pgtype.UUID `json:"responsavel_id"`
 	CriadoPor     pgtype.UUID `json:"criado_por"`
 	Status        pgtype.Text `json:"status"`
@@ -350,6 +362,7 @@ type ListarTarefasRow struct {
 
 func (q *Queries) ListarTarefas(ctx context.Context, arg ListarTarefasParams) ([]ListarTarefasRow, error) {
 	rows, err := q.db.Query(ctx, listarTarefas,
+		arg.SetorID,
 		arg.ResponsavelID,
 		arg.CriadoPor,
 		arg.Status,
@@ -396,7 +409,7 @@ SELECT
     uc.nome AS criador_nome, uc.cor AS criador_cor
 FROM tarefas t
 JOIN usuarios uc ON uc.id = t.criado_por
-WHERE t.responsavel_id = $1 AND t.status != 'concluida'
+WHERE t.responsavel_id = $1 AND t.setor_id = $2 AND t.status != 'concluida'
 ORDER BY 
     CASE WHEN t.prazo IS NOT NULL AND t.prazo < now() THEN 0 ELSE 1 END ASC,
     t.prazo ASC NULLS LAST,
@@ -407,6 +420,11 @@ ORDER BY
         ELSE 4 
     END ASC
 `
+
+type ListarTarefasPendentesUsuarioParams struct {
+	ResponsavelID pgtype.UUID `json:"responsavel_id"`
+	SetorID       pgtype.UUID `json:"setor_id"`
+}
 
 type ListarTarefasPendentesUsuarioRow struct {
 	ID            pgtype.UUID        `json:"id"`
@@ -424,8 +442,8 @@ type ListarTarefasPendentesUsuarioRow struct {
 	CriadorCor    string             `json:"criador_cor"`
 }
 
-func (q *Queries) ListarTarefasPendentesUsuario(ctx context.Context, responsavelID pgtype.UUID) ([]ListarTarefasPendentesUsuarioRow, error) {
-	rows, err := q.db.Query(ctx, listarTarefasPendentesUsuario, responsavelID)
+func (q *Queries) ListarTarefasPendentesUsuario(ctx context.Context, arg ListarTarefasPendentesUsuarioParams) ([]ListarTarefasPendentesUsuarioRow, error) {
+	rows, err := q.db.Query(ctx, listarTarefasPendentesUsuario, arg.ResponsavelID, arg.SetorID)
 	if err != nil {
 		return nil, err
 	}

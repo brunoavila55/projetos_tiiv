@@ -3,7 +3,8 @@
 	import { page } from '$app/state';
 	import { ticketsStore } from '$lib/tickets.svelte';
 	import { monitoresStore } from '$lib/monitores.svelte';
-	import { auth } from '$lib/auth.svelte';
+	import { auth, type Setor } from '$lib/auth.svelte';
+	import { apiFetch } from '$lib/api';
 	import { themeStore } from '$lib/theme.svelte';
 	import { radio } from '$lib/radio.svelte';
 	import Avatar from './Avatar.svelte';
@@ -24,10 +25,34 @@
 		Monitor,
 		Radio,
 		Activity,
-		Link
+		Link,
+		Tv,
+		Building2
 	} from 'lucide-svelte';
 
 	let mobileMenuOpen = $state(false);
+
+	// Superadmin escolhe qual setor está vendo
+	let setores = $state<Setor[]>([]);
+	let trocandoSetor = $state(false);
+	$effect(() => {
+		if (auth.ehSuperadmin) {
+			apiFetch<Setor[]>('/api/setores', { silent: true })
+				.then((lista) => (setores = lista))
+				.catch(() => {});
+		}
+	});
+
+	async function trocarSetor(id: string) {
+		trocandoSetor = true;
+		try {
+			await auth.trocarSetor(id);
+		} catch {
+			trocandoSetor = false;
+		}
+	}
+
+	const papelLabel = { superadmin: 'Superadmin', admin: 'Administrador', usuario: 'Operador' } as const;
 
 	// Contadores de tickets abertos e monitores fora do ar, atualizados a cada minuto
 	onMount(() => {
@@ -84,7 +109,38 @@
 	</a>
 {/snippet}
 
+{#snippet setorAtual()}
+	{#if auth.user}
+		<div class="px-3 mb-4">
+			{#if auth.ehSuperadmin && setores.length > 1}
+				<label class="block">
+					<span class="flex items-center gap-1.5 text-[13px] font-semibold text-ink-3 mb-1">
+						<Building2 class="size-3.5" /> Setor
+					</span>
+					<select
+						class="field field-sm"
+						value={auth.user.setor.id}
+						disabled={trocandoSetor}
+						onchange={(e) => trocarSetor(e.currentTarget.value)}
+					>
+						{#each setores as s (s.id)}
+							<option value={s.id}>{s.nome}</option>
+						{/each}
+					</select>
+				</label>
+			{:else}
+				<div class="flex items-center gap-1.5 text-[13px] text-ink-3">
+					<Building2 class="size-3.5" />
+					<span>Setor</span>
+					<span class="font-semibold text-ink truncate">{auth.user.setor.nome}</span>
+				</div>
+			{/if}
+		</div>
+	{/if}
+{/snippet}
+
 {#snippet navegacao()}
+	{@render setorAtual()}
 	<nav class="flex flex-col gap-0.5" aria-label="Principal">
 		{#each links as item}
 			{@const Icon = item.icon}
@@ -114,7 +170,7 @@
 			</a>
 		{/each}
 
-		{#if auth.user?.papel === 'admin'}
+		{#if auth.ehAdmin}
 			<div class="mt-4 mb-1 px-3 text-[13px] font-semibold text-ink-3">Administração</div>
 			{#each adminLinks as item}
 				{@const Icon = item.icon}
@@ -160,6 +216,14 @@
 					</span>
 				{/if}
 			</button>
+			<a
+				href="/tv"
+				onclick={() => (mobileMenuOpen = false)}
+				class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium text-ink-2 hover:bg-muted hover:text-ink transition-colors"
+			>
+				<Tv class="size-4 text-ink-3" />
+				<span>Modo TV</span>
+			</a>
 			<button
 				onclick={toggleTheme}
 				class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium text-ink-2 hover:bg-muted hover:text-ink transition-colors cursor-pointer"
@@ -179,7 +243,7 @@
 				<Avatar id={auth.user.id} nome={auth.user.nome} cor={auth.user.cor} fotoVersao={auth.user.foto_versao} class="size-9 text-xs" />
 				<div class="min-w-0 flex-1">
 					<div class="text-sm font-semibold text-ink leading-tight truncate">{auth.user.nome}</div>
-					<div class="text-xs text-ink-3">{auth.user.papel === 'admin' ? 'Administrador' : 'Operador'}</div>
+					<div class="text-xs text-ink-3">{papelLabel[auth.user.papel]}</div>
 				</div>
 				<button
 					onclick={() => auth.logout()}

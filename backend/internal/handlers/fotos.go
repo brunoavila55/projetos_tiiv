@@ -66,7 +66,7 @@ func (h *AuthHandler) ObterFoto(w http.ResponseWriter, r *http.Request) {
 
 	// Ex-operador: a foto (dado pessoal) só aparece para admin logado
 	if !foto.UsuarioAtivo {
-		if user, ok := middleware.GetAuthUser(r.Context()); !ok || user.Papel != "admin" {
+		if user, ok := middleware.GetAuthUser(r.Context()); !ok || !user.EhAdmin() {
 			response.JSONError(w, http.StatusNotFound, "usuário sem foto")
 			return
 		}
@@ -93,11 +93,11 @@ type FotoResponse struct {
 
 // EnviarFoto: PUT /api/usuarios/{id}/foto (Admin). Corpo: a imagem crua.
 func (h *UsuarioHandler) EnviarFoto(w http.ResponseWriter, r *http.Request) {
-	uID, err := database.StringToUUID(chi.URLParam(r, "id"))
-	if err != nil {
-		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+	alvo, ok := h.alvoGerenciavel(w, r)
+	if !ok {
 		return
 	}
+	uID := alvo.ID
 
 	conteudo, err := io.ReadAll(http.MaxBytesReader(w, r.Body, fotoTamanhoMaximo))
 	if err != nil {
@@ -136,11 +136,11 @@ func (h *UsuarioHandler) EnviarFoto(w http.ResponseWriter, r *http.Request) {
 
 // RemoverFoto: DELETE /api/usuarios/{id}/foto (Admin)
 func (h *UsuarioHandler) RemoverFoto(w http.ResponseWriter, r *http.Request) {
-	uID, err := database.StringToUUID(chi.URLParam(r, "id"))
-	if err != nil {
-		response.JSONError(w, http.StatusBadRequest, "ID inválido")
+	alvo, ok := h.alvoGerenciavel(w, r)
+	if !ok {
 		return
 	}
+	uID := alvo.ID
 
 	if err := h.db.Queries.RemoverFotoUsuario(r.Context(), uID); err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao remover foto")

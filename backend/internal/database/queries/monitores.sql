@@ -12,13 +12,13 @@ SELECT * FROM monitores WHERE id = $1;
 SELECT * FROM monitores WHERE id = $1 FOR UPDATE;
 
 -- name: CriarMonitor :one
-INSERT INTO monitores (nome, tipo, alvo, intervalo_seg, abrir_ticket, criado_por)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO monitores (nome, tipo, alvo, intervalo_seg, abrir_ticket, criado_por, setor_ticket_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: AtualizarMonitor :one
 UPDATE monitores
-SET nome = $2, tipo = $3, alvo = $4, intervalo_seg = $5, abrir_ticket = $6, ativo = $7,
+SET nome = $2, tipo = $3, alvo = $4, intervalo_seg = $5, abrir_ticket = $6, ativo = $7, setor_ticket_id = $8,
     atualizado_em = now()
 WHERE id = $1
 RETURNING *;

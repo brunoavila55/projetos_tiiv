@@ -15,7 +15,7 @@ const atualizarLink = `-- name: AtualizarLink :one
 UPDATE links
 SET titulo = $2, url = $3, descricao = $4, categoria = $5, atualizado_em = now()
 WHERE id = $1
-RETURNING id, titulo, url, descricao, categoria, criado_por, criado_em, atualizado_em
+RETURNING id, titulo, url, descricao, categoria, criado_por, criado_em, atualizado_em, setor_id
 `
 
 type AtualizarLinkParams struct {
@@ -44,14 +44,15 @@ func (q *Queries) AtualizarLink(ctx context.Context, arg AtualizarLinkParams) (L
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
 
 const criarLink = `-- name: CriarLink :one
-INSERT INTO links (titulo, url, descricao, categoria, criado_por)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, titulo, url, descricao, categoria, criado_por, criado_em, atualizado_em
+INSERT INTO links (titulo, url, descricao, categoria, criado_por, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, titulo, url, descricao, categoria, criado_por, criado_em, atualizado_em, setor_id
 `
 
 type CriarLinkParams struct {
@@ -60,6 +61,7 @@ type CriarLinkParams struct {
 	Descricao string      `json:"descricao"`
 	Categoria string      `json:"categoria"`
 	CriadoPor pgtype.UUID `json:"criado_por"`
+	SetorID   pgtype.UUID `json:"setor_id"`
 }
 
 func (q *Queries) CriarLink(ctx context.Context, arg CriarLinkParams) (Links, error) {
@@ -69,6 +71,7 @@ func (q *Queries) CriarLink(ctx context.Context, arg CriarLinkParams) (Links, er
 		arg.Descricao,
 		arg.Categoria,
 		arg.CriadoPor,
+		arg.SetorID,
 	)
 	var i Links
 	err := row.Scan(
@@ -80,6 +83,7 @@ func (q *Queries) CriarLink(ctx context.Context, arg CriarLinkParams) (Links, er
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -99,6 +103,7 @@ SELECT
     u.nome AS criador_nome
 FROM links l
 JOIN usuarios u ON u.id = l.criado_por
+WHERE l.setor_id = $1
 ORDER BY lower(l.categoria), lower(l.titulo)
 `
 
@@ -113,8 +118,8 @@ type ListarLinksRow struct {
 	CriadorNome string             `json:"criador_nome"`
 }
 
-func (q *Queries) ListarLinks(ctx context.Context) ([]ListarLinksRow, error) {
-	rows, err := q.db.Query(ctx, listarLinks)
+func (q *Queries) ListarLinks(ctx context.Context, setorID pgtype.UUID) ([]ListarLinksRow, error) {
+	rows, err := q.db.Query(ctx, listarLinks, setorID)
 	if err != nil {
 		return nil, err
 	}
@@ -143,11 +148,16 @@ func (q *Queries) ListarLinks(ctx context.Context) ([]ListarLinksRow, error) {
 }
 
 const obterLink = `-- name: ObterLink :one
-SELECT id, titulo, url, descricao, categoria, criado_por, criado_em, atualizado_em FROM links WHERE id = $1
+SELECT id, titulo, url, descricao, categoria, criado_por, criado_em, atualizado_em, setor_id FROM links WHERE id = $1 AND setor_id = $2
 `
 
-func (q *Queries) ObterLink(ctx context.Context, id pgtype.UUID) (Links, error) {
-	row := q.db.QueryRow(ctx, obterLink, id)
+type ObterLinkParams struct {
+	ID      pgtype.UUID `json:"id"`
+	SetorID pgtype.UUID `json:"setor_id"`
+}
+
+func (q *Queries) ObterLink(ctx context.Context, arg ObterLinkParams) (Links, error) {
+	row := q.db.QueryRow(ctx, obterLink, arg.ID, arg.SetorID)
 	var i Links
 	err := row.Scan(
 		&i.ID,
@@ -158,6 +168,7 @@ func (q *Queries) ObterLink(ctx context.Context, id pgtype.UUID) (Links, error) 
 		&i.CriadoPor,
 		&i.CriadoEm,
 		&i.AtualizadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }

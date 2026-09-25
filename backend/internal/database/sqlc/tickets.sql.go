@@ -12,11 +12,16 @@ import (
 )
 
 const bloquearTicket = `-- name: BloquearTicket :one
-SELECT id, numero, solicitante_nome, titulo, descricao, prioridade, status, tarefa_id, tratado_por, tratado_em, origem_ip, criado_em FROM tickets WHERE id = $1 FOR UPDATE
+SELECT id, numero, solicitante_nome, titulo, descricao, prioridade, status, tarefa_id, tratado_por, tratado_em, origem_ip, criado_em, setor_id FROM tickets WHERE id = $1 AND setor_id = $2 FOR UPDATE
 `
 
-func (q *Queries) BloquearTicket(ctx context.Context, id pgtype.UUID) (Tickets, error) {
-	row := q.db.QueryRow(ctx, bloquearTicket, id)
+type BloquearTicketParams struct {
+	ID      pgtype.UUID `json:"id"`
+	SetorID pgtype.UUID `json:"setor_id"`
+}
+
+func (q *Queries) BloquearTicket(ctx context.Context, arg BloquearTicketParams) (Tickets, error) {
+	row := q.db.QueryRow(ctx, bloquearTicket, arg.ID, arg.SetorID)
 	var i Tickets
 	err := row.Scan(
 		&i.ID,
@@ -31,33 +36,35 @@ func (q *Queries) BloquearTicket(ctx context.Context, id pgtype.UUID) (Tickets, 
 		&i.TratadoEm,
 		&i.OrigemIp,
 		&i.CriadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
 
 const contarTicketsAbertos = `-- name: ContarTicketsAbertos :one
-SELECT count(*) FROM tickets WHERE status = 'aberto'
+SELECT count(*) FROM tickets WHERE status = 'aberto' AND setor_id = $1
 `
 
-func (q *Queries) ContarTicketsAbertos(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, contarTicketsAbertos)
+func (q *Queries) ContarTicketsAbertos(ctx context.Context, setorID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, contarTicketsAbertos, setorID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const criarTicket = `-- name: CriarTicket :one
-INSERT INTO tickets (solicitante_nome, titulo, descricao, prioridade, origem_ip)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, numero, solicitante_nome, titulo, descricao, prioridade, status, tarefa_id, tratado_por, tratado_em, origem_ip, criado_em
+INSERT INTO tickets (solicitante_nome, titulo, descricao, prioridade, origem_ip, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, numero, solicitante_nome, titulo, descricao, prioridade, status, tarefa_id, tratado_por, tratado_em, origem_ip, criado_em, setor_id
 `
 
 type CriarTicketParams struct {
-	SolicitanteNome string `json:"solicitante_nome"`
-	Titulo          string `json:"titulo"`
-	Descricao       string `json:"descricao"`
-	Prioridade      string `json:"prioridade"`
-	OrigemIp        string `json:"origem_ip"`
+	SolicitanteNome string      `json:"solicitante_nome"`
+	Titulo          string      `json:"titulo"`
+	Descricao       string      `json:"descricao"`
+	Prioridade      string      `json:"prioridade"`
+	OrigemIp        string      `json:"origem_ip"`
+	SetorID         pgtype.UUID `json:"setor_id"`
 }
 
 func (q *Queries) CriarTicket(ctx context.Context, arg CriarTicketParams) (Tickets, error) {
@@ -67,6 +74,7 @@ func (q *Queries) CriarTicket(ctx context.Context, arg CriarTicketParams) (Ticke
 		arg.Descricao,
 		arg.Prioridade,
 		arg.OrigemIp,
+		arg.SetorID,
 	)
 	var i Tickets
 	err := row.Scan(
@@ -82,6 +90,7 @@ func (q *Queries) CriarTicket(ctx context.Context, arg CriarTicketParams) (Ticke
 		&i.TratadoEm,
 		&i.OrigemIp,
 		&i.CriadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }
@@ -95,7 +104,8 @@ SELECT
 FROM tickets tk
 LEFT JOIN usuarios u ON u.id = tk.tratado_por
 LEFT JOIN tarefas ta ON ta.id = tk.tarefa_id
-WHERE ($1::text IS NULL OR tk.status = $1)
+WHERE tk.setor_id = $1
+  AND ($2::text IS NULL OR tk.status = $2)
 ORDER BY
     CASE WHEN tk.status = 'aberto' THEN 0 ELSE 1 END,
     CASE WHEN tk.status = 'aberto' THEN
@@ -106,6 +116,11 @@ ORDER BY
     tk.criado_em DESC
 LIMIT 200
 `
+
+type ListarTicketsParams struct {
+	SetorID pgtype.UUID `json:"setor_id"`
+	Status  pgtype.Text `json:"status"`
+}
 
 type ListarTicketsRow struct {
 	ID              pgtype.UUID        `json:"id"`
@@ -122,8 +137,8 @@ type ListarTicketsRow struct {
 	TarefaStatus    pgtype.Text        `json:"tarefa_status"`
 }
 
-func (q *Queries) ListarTickets(ctx context.Context, status pgtype.Text) ([]ListarTicketsRow, error) {
-	rows, err := q.db.Query(ctx, listarTickets, status)
+func (q *Queries) ListarTickets(ctx context.Context, arg ListarTicketsParams) ([]ListarTicketsRow, error) {
+	rows, err := q.db.Query(ctx, listarTickets, arg.SetorID, arg.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +174,7 @@ const marcarTicketTratado = `-- name: MarcarTicketTratado :one
 UPDATE tickets
 SET status = $2, tarefa_id = $3, tratado_por = $4, tratado_em = now()
 WHERE id = $1
-RETURNING id, numero, solicitante_nome, titulo, descricao, prioridade, status, tarefa_id, tratado_por, tratado_em, origem_ip, criado_em
+RETURNING id, numero, solicitante_nome, titulo, descricao, prioridade, status, tarefa_id, tratado_por, tratado_em, origem_ip, criado_em, setor_id
 `
 
 type MarcarTicketTratadoParams struct {
@@ -190,6 +205,7 @@ func (q *Queries) MarcarTicketTratado(ctx context.Context, arg MarcarTicketTrata
 		&i.TratadoEm,
 		&i.OrigemIp,
 		&i.CriadoEm,
+		&i.SetorID,
 	)
 	return i, err
 }

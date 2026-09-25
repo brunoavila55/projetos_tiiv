@@ -119,8 +119,8 @@ func validarTipoPlantao(tipo string) (string, error) {
 	return tipo, nil
 }
 
-// usuarioEscalavel confere se o operador existe e está ativo
-func (h *PlantaoHandler) usuarioEscalavel(ctx context.Context, id string) (pgtype.UUID, string, error) {
+// usuarioEscalavel confere se o operador existe, está ativo e é do setor
+func (h *PlantaoHandler) usuarioEscalavel(ctx context.Context, setor pgtype.UUID, id string) (pgtype.UUID, string, error) {
 	uID, err := database.StringToUUID(id)
 	if err != nil {
 		return uID, "", errors.New("operador inválido")
@@ -129,16 +129,19 @@ func (h *PlantaoHandler) usuarioEscalavel(ctx context.Context, id string) (pgtyp
 	if err != nil || !u.Ativo {
 		return uID, "", errors.New("operador não encontrado ou inativo")
 	}
+	if u.SetorID != setor {
+		return uID, "", fmt.Errorf("%s não é deste setor", u.Nome)
+	}
 	return uID, u.Nome, nil
 }
 
-func (h *PlantaoHandler) validarPlantao(ctx context.Context, req PlantaoRequest) (turno, error) {
+func (h *PlantaoHandler) validarPlantao(ctx context.Context, setor pgtype.UUID, req PlantaoRequest) (turno, error) {
 	var t turno
 	var err error
 	if t.tipo, err = validarTipoPlantao(req.Tipo); err != nil {
 		return t, err
 	}
-	if t.usuarioID, t.nome, err = h.usuarioEscalavel(ctx, req.UsuarioID); err != nil {
+	if t.usuarioID, t.nome, err = h.usuarioEscalavel(ctx, setor, req.UsuarioID); err != nil {
 		return t, err
 	}
 	if t.inicio, err = parseDia(req.Inicio, "dia de início"); err != nil {
@@ -161,7 +164,7 @@ func (h *PlantaoHandler) validarPlantao(ctx context.Context, req PlantaoRequest)
 
 // gravarTurnos grava tudo ou nada; um conflito devolve errConflitoEscala
 // com a mensagem para o usuário.
-func (h *PlantaoHandler) gravarTurnos(ctx context.Context, turnos []turno, criadoPor pgtype.UUID, atualizarID pgtype.UUID) (string, error) {
+func (h *PlantaoHandler) gravarTurnos(ctx context.Context, setor pgtype.UUID, turnos []turno, criadoPor pgtype.UUID, atualizarID pgtype.UUID) (string, error) {
 	tx, err := h.db.Pool.Begin(ctx)
 	if err != nil {
 		return "", err
@@ -198,7 +201,7 @@ func (h *PlantaoHandler) gravarTurnos(ctx context.Context, turnos []turno, criad
 			_, err = q.CriarPlantao(ctx, sqlc.CriarPlantaoParams{
 				UsuarioID: t.usuarioID, Tipo: t.tipo,
 				Inicio: paraDate(t.inicio), Fim: paraDate(t.fim), Observacao: t.observacao,
-				CriadoPor: criadoPor,
+				CriadoPor: criadoPor, SetorID: setor,
 			})
 		}
 		if err != nil {
@@ -221,8 +224,8 @@ func paraPlantaoResponse(p sqlc.ListarPlantoesIntervaloRow) PlantaoResponse {
 	}
 }
 
-func listarPlantoes(ctx context.Context, q *sqlc.Queries, de, ate time.Time) ([]PlantaoResponse, error) {
-	rows, err := q.ListarPlantoesIntervalo(ctx, sqlc.ListarPlantoesIntervaloParams{De: paraDate(de), Ate: paraDate(ate)})
+func listarPlantoes(ctx context.Context, q *sqlc.Queries, setor pgtype.UUID, de, ate time.Time) ([]PlantaoResponse, error) {
+	rows, err := q.ListarPlantoesIntervalo(ctx, sqlc.ListarPlantoesIntervaloParams{SetorID: setor, De: paraDate(de), Ate: paraDate(ate)})
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +240,7 @@ func listarPlantoes(ctx context.Context, q *sqlc.Queries, de, ate time.Time) ([]
 func plantaoNoPainel(ctx context.Context, q *sqlc.Queries, user *middleware.AuthUser) PainelPlantaoResponse {
 	hoje := hojeSaoPaulo()
 	res := PainelPlantaoResponse{Hoje: []PlantaoResponse{}}
-	if lista, err := listarPlantoes(ctx, q, hoje, hoje); err == nil {
+	if lista, err := listarPlantoes(ctx, q, user.Setor, hoje, hoje); err == nil {
 		res.Hoje = lista
 	}
 
@@ -245,7 +248,7 @@ func plantaoNoPainel(ctx context.Context, q *sqlc.Queries, user *middleware.Auth
 	if err != nil {
 		return res
 	}
-	p, err := q.ProximoPlantaoUsuario(ctx, sqlc.ProximoPlantaoUsuarioParams{UsuarioID: uID, Dia: paraDate(hoje)})
+	p, err := q.ProximoPlantaoUsuario(ctx, sqlc.ProximoPlantaoUsuarioParams{UsuarioID: uID, SetorID: user.Setor, Dia: paraDate(hoje)})
 	if err == nil {
 		res.MeuProximo = &PlantaoResponse{
 			ID:          database.UUIDToString(p.ID),
@@ -262,6 +265,11 @@ func plantaoNoPainel(ctx context.Context, q *sqlc.Queries, user *middleware.Auth
 
 // Listar: GET /api/plantoes?inicio=AAAA-MM-DD&fim=AAAA-MM-DD
 func (h *PlantaoHandler) Listar(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetAuthUser(r.Context())
+	if !ok || user == nil {
+		response.JSONError(w, http.StatusUnauthorized, "não autenticado")
+		return
+	}
 	hoje := hojeSaoPaulo()
 	de, ate := hoje.AddDate(0, -1, 0), hoje.AddDate(0, 2, 0)
 	var err error
@@ -282,7 +290,7 @@ func (h *PlantaoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lista, err := listarPlantoes(r.Context(), h.db.Queries, de, ate)
+	lista, err := listarPlantoes(r.Context(), h.db.Queries, user.Setor, de, ate)
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar a escala")
 		return
@@ -318,13 +326,13 @@ func (h *PlantaoHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusBadRequest, "corpo da requisição inválido")
 		return
 	}
-	t, err := h.validarPlantao(r.Context(), req)
+	t, err := h.validarPlantao(r.Context(), user.Setor, req)
 	if err != nil {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	criador, _ := database.StringToUUID(user.ID)
-	msg, err := h.gravarTurnos(r.Context(), []turno{t}, criador, pgtype.UUID{})
+	msg, err := h.gravarTurnos(r.Context(), user.Setor, []turno{t}, criador, pgtype.UUID{})
 	responderGravacao(w, msg, err, http.StatusCreated, map[string]int{"criados": 1})
 }
 
@@ -382,7 +390,7 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		vistos[id] = true
-		uID, nome, err := h.usuarioEscalavel(r.Context(), id)
+		uID, nome, err := h.usuarioEscalavel(r.Context(), user.Setor, id)
 		if err != nil {
 			response.JSONError(w, http.StatusBadRequest, err.Error())
 			return
@@ -402,17 +410,18 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 	}
 
 	criador, _ := database.StringToUUID(user.ID)
-	msg, err := h.gravarTurnos(r.Context(), turnos, criador, pgtype.UUID{})
+	msg, err := h.gravarTurnos(r.Context(), user.Setor, turnos, criador, pgtype.UUID{})
 	responderGravacao(w, msg, err, http.StatusCreated, map[string]int{"criados": len(turnos)})
 }
 
-func (h *PlantaoHandler) idDaURL(w http.ResponseWriter, r *http.Request) (pgtype.UUID, bool) {
+// idDaURL confere que o turno existe no setor de quem está pedindo
+func (h *PlantaoHandler) idDaURL(w http.ResponseWriter, r *http.Request, user *middleware.AuthUser) (pgtype.UUID, bool) {
 	id, err := database.StringToUUID(chi.URLParam(r, "id"))
 	if err != nil {
 		response.JSONError(w, http.StatusBadRequest, "ID inválido")
 		return id, false
 	}
-	if _, err := h.db.Queries.ObterPlantao(r.Context(), id); errors.Is(err, pgx.ErrNoRows) {
+	if _, err := h.db.Queries.ObterPlantao(r.Context(), sqlc.ObterPlantaoParams{ID: id, SetorID: user.Setor}); errors.Is(err, pgx.ErrNoRows) {
 		response.JSONError(w, http.StatusNotFound, "turno não encontrado")
 		return id, false
 	} else if err != nil {
@@ -424,7 +433,8 @@ func (h *PlantaoHandler) idDaURL(w http.ResponseWriter, r *http.Request) (pgtype
 
 // Atualizar: PUT /api/plantoes/{id} (admin)
 func (h *PlantaoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
-	id, ok := h.idDaURL(w, r)
+	user, _ := middleware.GetAuthUser(r.Context())
+	id, ok := h.idDaURL(w, r, user)
 	if !ok {
 		return
 	}
@@ -433,18 +443,19 @@ func (h *PlantaoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusBadRequest, "corpo da requisição inválido")
 		return
 	}
-	t, err := h.validarPlantao(r.Context(), req)
+	t, err := h.validarPlantao(r.Context(), user.Setor, req)
 	if err != nil {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	msg, err := h.gravarTurnos(r.Context(), []turno{t}, pgtype.UUID{}, id)
+	msg, err := h.gravarTurnos(r.Context(), user.Setor, []turno{t}, pgtype.UUID{}, id)
 	responderGravacao(w, msg, err, http.StatusNoContent, nil)
 }
 
 // Deletar: DELETE /api/plantoes/{id} (admin)
 func (h *PlantaoHandler) Deletar(w http.ResponseWriter, r *http.Request) {
-	id, ok := h.idDaURL(w, r)
+	user, _ := middleware.GetAuthUser(r.Context())
+	id, ok := h.idDaURL(w, r, user)
 	if !ok {
 		return
 	}

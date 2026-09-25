@@ -54,8 +54,9 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 
 	// 1. Marcações do usuário na próxima semana (recorrências desdobradas)
 	eventos, err := h.db.Queries.ListarEventosIntervalo(r.Context(), sqlc.ListarEventosIntervaloParams{
-		Fim:    database.TimeToTimestamptz(inicioHoje),
-		Inicio: database.TimeToTimestamptz(fimJanela),
+		Fim:     database.TimeToTimestamptz(inicioHoje),
+		Inicio:  database.TimeToTimestamptz(fimJanela),
+		SetorID: user.Setor,
 	})
 	if err != nil {
 		eventos = []sqlc.ListarEventosIntervaloRow{}
@@ -93,7 +94,7 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 			continue
 		}
 
-		podeEditar := (user.Papel == "admin") || (database.UUIDToString(e.CriadoPor) == user.ID)
+		podeEditar := (user.EhAdmin()) || (database.UUIDToString(e.CriadoPor) == user.ID)
 		proximosEventos = append(proximosEventos, expandirOcorrencias(e, parts, podeEditar, inicioHoje, fimJanela)...)
 	}
 	sort.SliceStable(proximosEventos, func(i, j int) bool {
@@ -101,7 +102,10 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 	})
 
 	// 2. Tarefas pendentes atribuídas ao usuário (atrasadas primeiro)
-	tarefas, err := h.db.Queries.ListarTarefasPendentesUsuario(r.Context(), userUUID)
+	tarefas, err := h.db.Queries.ListarTarefasPendentesUsuario(r.Context(), sqlc.ListarTarefasPendentesUsuarioParams{
+		ResponsavelID: userUUID,
+		SetorID:       user.Setor,
+	})
 	if err != nil {
 		tarefas = []sqlc.ListarTarefasPendentesUsuarioRow{}
 	}
@@ -135,7 +139,7 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 			AtualizadoEm:    t.AtualizadoEm.Time.Format(time.RFC3339),
 			Atrasada:        atrasada,
 			PodeEditar:      true,
-			PodeExcluir:     (user.Papel == "admin") || (database.UUIDToString(t.CriadoPor) == user.ID),
+			PodeExcluir:     (user.EhAdmin()) || (database.UUIDToString(t.CriadoPor) == user.ID),
 		})
 	}
 

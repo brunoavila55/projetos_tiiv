@@ -5,7 +5,8 @@ SELECT
 FROM procedimentos p
 JOIN usuarios u ON u.id = p.atualizado_por
 WHERE
-    (sqlc.narg('busca')::text IS NULL OR
+    p.setor_id = sqlc.arg('setor_id')
+    AND (sqlc.narg('busca')::text IS NULL OR
      unaccent(lower(p.titulo || ' ' || p.categoria || ' ' || p.corpo)) ILIKE '%' || unaccent(lower(sqlc.narg('busca'))) || '%')
     AND (sqlc.narg('categoria')::text IS NULL OR p.categoria = sqlc.narg('categoria'))
     AND (sqlc.narg('ativo')::boolean IS NULL OR p.ativo = sqlc.narg('ativo'))
@@ -14,7 +15,7 @@ ORDER BY p.ativo DESC, p.categoria ASC, p.titulo ASC;
 -- name: ListarCategoriasProcedimentos :many
 SELECT DISTINCT categoria
 FROM procedimentos
-WHERE categoria <> ''
+WHERE categoria <> '' AND setor_id = $1
 ORDER BY categoria ASC;
 
 -- name: BuscarProcedimentoPorID :one
@@ -23,17 +24,17 @@ SELECT
     u.nome AS atualizado_por_nome
 FROM procedimentos p
 JOIN usuarios u ON u.id = p.atualizado_por
-WHERE p.id = $1;
+WHERE p.id = $1 AND p.setor_id = $2;
 
 -- name: CriarProcedimento :one
-INSERT INTO procedimentos (titulo, categoria, corpo, ativo, criado_por, atualizado_por)
-VALUES ($1, $2, $3, $4, $5, $5)
+INSERT INTO procedimentos (titulo, categoria, corpo, ativo, criado_por, atualizado_por, setor_id)
+VALUES ($1, $2, $3, $4, $5, $5, $6)
 RETURNING *;
 
 -- name: AtualizarProcedimento :one
 UPDATE procedimentos
 SET titulo = $2, categoria = $3, corpo = $4, ativo = $5, atualizado_por = $6, atualizado_em = now()
-WHERE id = $1
+WHERE id = $1 AND setor_id = $7
 RETURNING *;
 
 -- name: CriarRevisaoProcedimento :exec
@@ -46,12 +47,14 @@ SELECT
     u.nome AS editado_por_nome
 FROM procedimento_revisoes r
 JOIN usuarios u ON u.id = r.editado_por
-WHERE r.procedimento_id = $1
+JOIN procedimentos p ON p.id = r.procedimento_id
+WHERE r.procedimento_id = $1 AND p.setor_id = $2
 ORDER BY r.criado_em DESC;
 
 -- name: BuscarRevisaoProcedimento :one
-SELECT * FROM procedimento_revisoes
-WHERE id = $1 AND procedimento_id = $2;
+SELECT r.* FROM procedimento_revisoes r
+JOIN procedimentos p ON p.id = r.procedimento_id
+WHERE r.id = $1 AND r.procedimento_id = $2 AND p.setor_id = $3;
 
 -- name: BuscarProcedimentosRelevantes :many
 -- Busca para o tira-dúvidas: full-text em português (termos em OU) somado à
@@ -74,7 +77,7 @@ CROSS JOIN LATERAL (
         word_similarity(c.txt, unaccent(lower(p.titulo || ' ' || p.corpo)))
     )::float8 AS relevancia
 ) pontos
-WHERE p.ativo
+WHERE p.ativo AND p.setor_id = sqlc.arg('setor_id')
 ORDER BY pontos.relevancia DESC
 LIMIT sqlc.arg('limite')::int;
 

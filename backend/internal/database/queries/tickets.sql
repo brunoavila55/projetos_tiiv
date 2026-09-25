@@ -1,6 +1,6 @@
 -- name: CriarTicket :one
-INSERT INTO tickets (solicitante_nome, titulo, descricao, prioridade, origem_ip)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO tickets (solicitante_nome, titulo, descricao, prioridade, origem_ip, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: ListarTickets :many
@@ -12,7 +12,8 @@ SELECT
 FROM tickets tk
 LEFT JOIN usuarios u ON u.id = tk.tratado_por
 LEFT JOIN tarefas ta ON ta.id = tk.tarefa_id
-WHERE (sqlc.narg('status')::text IS NULL OR tk.status = sqlc.narg('status'))
+WHERE tk.setor_id = sqlc.arg('setor_id')
+  AND (sqlc.narg('status')::text IS NULL OR tk.status = sqlc.narg('status'))
 ORDER BY
     CASE WHEN tk.status = 'aberto' THEN 0 ELSE 1 END,
     CASE WHEN tk.status = 'aberto' THEN
@@ -24,10 +25,10 @@ ORDER BY
 LIMIT 200;
 
 -- name: ContarTicketsAbertos :one
-SELECT count(*) FROM tickets WHERE status = 'aberto';
+SELECT count(*) FROM tickets WHERE status = 'aberto' AND setor_id = $1;
 
 -- name: BloquearTicket :one
-SELECT * FROM tickets WHERE id = $1 FOR UPDATE;
+SELECT * FROM tickets WHERE id = $1 AND setor_id = $2 FOR UPDATE;
 
 -- name: MarcarTicketTratado :one
 UPDATE tickets

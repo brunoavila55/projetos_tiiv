@@ -258,7 +258,7 @@
 	}
 
 	onMount(() => {
-		if (auth.user?.papel === 'admin') carregar();
+		if (auth.ehAdmin) carregar();
 	});
 </script>
 
@@ -268,7 +268,7 @@
 	}}
 />
 
-{#if auth.user?.papel !== 'admin'}
+{#if !auth.ehAdmin}
 	<div class="panel empty max-w-lg mx-auto mt-12">
 		<ShieldAlert class="size-10 text-danger" strokeWidth={1.5} />
 		<h2 class="empty-title">Acesso restrito</h2>

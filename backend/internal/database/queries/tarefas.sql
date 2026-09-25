@@ -8,7 +8,8 @@ FROM tarefas t
 JOIN usuarios uc ON uc.id = t.criado_por
 LEFT JOIN usuarios ur ON ur.id = t.responsavel_id
 WHERE 
-    (sqlc.narg('responsavel_id')::uuid IS NULL OR t.responsavel_id = sqlc.narg('responsavel_id'))
+    t.setor_id = sqlc.arg('setor_id')
+    AND (sqlc.narg('responsavel_id')::uuid IS NULL OR t.responsavel_id = sqlc.narg('responsavel_id'))
     AND (sqlc.narg('criado_por')::uuid IS NULL OR t.criado_por = sqlc.narg('criado_por'))
     AND (sqlc.narg('status')::text IS NULL OR t.status = sqlc.narg('status'))
     -- Visibilidade de operador comum: só tarefas que criou ou pelas quais responde
@@ -32,7 +33,7 @@ SELECT
     uc.nome AS criador_nome, uc.cor AS criador_cor
 FROM tarefas t
 JOIN usuarios uc ON uc.id = t.criado_por
-WHERE t.responsavel_id = $1 AND t.status != 'concluida'
+WHERE t.responsavel_id = $1 AND t.setor_id = $2 AND t.status != 'concluida'
 ORDER BY 
     CASE WHEN t.prazo IS NOT NULL AND t.prazo < now() THEN 0 ELSE 1 END ASC,
     t.prazo ASC NULLS LAST,
@@ -52,11 +53,11 @@ SELECT
 FROM tarefas t
 JOIN usuarios uc ON uc.id = t.criado_por
 LEFT JOIN usuarios ur ON ur.id = t.responsavel_id
-WHERE t.id = $1;
+WHERE t.id = $1 AND t.setor_id = $2;
 
 -- name: CriarTarefa :one
-INSERT INTO tarefas (titulo, descricao, prioridade, prazo, criado_por, responsavel_id)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO tarefas (titulo, descricao, prioridade, prazo, criado_por, responsavel_id, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: AtualizarTarefa :one

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -67,7 +68,7 @@ func (h *TarefaHandler) Listar(w http.ResponseWriter, r *http.Request) {
 
 	// Operador comum só enxerga as próprias tarefas; admin vê todas
 	var visivelPara pgtype.UUID
-	if user.Papel != "admin" {
+	if !user.EhAdmin() {
 		visivelPara = userUUID
 	}
 
@@ -78,6 +79,7 @@ func (h *TarefaHandler) Listar(w http.ResponseWriter, r *http.Request) {
 		CriadoPor:     criadoPor,
 		Status:        statusParam,
 		VisivelPara:   visivelPara,
+		SetorID:       user.Setor,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar tarefas")
@@ -115,8 +117,8 @@ func (h *TarefaHandler) Listar(w http.ResponseWriter, r *http.Request) {
 			concluidaEmStr = &str
 		}
 
-		podeEditar := (user.Papel == "admin") || (tCriadoPor == user.ID) || (respID != nil && *respID == user.ID)
-		podeExcluir := (user.Papel == "admin") || (tCriadoPor == user.ID)
+		podeEditar := (user.EhAdmin()) || (tCriadoPor == user.ID) || (respID != nil && *respID == user.ID)
+		podeExcluir := (user.EhAdmin()) || (tCriadoPor == user.ID)
 
 		result = append(result, TarefaItemResponse{
 			ID:              database.UUIDToString(t.ID),
@@ -183,9 +185,10 @@ func (h *TarefaHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var responsavelUUID pgtype.UUID
-	if req.ResponsavelID != nil && *req.ResponsavelID != "" {
-		responsavelUUID, _ = database.StringToUUID(*req.ResponsavelID)
+	responsavelUUID, err := h.responsavelDoSetor(r, user, req.ResponsavelID)
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	criadorUUID, err := database.StringToUUID(user.ID)
@@ -201,6 +204,7 @@ func (h *TarefaHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		Prazo:         prazo,
 		CriadoPor:     criadorUUID,
 		ResponsavelID: responsavelUUID,
+		SetorID:       user.Setor,
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao criar tarefa")
@@ -228,7 +232,7 @@ func (h *TarefaHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tarefa, err := h.db.Queries.BuscarTarefaPorID(r.Context(), tID)
+	tarefa, err := h.db.Queries.BuscarTarefaPorID(r.Context(), sqlc.BuscarTarefaPorIDParams{ID: tID, SetorID: user.Setor})
 	if err != nil {
 		response.JSONError(w, http.StatusNotFound, "tarefa não encontrada")
 		return
@@ -240,7 +244,7 @@ func (h *TarefaHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		respStr = database.UUIDToString(tarefa.ResponsavelID)
 	}
 
-	podeEditar := (user.Papel == "admin") || (criadorStr == user.ID) || (respStr == user.ID)
+	podeEditar := (user.EhAdmin()) || (criadorStr == user.ID) || (respStr == user.ID)
 	if !podeEditar {
 		response.JSONError(w, http.StatusForbidden, "apenas o criador, o responsável ou um administrador podem editar esta tarefa")
 		return
@@ -270,9 +274,10 @@ func (h *TarefaHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var responsavelUUID pgtype.UUID
-	if req.ResponsavelID != nil && *req.ResponsavelID != "" {
-		responsavelUUID, _ = database.StringToUUID(*req.ResponsavelID)
+	responsavelUUID, err := h.responsavelDoSetor(r, user, req.ResponsavelID)
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	_, err = h.db.Queries.AtualizarTarefa(r.Context(), sqlc.AtualizarTarefaParams{
@@ -310,7 +315,7 @@ func (h *TarefaHandler) AtualizarStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	tarefa, err := h.db.Queries.BuscarTarefaPorID(r.Context(), tID)
+	tarefa, err := h.db.Queries.BuscarTarefaPorID(r.Context(), sqlc.BuscarTarefaPorIDParams{ID: tID, SetorID: user.Setor})
 	if err != nil {
 		response.JSONError(w, http.StatusNotFound, "tarefa não encontrada")
 		return
@@ -322,7 +327,7 @@ func (h *TarefaHandler) AtualizarStatus(w http.ResponseWriter, r *http.Request) 
 		respStr = database.UUIDToString(tarefa.ResponsavelID)
 	}
 
-	podeEditar := (user.Papel == "admin") || (criadorStr == user.ID) || (respStr == user.ID)
+	podeEditar := (user.EhAdmin()) || (criadorStr == user.ID) || (respStr == user.ID)
 	if !podeEditar {
 		response.JSONError(w, http.StatusForbidden, "permissão negada para alterar o status desta tarefa")
 		return
@@ -377,14 +382,14 @@ func (h *TarefaHandler) Deletar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tarefa, err := h.db.Queries.BuscarTarefaPorID(r.Context(), tID)
+	tarefa, err := h.db.Queries.BuscarTarefaPorID(r.Context(), sqlc.BuscarTarefaPorIDParams{ID: tID, SetorID: user.Setor})
 	if err != nil {
 		response.JSONError(w, http.StatusNotFound, "tarefa não encontrada")
 		return
 	}
 
 	criadorStr := database.UUIDToString(tarefa.CriadoPor)
-	podeExcluir := (user.Papel == "admin") || (criadorStr == user.ID)
+	podeExcluir := (user.EhAdmin()) || (criadorStr == user.ID)
 	if !podeExcluir {
 		response.JSONError(w, http.StatusForbidden, "apenas o criador ou administrador podem excluir esta tarefa")
 		return
@@ -442,7 +447,7 @@ func (h *TarefaHandler) ListarComentarios(w http.ResponseWriter, r *http.Request
 	result := make([]ComentarioResponse, 0, len(comentarios))
 	for _, c := range comentarios {
 		uID := database.UUIDToString(c.UsuarioID)
-		podeExcluir := (user.Papel == "admin") || (uID == user.ID)
+		podeExcluir := (user.EhAdmin()) || (uID == user.ID)
 		result = append(result, ComentarioResponse{
 			ID:          database.UUIDToString(c.ID),
 			TarefaID:    database.UUIDToString(c.TarefaID),
@@ -538,6 +543,11 @@ func (h *TarefaHandler) DeletarComentario(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if _, err := h.db.Queries.BuscarTarefaPorID(r.Context(), sqlc.BuscarTarefaPorIDParams{ID: tID, SetorID: user.Setor}); err != nil {
+		response.JSONError(w, http.StatusNotFound, "tarefa não encontrada")
+		return
+	}
+
 	c, err := h.db.Queries.BuscarComentarioPorID(r.Context(), cID)
 	if err != nil || c.TarefaID != tID {
 		response.JSONError(w, http.StatusNotFound, "comentário não encontrado")
@@ -545,7 +555,7 @@ func (h *TarefaHandler) DeletarComentario(w http.ResponseWriter, r *http.Request
 	}
 
 	uID := database.UUIDToString(c.UsuarioID)
-	if user.Papel != "admin" && uID != user.ID {
+	if !user.EhAdmin() && uID != user.ID {
 		response.JSONError(w, http.StatusForbidden, "apenas o autor ou administrador pode excluir este comentário")
 		return
 	}
@@ -558,13 +568,30 @@ func (h *TarefaHandler) DeletarComentario(w http.ResponseWriter, r *http.Request
 	response.JSON(w, http.StatusOK, map[string]string{"message": "comentário excluído com sucesso"})
 }
 
-// podeVerTarefa: admin vê qualquer tarefa; operador só as que criou ou das quais é responsável
+// responsavelDoSetor valida o responsável escolhido: precisa ser um operador
+// ativo do setor da tarefa (vazio = sem responsável)
+func (h *TarefaHandler) responsavelDoSetor(r *http.Request, user *middleware.AuthUser, id *string) (pgtype.UUID, error) {
+	if id == nil || *id == "" {
+		return pgtype.UUID{}, nil
+	}
+	uID, err := database.StringToUUID(*id)
+	if err != nil {
+		return pgtype.UUID{}, errors.New("responsável inválido")
+	}
+	noSetor, err := h.db.Queries.UsuarioAtivoNoSetor(r.Context(), sqlc.UsuarioAtivoNoSetorParams{ID: uID, SetorID: user.Setor})
+	if err != nil || !noSetor {
+		return pgtype.UUID{}, errors.New("o responsável precisa ser um operador ativo deste setor")
+	}
+	return uID, nil
+}
+
+// podeVerTarefa: admin vê qualquer tarefa do setor; operador só as que criou ou das quais é responsável
 func (h *TarefaHandler) podeVerTarefa(r *http.Request, user *middleware.AuthUser, tID pgtype.UUID) bool {
-	t, err := h.db.Queries.BuscarTarefaPorID(r.Context(), tID)
+	t, err := h.db.Queries.BuscarTarefaPorID(r.Context(), sqlc.BuscarTarefaPorIDParams{ID: tID, SetorID: user.Setor})
 	if err != nil {
 		return false
 	}
-	if user.Papel == "admin" || database.UUIDToString(t.CriadoPor) == user.ID {
+	if user.EhAdmin() || database.UUIDToString(t.CriadoPor) == user.ID {
 		return true
 	}
 	return t.ResponsavelID.Valid && database.UUIDToString(t.ResponsavelID) == user.ID

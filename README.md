@@ -8,6 +8,8 @@ Aplicação web interna para uso de equipe em rede local (LAN), englobando:
 5. **Acesso PDV**: Terminal com seleção visual de operador e PIN numérico de 4 dígitos.
 6. **Monitor**: Disponibilidade de hosts e serviços (ping, porta TCP, HTTP) verificada pelo servidor, com histórico de quedas e abertura opcional de ticket.
 7. **Links úteis**: Endereços de sistemas, painéis e documentação da equipe, por categoria.
+8. **Modo TV**: Telão do NOC em `/tv` com o estado dos monitores, tickets aguardando, plantão do dia e avisos, atualizado sozinho. Abre com a sessão de um operador ou, sem login, pelo link de uma tela cadastrada pelo admin em *Monitor → Telas de TV* (chave só de leitura, revogável).
+9. **Setores**: Cada operador pertence a um setor (NOC, Agendamento...) e só vê tickets, tarefas, calendário, plantão, procedimentos, avisos, links e telas de TV do próprio setor; monitor, estoque e técnicos são compartilhados. O admin gerencia só o próprio setor; o **superadmin** cria setores em *Operadores → Setores*, move pessoas entre eles e troca o setor que está vendo na barra lateral. Na tela de acesso, quem abre ticket ou usa o tira-dúvidas escolhe o setor (se só um recebe pedidos, a escolha nem aparece).
 
 ---
 

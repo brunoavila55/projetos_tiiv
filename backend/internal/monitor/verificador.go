@@ -173,6 +173,7 @@ func abrirQueda(ctx context.Context, q *sqlc.Queries, m sqlc.Monitores, erro str
 			m.Nome, m.Tipo, m.Alvo, time.Now().In(fusoSP).Format("02/01/2006 15:04"), erro,
 		),
 		Prioridade: "alta",
+		SetorID:    m.SetorTicketID,
 	})
 	if err != nil {
 		return err

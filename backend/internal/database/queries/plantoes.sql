@@ -4,11 +4,11 @@ SELECT
     u.nome AS usuario_nome, u.cor AS usuario_cor
 FROM plantoes p
 JOIN usuarios u ON u.id = p.usuario_id
-WHERE p.fim >= sqlc.arg(de)::date AND p.inicio <= sqlc.arg(ate)::date
+WHERE p.setor_id = sqlc.arg(setor_id) AND p.fim >= sqlc.arg(de)::date AND p.inicio <= sqlc.arg(ate)::date
 ORDER BY p.inicio, p.tipo, u.nome;
 
 -- name: ObterPlantao :one
-SELECT * FROM plantoes WHERE id = $1;
+SELECT * FROM plantoes WHERE id = $1 AND setor_id = $2;
 
 -- name: TravarEscala :exec
 -- Serializa as gravações da escala para a checagem de conflito valer
@@ -28,8 +28,8 @@ ORDER BY p.inicio
 LIMIT 1;
 
 -- name: CriarPlantao :one
-INSERT INTO plantoes (usuario_id, tipo, inicio, fim, observacao, criado_por)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO plantoes (usuario_id, tipo, inicio, fim, observacao, criado_por, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: AtualizarPlantao :one
@@ -44,6 +44,6 @@ DELETE FROM plantoes WHERE id = $1;
 -- name: ProximoPlantaoUsuario :one
 -- Turno em andamento ou o próximo da pessoa
 SELECT id, tipo, inicio, fim FROM plantoes
-WHERE usuario_id = sqlc.arg(usuario_id) AND fim >= sqlc.arg(dia)::date
+WHERE usuario_id = sqlc.arg(usuario_id) AND setor_id = sqlc.arg(setor_id) AND fim >= sqlc.arg(dia)::date
 ORDER BY inicio
 LIMIT 1;

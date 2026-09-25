@@ -133,7 +133,7 @@
 
 	async function carregarUsuarios() {
 		try {
-			usuarios = await apiFetch<UsuarioPublico[]>('/api/auth/usuarios');
+			usuarios = await apiFetch<UsuarioPublico[]>('/api/equipe');
 		} catch (err) {
 			console.error('Erro ao carregar usuários:', err);
 		}
@@ -252,7 +252,7 @@
 		<div>
 			<h1 class="page-title">Tarefas</h1>
 			<p class="page-sub">
-				{auth.user?.papel === 'admin'
+				{auth.ehAdmin
 					? 'Pendências da equipe, com prioridade, prazo e responsável.'
 					: 'Tarefas que você criou ou pelas quais é responsável.'}
 			</p>
