@@ -1,15 +1,16 @@
 # TIIV — Aplicação Interna do Setor
 
 Aplicação web interna para uso de equipe em rede local (LAN), englobando:
-1. **Calendário**: Reuniões e eventos entre membros da equipe, e a escala de plantão/sobreaviso (turnos avulsos ou em rodízio; quem está de plantão hoje aparece no painel).
-2. **Tarefas**: Gestão de pendências com status, prioridade e responsáveis.
-3. **Estoque**: Controle material baseado em movimentações transacionais (entrada/saída/ajuste).
-4. **Técnicos**: Cadastro de técnicos, marcação de entrada/saída e relatório de horas.
-5. **Acesso PDV**: Terminal com seleção visual de operador e PIN numérico de 4 dígitos.
-6. **Monitor**: Disponibilidade de hosts e serviços (ping, porta TCP, HTTP) verificada pelo servidor, com histórico de quedas e abertura opcional de ticket.
-7. **Links úteis**: Endereços de sistemas, painéis e documentação da equipe, por categoria.
-8. **Modo TV**: Telão do NOC em `/tv` com o estado dos monitores, tickets aguardando, plantão do dia e avisos, atualizado sozinho. Abre com a sessão de um operador ou, sem login, pelo link de uma tela cadastrada pelo admin em *Monitor → Telas de TV* (chave só de leitura, revogável).
-9. **Setores**: Cada operador pertence a um setor (NOC, Agendamento...) e só vê tickets, tarefas, calendário, plantão, procedimentos, avisos, links e telas de TV do próprio setor; monitor, estoque e técnicos são compartilhados. O admin gerencia só o próprio setor; o **superadmin** cria setores em *Operadores → Setores*, move pessoas entre eles e troca o setor que está vendo na barra lateral. Na tela de acesso, quem abre ticket ou usa o tira-dúvidas escolhe o setor (se só um recebe pedidos, a escolha nem aparece).
+1. **Calendário**: Reuniões e eventos entre membros da equipe.
+2. **Plantão**: Escala de plantão/sobreaviso em módulo próprio (`/plantao`). Quem fica escalado é só um nome, sem precisar ser usuário do sistema. Ao escalar alguém dá para marcar também a folga da pessoa, que costuma vir antes do plantão (ex.: folga na quinta, plantão no domingo; no rodízio, um dia de folga tantos dias antes de cada turno); ninguém é escalado na própria folga. Tem um resumo (quem está agora, próximas trocas, dias sem cobertura e dias por pessoa), o calendário da escala (turnos avulsos ou em rodízio, montados pelo admin) e um modo TV em `/plantao/tv`, aberto pela sessão ou pelo link de uma tela cadastrada (a mesma chave do modo TV do NOC).
+3. **Tarefas**: Gestão de pendências com status, prioridade e responsáveis.
+4. **Estoque**: Controle material baseado em movimentações transacionais (entrada/saída/ajuste).
+5. **Técnicos**: Cadastro de técnicos, marcação de entrada/saída e relatório de horas.
+6. **Acesso PDV**: Terminal com seleção visual de operador e PIN numérico de 4 dígitos.
+7. **Monitor**: Disponibilidade de hosts e serviços (ping, porta TCP, HTTP) verificada pelo servidor, com histórico de quedas e abertura opcional de ticket.
+8. **Links úteis**: Endereços de sistemas, painéis e documentação da equipe, por categoria.
+9. **Modo TV**: Telão do NOC em `/tv` com o estado dos monitores, tickets aguardando, plantão do dia e avisos, atualizado sozinho. Abre com a sessão de um operador ou, sem login, pelo link de uma tela cadastrada pelo admin em *Monitor → Telas de TV* (chave só de leitura, revogável).
+10. **Setores**: Cada operador pertence a um setor (NOC, Agendamento...) e só vê tickets, tarefas, calendário, plantão, procedimentos, avisos, links e telas de TV do próprio setor; monitor, estoque e técnicos são compartilhados. O admin gerencia só o próprio setor; o **superadmin** cria setores em *Operadores → Setores*, move pessoas entre eles e troca o setor que está vendo na barra lateral. Na tela de acesso, quem abre ticket ou usa o tira-dúvidas escolhe o setor (se só um recebe pedidos, a escolha nem aparece).
 
 ---
 

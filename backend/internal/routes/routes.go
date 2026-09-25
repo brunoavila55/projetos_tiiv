@@ -83,6 +83,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 		// Modo TV: chave da tela (X-TV-Chave) ou sessão de operador
 		api.With(authMiddleware.OptionalAuth).Get("/tv/painel", tvHandler.Painel)
+		api.With(authMiddleware.OptionalAuth).Get("/tv/plantao", tvHandler.Plantao)
 
 		api.Route("/auth", func(auth chi.Router) {
 			auth.Get("/usuarios", authHandler.ListarUsuariosPublico)
@@ -170,9 +171,10 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 				e.Delete("/{id}", eventoHandler.Deletar)
 			})
 
-			// Escala de plantão (montagem só admin)
+			// Plantão: escala por nome (montagem só admin)
 			protected.Route("/plantoes", func(p chi.Router) {
 				p.Get("/", plantaoHandler.Listar)
+				p.Get("/pessoas", plantaoHandler.Pessoas)
 
 				p.Group(func(adminPl chi.Router) {
 					adminPl.Use(authMiddleware.RequireAdmin)

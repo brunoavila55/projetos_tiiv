@@ -1,11 +1,11 @@
 -- name: ListarPlantoesIntervalo :many
-SELECT
-    p.id, p.usuario_id, p.tipo, p.inicio, p.fim, p.observacao,
-    u.nome AS usuario_nome, u.cor AS usuario_cor
-FROM plantoes p
-JOIN usuarios u ON u.id = p.usuario_id
-WHERE p.setor_id = sqlc.arg(setor_id) AND p.fim >= sqlc.arg(de)::date AND p.inicio <= sqlc.arg(ate)::date
-ORDER BY p.inicio, p.tipo, u.nome;
+-- Turnos que caem no intervalo, pelo turno ou pela folga
+SELECT id, nome, tipo, inicio, fim, observacao, folga_inicio, folga_fim
+FROM plantoes
+WHERE setor_id = sqlc.arg(setor_id)
+  AND ((fim >= sqlc.arg(de)::date AND inicio <= sqlc.arg(ate)::date)
+    OR (folga_fim >= sqlc.arg(de)::date AND folga_inicio <= sqlc.arg(ate)::date))
+ORDER BY inicio, tipo, nome;
 
 -- name: ObterPlantao :one
 SELECT * FROM plantoes WHERE id = $1 AND setor_id = $2;
@@ -15,35 +15,60 @@ SELECT * FROM plantoes WHERE id = $1 AND setor_id = $2;
 SELECT pg_advisory_xact_lock(hashtext('tiiv_plantoes'));
 
 -- name: BuscarConflitoPlantao :one
--- A mesma pessoa não pode ter dois turnos do mesmo tipo sobrepostos
-SELECT p.inicio, p.fim, u.nome AS usuario_nome
-FROM plantoes p
-JOIN usuarios u ON u.id = p.usuario_id
-WHERE p.usuario_id = sqlc.arg(usuario_id)
-  AND p.tipo = sqlc.arg(tipo)
-  AND p.fim >= sqlc.arg(inicio)::date
-  AND p.inicio <= sqlc.arg(fim)::date
-  AND (sqlc.narg(ignorar_id)::uuid IS NULL OR p.id <> sqlc.narg(ignorar_id))
-ORDER BY p.inicio
+-- A mesma pessoa (pelo nome, sem diferenciar maiúsculas) não pode ter dois
+-- turnos do mesmo tipo sobrepostos no setor
+SELECT inicio, fim, nome
+FROM plantoes
+WHERE setor_id = sqlc.arg(setor_id)
+  AND lower(nome) = lower(sqlc.arg(nome))
+  AND tipo = sqlc.arg(tipo)
+  AND fim >= sqlc.arg(inicio)::date
+  AND inicio <= sqlc.arg(fim)::date
+  AND (sqlc.narg(ignorar_id)::uuid IS NULL OR id <> sqlc.narg(ignorar_id))
+ORDER BY inicio
+LIMIT 1;
+
+-- name: BuscarConflitoFolga :one
+-- Ninguém trabalha na própria folga: nem turno novo sobre uma folga já
+-- marcada, nem folga nova sobre um turno já marcado (de qualquer tipo)
+SELECT inicio, fim, folga_inicio, folga_fim, tipo
+FROM plantoes
+WHERE setor_id = sqlc.arg(setor_id)
+  AND lower(nome) = lower(sqlc.arg(nome))
+  AND (sqlc.narg(ignorar_id)::uuid IS NULL OR id <> sqlc.narg(ignorar_id))
+  AND (
+    (folga_inicio IS NOT NULL AND folga_fim >= sqlc.arg(inicio)::date AND folga_inicio <= sqlc.arg(fim)::date)
+    OR (sqlc.narg(nova_folga_inicio)::date IS NOT NULL
+        AND fim >= sqlc.narg(nova_folga_inicio)::date AND inicio <= sqlc.narg(nova_folga_fim)::date)
+  )
+ORDER BY inicio
 LIMIT 1;
 
 -- name: CriarPlantao :one
-INSERT INTO plantoes (usuario_id, tipo, inicio, fim, observacao, criado_por, setor_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO plantoes (nome, tipo, inicio, fim, observacao, folga_inicio, folga_fim, criado_por, setor_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: AtualizarPlantao :one
 UPDATE plantoes
-SET usuario_id = $2, tipo = $3, inicio = $4, fim = $5, observacao = $6, atualizado_em = now()
+SET nome = $2, tipo = $3, inicio = $4, fim = $5, observacao = $6,
+    folga_inicio = $7, folga_fim = $8, atualizado_em = now()
 WHERE id = $1
 RETURNING *;
 
 -- name: DeletarPlantao :exec
 DELETE FROM plantoes WHERE id = $1;
 
--- name: ProximoPlantaoUsuario :one
--- Turno em andamento ou o próximo da pessoa
-SELECT id, tipo, inicio, fim FROM plantoes
-WHERE usuario_id = sqlc.arg(usuario_id) AND setor_id = sqlc.arg(setor_id) AND fim >= sqlc.arg(dia)::date
+-- name: ListarPessoasPlantao :many
+-- Nomes já usados na escala do setor, para sugerir ao montar turnos
+SELECT DISTINCT ON (lower(nome)) nome
+FROM plantoes
+WHERE setor_id = $1
+ORDER BY lower(nome), criado_em DESC;
+
+-- name: ProximoPlantaoPorNome :one
+-- Turno em andamento ou o próximo de quem tem este nome na escala
+SELECT id, nome, tipo, inicio, fim, observacao, folga_inicio, folga_fim FROM plantoes
+WHERE setor_id = sqlc.arg(setor_id) AND lower(nome) = lower(sqlc.arg(nome)) AND fim >= sqlc.arg(dia)::date
 ORDER BY inicio
 LIMIT 1;

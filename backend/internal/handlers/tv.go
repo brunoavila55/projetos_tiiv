@@ -203,7 +203,7 @@ func (h *TVHandler) Painel(w http.ResponseWriter, r *http.Request) {
 	// 3. Quem está de plantão hoje
 	hoje := hojeSaoPaulo()
 	if lista, err := listarPlantoes(ctx, q, tela.setor, hoje, hoje); err == nil {
-		res.PlantaoHoje = lista
+		res.PlantaoHoje = escaladosNoDia(lista, hoje)
 	}
 
 	// 4. Mural de avisos
@@ -308,4 +308,37 @@ func (h *TVHandler) DeletarTela(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Dias de escala que a TV do plantão mostra a partir de hoje
+const diasEscalaNaTV = 28
+
+type TVPlantaoResponse struct {
+	Tela          string            `json:"tela"`
+	Setor         string            `json:"setor"`
+	AgoraServidor string            `json:"agora_servidor"`
+	Hoje          string            `json:"hoje"`
+	Escala        []PlantaoResponse `json:"escala"`
+}
+
+// Plantao: GET /api/tv/plantao (chave da tela no cabeçalho X-TV-Chave, ou sessão).
+// Escala do setor de hoje até quatro semanas à frente, para o telão do plantão.
+func (h *TVHandler) Plantao(w http.ResponseWriter, r *http.Request) {
+	tela, ok := h.autorizarPainel(w, r)
+	if !ok {
+		return
+	}
+	hoje := hojeSaoPaulo()
+	escala, err := listarPlantoes(r.Context(), h.db.Queries, tela.setor, hoje, hoje.AddDate(0, 0, diasEscalaNaTV-1))
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao listar a escala")
+		return
+	}
+	response.JSON(w, http.StatusOK, TVPlantaoResponse{
+		Tela:          tela.nome,
+		Setor:         tela.setorNome,
+		AgoraServidor: time.Now().Format(time.RFC3339),
+		Hoje:          hoje.Format(formatoDia),
+		Escala:        escala,
+	})
 }

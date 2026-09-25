@@ -121,7 +121,6 @@ type MovimentacoesEstoque struct {
 
 type Plantoes struct {
 	ID           pgtype.UUID        `json:"id"`
-	UsuarioID    pgtype.UUID        `json:"usuario_id"`
 	Tipo         string             `json:"tipo"`
 	Inicio       pgtype.Date        `json:"inicio"`
 	Fim          pgtype.Date        `json:"fim"`
@@ -130,6 +129,9 @@ type Plantoes struct {
 	CriadoEm     pgtype.Timestamptz `json:"criado_em"`
 	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
 	SetorID      pgtype.UUID        `json:"setor_id"`
+	Nome         string             `json:"nome"`
+	FolgaInicio  pgtype.Date        `json:"folga_inicio"`
+	FolgaFim     pgtype.Date        `json:"folga_fim"`
 }
 
 type ProcedimentoRevisoes struct {

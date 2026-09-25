@@ -27,7 +27,8 @@
 		Activity,
 		Link,
 		Tv,
-		Building2
+		Building2,
+		ShieldCheck
 	} from 'lucide-svelte';
 
 	let mobileMenuOpen = $state(false);
@@ -70,6 +71,7 @@
 		{ href: '/tickets', label: 'Tickets', icon: Inbox },
 		{ href: '/tarefas', label: 'Tarefas', icon: CheckSquare },
 		{ href: '/calendario', label: 'Calendário', icon: Calendar },
+		{ href: '/plantao', label: 'Plantão', icon: ShieldCheck },
 		{ href: '/estoque', label: 'Estoque', icon: Package },
 		{ href: '/tecnicos', label: 'Técnicos', icon: HardHat },
 		{ href: '/monitor', label: 'Monitor', icon: Activity },

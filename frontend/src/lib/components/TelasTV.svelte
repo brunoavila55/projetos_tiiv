@@ -23,7 +23,7 @@
 	let nome = $state('');
 	let salvando = $state(false);
 	// Link da tela recém-criada: a chave só aparece uma vez
-	let linkNovo = $state<{ nome: string; url: string } | null>(null);
+	let linkNovo = $state<{ nome: string; links: { rotulo: string; url: string }[] } | null>(null);
 
 	async function carregar() {
 		try {
@@ -42,7 +42,14 @@
 		salvando = true;
 		try {
 			const t = await apiFetch<TelaTV>('/api/tv/telas', { method: 'POST', body: JSON.stringify({ nome: nome.trim() }) });
-			linkNovo = { nome: t.nome, url: `${location.origin}/tv#chave=${t.chave}` };
+			// A mesma chave abre o painel do NOC e a TV do plantão
+			linkNovo = {
+				nome: t.nome,
+				links: [
+					{ rotulo: 'Painel do NOC', url: `${location.origin}/tv#chave=${t.chave}` },
+					{ rotulo: 'Plantão', url: `${location.origin}/plantao/tv#chave=${t.chave}` }
+				]
+			};
 			nome = '';
 			await carregar();
 		} catch {
@@ -79,7 +86,7 @@
 		return `Último acesso ${quando}${t.ultimo_ip ? ` · ${t.ultimo_ip}` : ''}`;
 	}
 
-	let campoLink = $state<HTMLInputElement>();
+	let camposLink = $state<HTMLInputElement[]>([]);
 </script>
 
 <div class="modal-backdrop">
@@ -99,23 +106,28 @@
 		<div class="modal-body">
 			{#if linkNovo}
 				<div class="rounded-xl border border-accent bg-accent-soft p-4 space-y-2">
-					<p class="text-sm font-semibold text-ink">Link da tela "{linkNovo.nome}"</p>
+					<p class="text-sm font-semibold text-ink">Links da tela "{linkNovo.nome}"</p>
 					<p class="text-xs text-ink-2">
-						Abra este link no navegador da TV. Ele aparece só agora: se perder, revogue a tela e cadastre outra.
+						Abra no navegador da TV o link do que ela vai mostrar. Eles aparecem só agora: se perder, revogue a tela e cadastre outra.
 					</p>
-					<div class="flex gap-2">
-						<input
-							bind:this={campoLink}
-							type="text"
-							readonly
-							value={linkNovo.url}
-							class="field field-sm font-mono text-xs"
-							onfocus={(e) => e.currentTarget.select()}
-						/>
-						<button onclick={() => campoLink && copiar(campoLink)} class="btn btn-primary btn-sm shrink-0">
-							<Copy class="size-4" /> Copiar
-						</button>
-					</div>
+					{#each linkNovo.links as l, i (l.url)}
+						<div>
+							<p class="text-xs font-semibold text-ink-2 mb-1">{l.rotulo}</p>
+							<div class="flex gap-2">
+								<input
+									bind:this={camposLink[i]}
+									type="text"
+									readonly
+									value={l.url}
+									class="field field-sm font-mono text-xs"
+									onfocus={(e) => e.currentTarget.select()}
+								/>
+								<button onclick={() => camposLink[i] && copiar(camposLink[i])} class="btn btn-primary btn-sm shrink-0">
+									<Copy class="size-4" /> Copiar
+								</button>
+							</div>
+						</div>
+					{/each}
 				</div>
 			{/if}
 

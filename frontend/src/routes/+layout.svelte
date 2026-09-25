@@ -30,7 +30,7 @@
 </svelte:head>
 
 <!-- Modo TV: tela própria, sem menu e sem exigir login (usa a chave da tela) -->
-{#if page.url.pathname === '/tv'}
+{#if page.url.pathname === '/tv' || page.url.pathname === '/plantao/tv'}
 	{@render children()}
 {:else if auth.loading}
 	<div class="min-h-screen bg-paper flex items-center justify-center">

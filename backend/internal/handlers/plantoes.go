@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -18,8 +19,10 @@ import (
 	"tiiv/backend/internal/response"
 )
 
-// Escala de plantão e sobreaviso: toda a equipe vê (no calendário e no painel);
-// só admin monta, avulsa ou em rodízio. Datas por dia, fim inclusivo.
+// Escala de plantão e sobreaviso: módulo próprio (calendário, dash e modo TV),
+// que toda a equipe vê; só admin monta, avulsa ou em rodízio. Quem fica
+// escalado é só um nome em texto livre, não precisa ser usuário do sistema.
+// Datas por dia, fim inclusivo.
 type PlantaoHandler struct {
 	db *database.DB
 }
@@ -33,34 +36,41 @@ const (
 	// Limites do rodízio: até 2 anos de escala gerados de uma vez
 	maxTurnosRodizio = 104
 	maxDiasRodizio   = 730
+	maxDiasFolga     = 31
 )
 
 type PlantaoRequest struct {
-	UsuarioID  string `json:"usuario_id"`
+	Nome       string `json:"nome"`
 	Tipo       string `json:"tipo"`
 	Inicio     string `json:"inicio"`
 	Fim        string `json:"fim"`
 	Observacao string `json:"observacao"`
+	// Folga opcional da pessoa; sem fim, é um dia só
+	FolgaInicio string `json:"folga_inicio"`
+	FolgaFim    string `json:"folga_fim"`
 }
 
 type RodizioRequest struct {
-	Usuarios     []string `json:"usuarios"`
+	Pessoas      []string `json:"pessoas"`
 	Tipo         string   `json:"tipo"`
 	Inicio       string   `json:"inicio"`
 	DiasPorTurno int      `json:"dias_por_turno"`
 	Turnos       int      `json:"turnos"`
 	Observacao   string   `json:"observacao"`
+	// Folga de um dia, tantos dias antes do começo de cada turno (0 = sem
+	// folga). Ex.: plantão no domingo com 3 → folga na quinta.
+	FolgaDiasAntes int `json:"folga_dias_antes"`
 }
 
 type PlantaoResponse struct {
-	ID          string `json:"id"`
-	UsuarioID   string `json:"usuario_id"`
-	UsuarioNome string `json:"usuario_nome"`
-	UsuarioCor  string `json:"usuario_cor"`
-	Tipo        string `json:"tipo"`
-	Inicio      string `json:"inicio"`
-	Fim         string `json:"fim"`
-	Observacao  string `json:"observacao"`
+	ID          string  `json:"id"`
+	Nome        string  `json:"nome"`
+	Tipo        string  `json:"tipo"`
+	Inicio      string  `json:"inicio"`
+	Fim         string  `json:"fim"`
+	Observacao  string  `json:"observacao"`
+	FolgaInicio *string `json:"folga_inicio"`
+	FolgaFim    *string `json:"folga_fim"`
 }
 
 // PainelPlantaoResponse vai no GET /api/painel
@@ -71,12 +81,31 @@ type PainelPlantaoResponse struct {
 
 // turno é um plantão validado, pronto para gravar
 type turno struct {
-	usuarioID  pgtype.UUID
 	nome       string
 	tipo       string
 	inicio     time.Time
 	fim        time.Time
 	observacao string
+	// Folga opcional; zero quando não há
+	folgaInicio time.Time
+	folgaFim    time.Time
+}
+
+func (t turno) temFolga() bool { return !t.folgaInicio.IsZero() }
+
+func dateOpcional(t time.Time) pgtype.Date {
+	if t.IsZero() {
+		return pgtype.Date{}
+	}
+	return paraDate(t)
+}
+
+func diaOpcional(d pgtype.Date) *string {
+	if !d.Valid {
+		return nil
+	}
+	s := d.Time.Format(formatoDia)
+	return &s
 }
 
 var errConflitoEscala = errors.New("conflito na escala")
@@ -119,29 +148,19 @@ func validarTipoPlantao(tipo string) (string, error) {
 	return tipo, nil
 }
 
-// usuarioEscalavel confere se o operador existe, está ativo e é do setor
-func (h *PlantaoHandler) usuarioEscalavel(ctx context.Context, setor pgtype.UUID, id string) (pgtype.UUID, string, error) {
-	uID, err := database.StringToUUID(id)
-	if err != nil {
-		return uID, "", errors.New("operador inválido")
-	}
-	u, err := h.db.Queries.BuscarUsuarioPorID(ctx, uID)
-	if err != nil || !u.Ativo {
-		return uID, "", errors.New("operador não encontrado ou inativo")
-	}
-	if u.SetorID != setor {
-		return uID, "", fmt.Errorf("%s não é deste setor", u.Nome)
-	}
-	return uID, u.Nome, nil
+// validarNomePlantao junta espaços repetidos, para "Ana  Paula" e
+// "Ana Paula" serem a mesma pessoa na checagem de conflito
+func validarNomePlantao(nome string) (string, error) {
+	return validarTexto(strings.Join(strings.Fields(nome), " "), "nome de quem fica de plantão", true, 80)
 }
 
-func (h *PlantaoHandler) validarPlantao(ctx context.Context, setor pgtype.UUID, req PlantaoRequest) (turno, error) {
+func validarPlantao(req PlantaoRequest) (turno, error) {
 	var t turno
 	var err error
 	if t.tipo, err = validarTipoPlantao(req.Tipo); err != nil {
 		return t, err
 	}
-	if t.usuarioID, t.nome, err = h.usuarioEscalavel(ctx, setor, req.UsuarioID); err != nil {
+	if t.nome, err = validarNomePlantao(req.Nome); err != nil {
 		return t, err
 	}
 	if t.inicio, err = parseDia(req.Inicio, "dia de início"); err != nil {
@@ -158,8 +177,70 @@ func (h *PlantaoHandler) validarPlantao(ctx context.Context, setor pgtype.UUID, 
 	if t.fim.Sub(t.inicio) > maxDiasRodizio*24*time.Hour {
 		return t, errors.New("um turno não pode passar de 2 anos")
 	}
-	t.observacao, err = validarTexto(req.Observacao, "observação", false, 300)
-	return t, err
+	if t.observacao, err = validarTexto(req.Observacao, "observação", false, 300); err != nil {
+		return t, err
+	}
+
+	if req.FolgaInicio == "" {
+		return t, nil
+	}
+	if t.folgaInicio, err = parseDia(req.FolgaInicio, "primeiro dia de folga"); err != nil {
+		return t, err
+	}
+	if req.FolgaFim == "" {
+		t.folgaFim = t.folgaInicio
+	} else if t.folgaFim, err = parseDia(req.FolgaFim, "último dia de folga"); err != nil {
+		return t, err
+	}
+	if t.folgaFim.Before(t.folgaInicio) {
+		return t, errors.New("o último dia de folga não pode ser anterior ao primeiro")
+	}
+	if t.folgaFim.Sub(t.folgaInicio) >= maxDiasFolga*24*time.Hour {
+		return t, fmt.Errorf("a folga pode ter no máximo %d dias", maxDiasFolga)
+	}
+	if !t.folgaFim.Before(t.inicio) && !t.folgaInicio.After(t.fim) {
+		return t, errors.New("a folga não pode cair nos dias do próprio turno")
+	}
+	return t, nil
+}
+
+// conferirTurno barra turno do mesmo tipo sobreposto e trabalho em dia de
+// folga da pessoa; no conflito devolve errConflitoEscala e a mensagem.
+func conferirTurno(ctx context.Context, q *sqlc.Queries, setor pgtype.UUID, t turno, ignorarID pgtype.UUID) (string, error) {
+	c, err := q.BuscarConflitoPlantao(ctx, sqlc.BuscarConflitoPlantaoParams{
+		SetorID:   setor,
+		Nome:      t.nome,
+		Tipo:      t.tipo,
+		Inicio:    paraDate(t.inicio),
+		Fim:       paraDate(t.fim),
+		IgnorarID: ignorarID,
+	})
+	if err == nil {
+		return fmt.Sprintf("%s já está de %s de %s a %s", c.Nome, rotuloTipoPlantao(t.tipo), diaCurto(c.Inicio), diaCurto(c.Fim)), errConflitoEscala
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", err
+	}
+
+	f, err := q.BuscarConflitoFolga(ctx, sqlc.BuscarConflitoFolgaParams{
+		SetorID:         setor,
+		Nome:            t.nome,
+		IgnorarID:       ignorarID,
+		Inicio:          paraDate(t.inicio),
+		Fim:             paraDate(t.fim),
+		NovaFolgaInicio: dateOpcional(t.folgaInicio),
+		NovaFolgaFim:    dateOpcional(t.folgaFim),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if f.FolgaInicio.Valid && !f.FolgaFim.Time.Before(t.inicio) && !f.FolgaInicio.Time.After(t.fim) {
+		return fmt.Sprintf("%s está de folga de %s a %s", t.nome, diaCurto(f.FolgaInicio), diaCurto(f.FolgaFim)), errConflitoEscala
+	}
+	return fmt.Sprintf("a folga de %s cai no %s de %s a %s", t.nome, rotuloTipoPlantao(f.Tipo), diaCurto(f.Inicio), diaCurto(f.Fim)), errConflitoEscala
 }
 
 // gravarTurnos grava tudo ou nada; um conflito devolve errConflitoEscala
@@ -175,32 +256,22 @@ func (h *PlantaoHandler) gravarTurnos(ctx context.Context, setor pgtype.UUID, tu
 	if err := q.TravarEscala(ctx); err != nil {
 		return "", err
 	}
+	// Confere e grava um a um: os turnos do mesmo rodízio também se checam
 	for _, t := range turnos {
-		c, err := q.BuscarConflitoPlantao(ctx, sqlc.BuscarConflitoPlantaoParams{
-			UsuarioID: t.usuarioID,
-			Tipo:      t.tipo,
-			Inicio:    paraDate(t.inicio),
-			Fim:       paraDate(t.fim),
-			IgnorarID: atualizarID,
-		})
-		if err == nil {
-			return fmt.Sprintf("%s já está de %s de %s a %s", c.UsuarioNome, rotuloTipoPlantao(t.tipo), diaCurto(c.Inicio), diaCurto(c.Fim)), errConflitoEscala
+		if msg, err := conferirTurno(ctx, q, setor, t, atualizarID); err != nil {
+			return msg, err
 		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return "", err
-		}
-	}
-
-	for _, t := range turnos {
 		if atualizarID.Valid {
 			_, err = q.AtualizarPlantao(ctx, sqlc.AtualizarPlantaoParams{
-				ID: atualizarID, UsuarioID: t.usuarioID, Tipo: t.tipo,
+				ID: atualizarID, Nome: t.nome, Tipo: t.tipo,
 				Inicio: paraDate(t.inicio), Fim: paraDate(t.fim), Observacao: t.observacao,
+				FolgaInicio: dateOpcional(t.folgaInicio), FolgaFim: dateOpcional(t.folgaFim),
 			})
 		} else {
 			_, err = q.CriarPlantao(ctx, sqlc.CriarPlantaoParams{
-				UsuarioID: t.usuarioID, Tipo: t.tipo,
+				Nome: t.nome, Tipo: t.tipo,
 				Inicio: paraDate(t.inicio), Fim: paraDate(t.fim), Observacao: t.observacao,
+				FolgaInicio: dateOpcional(t.folgaInicio), FolgaFim: dateOpcional(t.folgaFim),
 				CriadoPor: criadoPor, SetorID: setor,
 			})
 		}
@@ -214,14 +285,27 @@ func (h *PlantaoHandler) gravarTurnos(ctx context.Context, setor pgtype.UUID, tu
 func paraPlantaoResponse(p sqlc.ListarPlantoesIntervaloRow) PlantaoResponse {
 	return PlantaoResponse{
 		ID:          database.UUIDToString(p.ID),
-		UsuarioID:   database.UUIDToString(p.UsuarioID),
-		UsuarioNome: p.UsuarioNome,
-		UsuarioCor:  p.UsuarioCor,
+		Nome:        p.Nome,
 		Tipo:        p.Tipo,
 		Inicio:      p.Inicio.Time.Format(formatoDia),
 		Fim:         p.Fim.Time.Format(formatoDia),
 		Observacao:  p.Observacao,
+		FolgaInicio: diaOpcional(p.FolgaInicio),
+		FolgaFim:    diaOpcional(p.FolgaFim),
 	}
+}
+
+// escaladosNoDia deixa só quem trabalha no dia (a lista também traz quem
+// aparece só pela folga)
+func escaladosNoDia(lista []PlantaoResponse, dia time.Time) []PlantaoResponse {
+	d := dia.Format(formatoDia)
+	res := make([]PlantaoResponse, 0, len(lista))
+	for _, p := range lista {
+		if p.Inicio <= d && p.Fim >= d {
+			res = append(res, p)
+		}
+	}
+	return res
 }
 
 func listarPlantoes(ctx context.Context, q *sqlc.Queries, setor pgtype.UUID, de, ate time.Time) ([]PlantaoResponse, error) {
@@ -236,29 +320,19 @@ func listarPlantoes(ctx context.Context, q *sqlc.Queries, setor pgtype.UUID, de,
 	return result, nil
 }
 
-// plantaoNoPainel: quem está escalado hoje e o turno atual/próximo do usuário
+// plantaoNoPainel: quem está escalado hoje e o turno atual/próximo de quem
+// está na escala com o mesmo nome do usuário
 func plantaoNoPainel(ctx context.Context, q *sqlc.Queries, user *middleware.AuthUser) PainelPlantaoResponse {
 	hoje := hojeSaoPaulo()
 	res := PainelPlantaoResponse{Hoje: []PlantaoResponse{}}
 	if lista, err := listarPlantoes(ctx, q, user.Setor, hoje, hoje); err == nil {
-		res.Hoje = lista
+		res.Hoje = escaladosNoDia(lista, hoje)
 	}
 
-	uID, err := database.StringToUUID(user.ID)
-	if err != nil {
-		return res
-	}
-	p, err := q.ProximoPlantaoUsuario(ctx, sqlc.ProximoPlantaoUsuarioParams{UsuarioID: uID, SetorID: user.Setor, Dia: paraDate(hoje)})
+	p, err := q.ProximoPlantaoPorNome(ctx, sqlc.ProximoPlantaoPorNomeParams{SetorID: user.Setor, Nome: user.Nome, Dia: paraDate(hoje)})
 	if err == nil {
-		res.MeuProximo = &PlantaoResponse{
-			ID:          database.UUIDToString(p.ID),
-			UsuarioID:   user.ID,
-			UsuarioNome: user.Nome,
-			UsuarioCor:  user.Cor,
-			Tipo:        p.Tipo,
-			Inicio:      p.Inicio.Time.Format(formatoDia),
-			Fim:         p.Fim.Time.Format(formatoDia),
-		}
+		meu := paraPlantaoResponse(sqlc.ListarPlantoesIntervaloRow(p))
+		res.MeuProximo = &meu
 	}
 	return res
 }
@@ -326,7 +400,7 @@ func (h *PlantaoHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusBadRequest, "corpo da requisição inválido")
 		return
 	}
-	t, err := h.validarPlantao(r.Context(), user.Setor, req)
+	t, err := validarPlantao(req)
 	if err != nil {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return
@@ -360,8 +434,8 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if len(req.Usuarios) == 0 || len(req.Usuarios) > 50 {
-		response.JSONError(w, http.StatusBadRequest, "escolha de 1 a 50 operadores para o rodízio")
+	if len(req.Pessoas) == 0 || len(req.Pessoas) > 50 {
+		response.JSONError(w, http.StatusBadRequest, "o rodízio deve ter de 1 a 50 pessoas")
 		return
 	}
 	if req.DiasPorTurno < 1 || req.DiasPorTurno > 31 {
@@ -377,36 +451,42 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	type pessoa struct {
-		id   pgtype.UUID
-		nome string
+	if req.FolgaDiasAntes < 0 || req.FolgaDiasAntes > maxDiasFolga {
+		response.JSONError(w, http.StatusBadRequest, fmt.Sprintf("a folga deve ficar de 1 a %d dias antes do turno", maxDiasFolga))
+		return
 	}
-	pessoas := make([]pessoa, 0, len(req.Usuarios))
+
+	pessoas := make([]string, 0, len(req.Pessoas))
 	vistos := make(map[string]bool)
-	for _, id := range req.Usuarios {
-		if vistos[id] {
-			response.JSONError(w, http.StatusBadRequest, "o mesmo operador aparece duas vezes no rodízio")
-			return
-		}
-		vistos[id] = true
-		uID, nome, err := h.usuarioEscalavel(r.Context(), user.Setor, id)
+	for _, n := range req.Pessoas {
+		nome, err := validarNomePlantao(n)
 		if err != nil {
 			response.JSONError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		pessoas = append(pessoas, pessoa{uID, nome})
+		chave := strings.ToLower(nome)
+		if vistos[chave] {
+			response.JSONError(w, http.StatusBadRequest, fmt.Sprintf("%s aparece duas vezes no rodízio", nome))
+			return
+		}
+		vistos[chave] = true
+		pessoas = append(pessoas, nome)
 	}
 
 	turnos := make([]turno, 0, req.Turnos)
 	for i := 0; i < req.Turnos; i++ {
-		p := pessoas[i%len(pessoas)]
 		ini := inicio.AddDate(0, 0, i*req.DiasPorTurno)
-		turnos = append(turnos, turno{
-			usuarioID: p.id, nome: p.nome, tipo: tipo,
+		t := turno{
+			nome: pessoas[i%len(pessoas)], tipo: tipo,
 			inicio: ini, fim: ini.AddDate(0, 0, req.DiasPorTurno-1),
 			observacao: observacao,
-		})
+		}
+		// Folga de um dia antes do turno
+		if req.FolgaDiasAntes > 0 {
+			t.folgaInicio = t.inicio.AddDate(0, 0, -req.FolgaDiasAntes)
+			t.folgaFim = t.folgaInicio
+		}
+		turnos = append(turnos, t)
 	}
 
 	criador, _ := database.StringToUUID(user.ID)
@@ -443,7 +523,7 @@ func (h *PlantaoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusBadRequest, "corpo da requisição inválido")
 		return
 	}
-	t, err := h.validarPlantao(r.Context(), user.Setor, req)
+	t, err := validarPlantao(req)
 	if err != nil {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return
@@ -464,4 +544,17 @@ func (h *PlantaoHandler) Deletar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Pessoas: GET /api/plantoes/pessoas — nomes já usados na escala do setor
+func (h *PlantaoHandler) Pessoas(w http.ResponseWriter, r *http.Request) {
+	nomes, err := h.db.Queries.ListarPessoasPlantao(r.Context(), setorDe(r))
+	if err != nil {
+		response.JSONError(w, http.StatusInternalServerError, "erro ao listar as pessoas da escala")
+		return
+	}
+	if nomes == nil {
+		nomes = []string{}
+	}
+	response.JSON(w, http.StatusOK, nomes)
 }

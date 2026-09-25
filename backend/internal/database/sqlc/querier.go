@@ -38,7 +38,11 @@ type Querier interface {
 	BloquearMonitor(ctx context.Context, id pgtype.UUID) (Monitores, error)
 	BloquearTicket(ctx context.Context, arg BloquearTicketParams) (Tickets, error)
 	BuscarComentarioPorID(ctx context.Context, id pgtype.UUID) (TarefaComentarios, error)
-	// A mesma pessoa não pode ter dois turnos do mesmo tipo sobrepostos
+	// Ninguém trabalha na própria folga: nem turno novo sobre uma folga já
+	// marcada, nem folga nova sobre um turno já marcado (de qualquer tipo)
+	BuscarConflitoFolga(ctx context.Context, arg BuscarConflitoFolgaParams) (BuscarConflitoFolgaRow, error)
+	// A mesma pessoa (pelo nome, sem diferenciar maiúsculas) não pode ter dois
+	// turnos do mesmo tipo sobrepostos no setor
 	BuscarConflitoPlantao(ctx context.Context, arg BuscarConflitoPlantaoParams) (BuscarConflitoPlantaoRow, error)
 	BuscarEventoPorID(ctx context.Context, arg BuscarEventoPorIDParams) (BuscarEventoPorIDRow, error)
 	BuscarItemEstoquePorID(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
@@ -113,6 +117,9 @@ type Querier interface {
 	ListarMovimentacoesEstoque(ctx context.Context, arg ListarMovimentacoesEstoqueParams) ([]ListarMovimentacoesEstoqueRow, error)
 	ListarParticipantesPorEvento(ctx context.Context, eventoID pgtype.UUID) ([]ListarParticipantesPorEventoRow, error)
 	ListarParticipantesPorEventos(ctx context.Context, dollar_1 []pgtype.UUID) ([]ListarParticipantesPorEventosRow, error)
+	// Nomes já usados na escala do setor, para sugerir ao montar turnos
+	ListarPessoasPlantao(ctx context.Context, setorID pgtype.UUID) ([]string, error)
+	// Turnos que caem no intervalo, pelo turno ou pela folga
 	ListarPlantoesIntervalo(ctx context.Context, arg ListarPlantoesIntervaloParams) ([]ListarPlantoesIntervaloRow, error)
 	ListarProcedimentos(ctx context.Context, arg ListarProcedimentosParams) ([]ListarProcedimentosRow, error)
 	ListarQuedasMonitor(ctx context.Context, monitorID pgtype.UUID) ([]ListarQuedasMonitorRow, error)
@@ -139,8 +146,8 @@ type Querier interface {
 	ObterUsoAssistente(ctx context.Context) (ObterUsoAssistenteRow, error)
 	ObterVersaoFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (pgtype.Timestamptz, error)
 	PrimeiroSetor(ctx context.Context) (Setores, error)
-	// Turno em andamento ou o próximo da pessoa
-	ProximoPlantaoUsuario(ctx context.Context, arg ProximoPlantaoUsuarioParams) (ProximoPlantaoUsuarioRow, error)
+	// Turno em andamento ou o próximo de quem tem este nome na escala
+	ProximoPlantaoPorNome(ctx context.Context, arg ProximoPlantaoPorNomeParams) (ProximoPlantaoPorNomeRow, error)
 	// Grava no máximo uma vez por minuto (a TV consulta a cada poucos segundos)
 	RegistrarAcessoTelaTV(ctx context.Context, arg RegistrarAcessoTelaTVParams) error
 	RegistrarEntradaTecnico(ctx context.Context, arg RegistrarEntradaTecnicoParams) (TecnicoRegistros, error)

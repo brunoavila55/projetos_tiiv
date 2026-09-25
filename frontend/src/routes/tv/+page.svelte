@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { themeStore } from '$lib/theme.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
+	import { ModoTV, lerChaveTV, esquecerChaveTV } from '$lib/modoTV.svelte';
+	import { corDaPessoa, type Turno } from '$lib/plantao';
 	import { Maximize, Minimize, ArrowLeft, Inbox, ShieldCheck, Megaphone, TriangleAlert, WifiOff, Tv } from 'lucide-svelte';
 
 	type Status = 'pendente' | 'online' | 'offline';
@@ -25,17 +26,14 @@
 		monitores: MonitorTV[];
 		tickets_total: number;
 		tickets: { numero: number; titulo: string; solicitante_nome: string; prioridade: 'baixa' | 'media' | 'alta'; criado_em: string }[];
-		plantao_hoje: { id: string; usuario_id: string; usuario_nome: string; usuario_cor: string; tipo: 'plantao' | 'sobreaviso'; observacao: string }[];
+		plantao_hoje: Turno[];
 		avisos: { id: string; titulo: string; mensagem: string; nivel: 'info' | 'atencao' | 'critico'; criador_nome: string }[];
 	}
 
 	const FUSO = 'America/Sao_Paulo';
-	const CHAVE_STORAGE = 'tiiv_tv_chave';
 	const INTERVALO_MS = 15_000;
 	// Sem resposta do servidor por mais que isso, a tela avisa que os dados podem estar velhos
 	const DADOS_VELHOS_MS = 60_000;
-	// Recarrega a página de tempos em tempos para pegar atualizações do sistema
-	const RECARREGAR_MS = 6 * 60 * 60 * 1000;
 
 	let dados = $state<PainelTV | null>(null);
 	let erro = $state<'nao_autorizada' | 'limite' | null>(null);
@@ -47,28 +45,7 @@
 	let chave = $state<string | null>(null);
 	let temSessao = $state(false);
 
-	let telaCheia = $state(false);
-	let controlesVisiveis = $state(true);
-
-	function lerChave(): string | null {
-		// O link da tela traz a chave no fragmento (#chave=...), que não vai ao servidor;
-		// guarda e limpa a barra de endereço
-		const m = location.hash.match(/chave=([0-9a-f]{64})/i);
-		if (m) {
-			try {
-				localStorage.setItem(CHAVE_STORAGE, m[1]);
-			} catch {
-				// sem armazenamento: vale só enquanto a página estiver aberta
-			}
-			history.replaceState(null, '', location.pathname);
-			return m[1];
-		}
-		try {
-			return localStorage.getItem(CHAVE_STORAGE);
-		} catch {
-			return null;
-		}
-	}
+	const tv = new ModoTV();
 
 	async function carregar() {
 		try {
@@ -78,13 +55,7 @@
 			});
 			if (res.status === 401) {
 				// Chave revogada: esquece para não ficar tentando
-				if (chave) {
-					try {
-						localStorage.removeItem(CHAVE_STORAGE);
-					} catch {
-						// nada a limpar
-					}
-				}
+				if (chave) esquecerChaveTV();
 				erro = 'nao_autorizada';
 				return;
 			}
@@ -107,13 +78,8 @@
 	}
 
 	onMount(() => {
-		chave = lerChave();
-
-		// TV sempre no tema escuro e com a escala acompanhando a largura da tela
-		const html = document.documentElement;
-		const tamanhoAnterior = html.style.fontSize;
-		html.classList.add('dark');
-		html.style.fontSize = 'clamp(13px, 0.85vw, 40px)';
+		chave = lerChaveTV();
+		const encerrarTV = tv.iniciar({ aoVoltarVisivel: carregar, podeRecarregar: () => !falhando });
 
 		carregar();
 		const timerDados = setInterval(() => {
@@ -122,61 +88,12 @@
 			carregar();
 		}, INTERVALO_MS);
 		const timerRelogio = setInterval(() => (agora = Date.now()), 1000);
-		const timerRecarga = setTimeout(function recarregar() {
-			if (!falhando) location.reload();
-			else setTimeout(recarregar, 60_000);
-		}, RECARREGAR_MS);
-
-		// Mantém a tela ligada (quando o navegador permite)
-		let wakeLock: { release: () => Promise<void> } | null = null;
-		const pedirTelaLigada = async () => {
-			try {
-				wakeLock = await (navigator as any).wakeLock?.request('screen');
-			} catch {
-				// sem suporte ou sem permissão
-			}
-		};
-		const aoVoltarVisivel = () => {
-			if (document.visibilityState === 'visible') {
-				pedirTelaLigada();
-				carregar();
-			}
-		};
-		pedirTelaLigada();
-		document.addEventListener('visibilitychange', aoVoltarVisivel);
-
-		// Controles e cursor somem sozinhos
-		let timerControles: ReturnType<typeof setTimeout>;
-		const mostrarControles = () => {
-			controlesVisiveis = true;
-			clearTimeout(timerControles);
-			timerControles = setTimeout(() => (controlesVisiveis = false), 3000);
-		};
-		mostrarControles();
-		window.addEventListener('mousemove', mostrarControles);
-		window.addEventListener('keydown', mostrarControles);
-		const aoMudarTelaCheia = () => (telaCheia = !!document.fullscreenElement);
-		document.addEventListener('fullscreenchange', aoMudarTelaCheia);
-
 		return () => {
 			clearInterval(timerDados);
 			clearInterval(timerRelogio);
-			clearTimeout(timerRecarga);
-			clearTimeout(timerControles);
-			wakeLock?.release().catch(() => {});
-			document.removeEventListener('visibilitychange', aoVoltarVisivel);
-			window.removeEventListener('mousemove', mostrarControles);
-			window.removeEventListener('keydown', mostrarControles);
-			document.removeEventListener('fullscreenchange', aoMudarTelaCheia);
-			html.style.fontSize = tamanhoAnterior;
-			themeStore.applyTheme();
+			encerrarTV();
 		};
 	});
-
-	function alternarTelaCheia() {
-		if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-		else document.documentElement.requestFullscreen().catch(() => {});
-	}
 
 	const agoraServidor = $derived(agora + desvio);
 	const hora = $derived(new Date(agoraServidor).toLocaleTimeString('pt-BR', { timeZone: FUSO, hour: '2-digit', minute: '2-digit' }));
@@ -213,7 +130,7 @@
 	<title>{fora.length > 0 ? `(${fora.length}) ` : ''}Modo TV · Projetos NOC</title>
 </svelte:head>
 
-<div class="h-screen overflow-hidden bg-paper text-ink flex flex-col {controlesVisiveis ? '' : 'cursor-none'}">
+<div class="h-screen overflow-hidden bg-paper text-ink flex flex-col {tv.controlesVisiveis ? '' : 'cursor-none'}">
 	{#if erro === 'nao_autorizada' && !dados}
 		<div class="flex-1 grid place-items-center p-8">
 			<div class="max-w-[34rem] text-center space-y-4">
@@ -324,9 +241,9 @@
 						<ul class="mt-3 space-y-2.5">
 							{#each dados.plantao_hoje as p (p.id)}
 								<li class="flex items-center gap-3 min-w-0">
-									<Avatar id={p.usuario_id} nome={p.usuario_nome} cor={p.usuario_cor} class="size-11 text-[0.95rem]" />
+									<Avatar id={p.id} nome={p.nome} cor={corDaPessoa(p.nome)} class="size-11 text-[0.95rem]" />
 									<div class="min-w-0">
-										<div class="text-[1.25rem] font-semibold leading-tight truncate">{p.usuario_nome}</div>
+										<div class="text-[1.25rem] font-semibold leading-tight truncate">{p.nome}</div>
 										<div class="text-[0.9rem] text-ink-3 truncate">
 											{p.tipo === 'plantao' ? 'Plantão' : 'Sobreaviso'}{p.observacao ? ` · ${p.observacao}` : ''}
 										</div>
@@ -408,13 +325,13 @@
 
 	<!-- Controles: aparecem ao mexer o mouse -->
 	<div
-		class="fixed bottom-4 right-4 flex gap-2 transition-opacity duration-300 {controlesVisiveis ? 'opacity-100' : 'opacity-0 pointer-events-none'}"
+		class="fixed bottom-4 right-4 flex gap-2 transition-opacity duration-300 {tv.controlesVisiveis ? 'opacity-100' : 'opacity-0 pointer-events-none'}"
 	>
 		{#if temSessao}
 			<a href="/" class="btn btn-secondary"><ArrowLeft class="size-4" /> Voltar ao sistema</a>
 		{/if}
-		<button onclick={alternarTelaCheia} class="btn btn-secondary">
-			{#if telaCheia}
+		<button onclick={() => tv.alternarTelaCheia()} class="btn btn-secondary">
+			{#if tv.telaCheia}
 				<Minimize class="size-4" /> Sair da tela cheia
 			{:else}
 				<Maximize class="size-4" /> Tela cheia

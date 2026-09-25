@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
+	import { corDaPessoa, mesmaPessoa, type Turno } from '$lib/plantao';
 	import { Calendar, CalendarClock, CheckSquare, Plus, Flag, Megaphone, Pencil, Trash2, X, Activity, CircleAlert, ShieldCheck } from 'lucide-svelte';
 
 	type NivelAviso = 'info' | 'atencao' | 'critico';
@@ -16,16 +17,6 @@
 		criador_cor: string;
 		criado_em: string;
 		pode_editar: boolean;
-	}
-
-	interface Turno {
-		id: string;
-		usuario_id: string;
-		usuario_nome: string;
-		usuario_cor: string;
-		tipo: 'plantao' | 'sobreaviso';
-		inicio: string; // AAAA-MM-DD
-		fim: string;
 	}
 
 	interface PainelDados {
@@ -332,7 +323,7 @@
 
 		<!-- Escala de plantão -->
 		{#if dados.plantao.hoje.length > 0 || dados.plantao.meu_proximo}
-			<a href="/calendario" class="flex flex-col sm:flex-row sm:items-center gap-x-5 gap-y-2 px-4 py-3 rounded-xl border border-line hover:border-line-strong transition-colors">
+			<a href="/plantao" class="flex flex-col sm:flex-row sm:items-center gap-x-5 gap-y-2 px-4 py-3 rounded-xl border border-line hover:border-line-strong transition-colors">
 				<div class="flex items-center gap-2.5 min-w-0 flex-1 flex-wrap">
 					<ShieldCheck class="size-4 text-accent shrink-0" />
 					<span class="text-sm font-semibold text-ink">De plantão hoje</span>
@@ -340,9 +331,9 @@
 						<span class="text-sm text-ink-3">ninguém escalado</span>
 					{:else}
 						{#each dados.plantao.hoje as t (t.id)}
-							<span class="tag h-7 px-2.5 text-[13px] {t.usuario_id === auth.user?.id ? 'tag-accent' : ''}">
-								<span class="dot size-2" style="background-color: {t.usuario_cor};"></span>
-								{t.usuario_nome}
+							<span class="tag h-7 px-2.5 text-[13px] {auth.user && mesmaPessoa(t.nome, auth.user.nome) ? 'tag-accent' : ''}">
+								<span class="dot size-2" style="background-color: {corDaPessoa(t.nome)};"></span>
+								{t.nome}
 								{#if t.tipo === 'sobreaviso'}<span class="font-normal text-ink-3">sobreaviso</span>{/if}
 							</span>
 						{/each}
