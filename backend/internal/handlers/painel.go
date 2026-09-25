@@ -25,6 +25,7 @@ func NewPainelHandler(db *database.DB) *PainelHandler {
 const DiasAntecedenciaPainel = 7
 
 type PainelResponse struct {
+	Avisos           []AvisoResponse      `json:"avisos"`
 	ProximosEventos  []EventoResponse     `json:"proximos_eventos"`
 	TarefasPendentes []TarefaItemResponse `json:"tarefas_pendentes"`
 }
@@ -136,7 +137,14 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
+	// 3. Mural de avisos da equipe (só os que não expiraram)
+	avisos, err := listarAvisosAtivos(r.Context(), h.db.Queries, user)
+	if err != nil {
+		avisos = []AvisoResponse{}
+	}
+
 	response.JSON(w, http.StatusOK, PainelResponse{
+		Avisos:           avisos,
 		ProximosEventos:  proximosEventos,
 		TarefasPendentes: tarefasPendentes,
 	})

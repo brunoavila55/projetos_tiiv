@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	AdicionarParticipanteEvento(ctx context.Context, arg AdicionarParticipanteEventoParams) error
+	AtualizarAviso(ctx context.Context, arg AtualizarAvisoParams) (Avisos, error)
 	AtualizarEvento(ctx context.Context, arg AtualizarEventoParams) (Eventos, error)
 	AtualizarItemEstoque(ctx context.Context, arg AtualizarItemEstoqueParams) (ItensEstoque, error)
 	AtualizarPin(ctx context.Context, arg AtualizarPinParams) (pgtype.UUID, error)
@@ -47,6 +48,7 @@ type Querier interface {
 	ContarRegistrosTecnicos(ctx context.Context, arg ContarRegistrosTecnicosParams) (int64, error)
 	ContarTicketsAbertos(ctx context.Context) (int64, error)
 	ContarUsuarios(ctx context.Context) (int64, error)
+	CriarAviso(ctx context.Context, arg CriarAvisoParams) (Avisos, error)
 	CriarComentarioTarefa(ctx context.Context, arg CriarComentarioTarefaParams) (TarefaComentarios, error)
 	CriarEvento(ctx context.Context, arg CriarEventoParams) (Eventos, error)
 	CriarItemEstoque(ctx context.Context, arg CriarItemEstoqueParams) (ItensEstoque, error)
@@ -58,6 +60,7 @@ type Querier interface {
 	CriarTecnico(ctx context.Context, arg CriarTecnicoParams) (Tecnicos, error)
 	CriarTicket(ctx context.Context, arg CriarTicketParams) (Tickets, error)
 	CriarUsuario(ctx context.Context, arg CriarUsuarioParams) (CriarUsuarioRow, error)
+	DeletarAviso(ctx context.Context, id pgtype.UUID) error
 	DeletarComentarioTarefa(ctx context.Context, id pgtype.UUID) error
 	DeletarEvento(ctx context.Context, id pgtype.UUID) error
 	DeletarItemEstoque(ctx context.Context, id pgtype.UUID) error
@@ -69,6 +72,7 @@ type Querier interface {
 	DeletarTarefa(ctx context.Context, id pgtype.UUID) error
 	DesativarItemEstoque(ctx context.Context, id pgtype.UUID) error
 	DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (DesbloquearUsuarioRow, error)
+	ListarAvisosAtivos(ctx context.Context) ([]ListarAvisosAtivosRow, error)
 	ListarCategoriasEstoque(ctx context.Context) ([]string, error)
 	ListarCategoriasProcedimentos(ctx context.Context) ([]string, error)
 	ListarComentariosTarefa(ctx context.Context, tarefaID pgtype.UUID) ([]ListarComentariosTarefaRow, error)
@@ -89,6 +93,7 @@ type Querier interface {
 	ListarUsuariosAtivos(ctx context.Context) ([]ListarUsuariosAtivosRow, error)
 	MarcarTicketTratado(ctx context.Context, arg MarcarTicketTratadoParams) (Tickets, error)
 	MarcarTrocaPinObrigatoria(ctx context.Context, id pgtype.UUID) error
+	ObterAviso(ctx context.Context, id pgtype.UUID) (Avisos, error)
 	ObterFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (ObterFotoUsuarioRow, error)
 	ObterUltimaMovimentacaoItem(ctx context.Context, itemID pgtype.UUID) (MovimentacoesEstoque, error)
 	ObterUsoAssistente(ctx context.Context) (ObterUsoAssistenteRow, error)

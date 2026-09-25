@@ -57,6 +57,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	tarefaHandler := handlers.NewTarefaHandler(db)
 	estoqueHandler := handlers.NewEstoqueHandler(db)
 	painelHandler := handlers.NewPainelHandler(db)
+	avisoHandler := handlers.NewAvisoHandler(db)
 	tecnicoHandler := handlers.NewTecnicoHandler(db)
 	ticketHandler := handlers.NewTicketHandler(db)
 	procedimentoHandler := handlers.NewProcedimentoHandler(db)
@@ -96,6 +97,14 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Painel inicial
 			protected.Get("/painel", painelHandler.ObterDadosPainel)
+
+			// Mural de avisos (autor ou admin editam e excluem)
+			protected.Route("/avisos", func(a chi.Router) {
+				a.Get("/", avisoHandler.Listar)
+				a.Post("/", avisoHandler.Criar)
+				a.Put("/{id}", avisoHandler.Atualizar)
+				a.Delete("/{id}", avisoHandler.Deletar)
+			})
 
 			// Calendário
 			protected.Route("/eventos", func(e chi.Router) {

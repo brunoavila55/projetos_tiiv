@@ -2,9 +2,24 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { Calendar, CalendarClock, CheckSquare, Plus, Flag } from 'lucide-svelte';
+	import { Calendar, CalendarClock, CheckSquare, Plus, Flag, Megaphone, Pencil, Trash2, X } from 'lucide-svelte';
+
+	type NivelAviso = 'info' | 'atencao' | 'critico';
+
+	interface Aviso {
+		id: string;
+		titulo: string;
+		mensagem: string;
+		nivel: NivelAviso;
+		expira_em: string | null;
+		criador_nome: string;
+		criador_cor: string;
+		criado_em: string;
+		pode_editar: boolean;
+	}
 
 	interface PainelDados {
+		avisos: Aviso[];
 		proximos_eventos: {
 			id: string;
 			titulo: string;
@@ -41,6 +56,84 @@
 	onMount(() => {
 		carregarPainel();
 	});
+
+	// Mural de avisos
+	const NIVEIS: Record<NivelAviso, { rotulo: string; tag: string; borda: string }> = {
+		critico: { rotulo: 'Crítico', tag: 'tag-danger', borda: 'border-danger' },
+		atencao: { rotulo: 'Atenção', tag: 'tag-warn', borda: 'border-warn' },
+		info: { rotulo: 'Informativo', tag: 'tag-accent', borda: 'border-accent' }
+	};
+
+	let avisoModalAberto = $state(false);
+	let avisoSalvando = $state(false);
+	let avisoId = $state<string | null>(null);
+	let avisoTitulo = $state('');
+	let avisoMensagem = $state('');
+	let avisoNivel = $state<NivelAviso>('info');
+	let avisoExpira = $state('');
+
+	// YYYY-MM-DD no fuso local (o <input type="date"> não entende ISO com hora)
+	function dataLocalISO(d: Date): string {
+		const pad = (n: number) => String(n).padStart(2, '0');
+		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+	}
+
+	function abrirNovoAviso() {
+		avisoId = null;
+		avisoTitulo = '';
+		avisoMensagem = '';
+		avisoNivel = 'info';
+		const emUmaSemana = new Date();
+		emUmaSemana.setDate(emUmaSemana.getDate() + 7);
+		avisoExpira = dataLocalISO(emUmaSemana);
+		avisoModalAberto = true;
+	}
+
+	function abrirEditarAviso(a: Aviso) {
+		avisoId = a.id;
+		avisoTitulo = a.titulo;
+		avisoMensagem = a.mensagem;
+		avisoNivel = a.nivel;
+		avisoExpira = a.expira_em ? dataLocalISO(new Date(a.expira_em)) : '';
+		avisoModalAberto = true;
+	}
+
+	async function salvarAviso() {
+		if (!avisoTitulo.trim()) {
+			alert('O título do aviso é obrigatório.');
+			return;
+		}
+		const payload = {
+			titulo: avisoTitulo.trim(),
+			mensagem: avisoMensagem.trim(),
+			nivel: avisoNivel,
+			// Vale até o fim do dia escolhido
+			expira_em: avisoExpira ? new Date(avisoExpira + 'T23:59:59').toISOString() : null
+		};
+		avisoSalvando = true;
+		try {
+			await apiFetch(avisoId ? `/api/avisos/${avisoId}` : '/api/avisos', {
+				method: avisoId ? 'PUT' : 'POST',
+				body: JSON.stringify(payload)
+			});
+			avisoModalAberto = false;
+			await carregarPainel();
+		} catch {
+			// apiFetch já mostrou o erro
+		} finally {
+			avisoSalvando = false;
+		}
+	}
+
+	async function excluirAviso(a: Aviso) {
+		if (!confirm(`Tirar o aviso "${a.titulo}" do mural?`)) return;
+		try {
+			await apiFetch(`/api/avisos/${a.id}`, { method: 'DELETE' });
+			await carregarPainel();
+		} catch {
+			// apiFetch já mostrou o erro
+		}
+	}
 
 	const hoje = new Date();
 
@@ -118,6 +211,57 @@
 	{#if loading}
 		<div class="flex justify-center py-20"><div class="spinner"></div></div>
 	{:else if dados}
+		<!-- Mural de avisos -->
+		<section class="panel">
+			<div class="flex items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-line">
+				<h2 class="flex items-center gap-2 text-[15px] font-bold text-ink">
+					<Megaphone class="size-4 text-ink-3" />
+					Mural de avisos
+					{#if dados.avisos.length}
+						<span class="font-semibold text-ink-3 tabular">{dados.avisos.length}</span>
+					{/if}
+				</h2>
+				<button onclick={abrirNovoAviso} class="btn btn-sm btn-soft">
+					<Plus class="size-4" />
+					<span>Novo aviso</span>
+				</button>
+			</div>
+			{#if dados.avisos.length === 0}
+				<p class="px-5 py-6 text-sm text-ink-3 text-center">Nenhum aviso no mural.</p>
+			{:else}
+				<ul class="divide-y divide-line">
+					{#each dados.avisos as a (a.id)}
+						{@const nivel = NIVEIS[a.nivel]}
+						<li class="group flex items-start gap-3 px-5 py-3">
+							<div class="min-w-0 flex-1 border-l-[3px] pl-3 {nivel.borda}">
+								<div class="flex flex-wrap items-center gap-2">
+									<span class="font-semibold text-ink text-sm leading-snug">{a.titulo}</span>
+									{#if a.nivel !== 'info'}<span class="tag {nivel.tag}">{nivel.rotulo}</span>{/if}
+								</div>
+								{#if a.mensagem}
+									<p class="text-sm text-ink-2 mt-1 whitespace-pre-line break-words">{a.mensagem}</p>
+								{/if}
+								<div class="flex flex-wrap gap-x-3 text-[13px] text-ink-3 mt-1">
+									<span>{a.criador_nome}</span>
+									<span>{a.expira_em ? `até ${dataCurta(a.expira_em)}` : 'sem prazo'}</span>
+								</div>
+							</div>
+							{#if a.pode_editar}
+								<div class="flex shrink-0 gap-1">
+									<button onclick={() => abrirEditarAviso(a)} class="icon-btn" title="Editar" aria-label="Editar aviso">
+										<Pencil class="size-4" />
+									</button>
+									<button onclick={() => excluirAviso(a)} class="icon-btn icon-btn-danger" title="Excluir" aria-label="Excluir aviso">
+										<Trash2 class="size-4" />
+									</button>
+								</div>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+
 		{#if dados.proximos_eventos.length > 0}
 			{@const proximo = dados.proximos_eventos[0]}
 			<a href="/calendario" class="flex items-start gap-3 px-4 py-3.5 rounded-xl border border-accent/30 bg-accent-soft hover:border-accent/50 transition-colors">
@@ -218,5 +362,61 @@
 		</nav>
 	{:else}
 		<div class="alert bg-danger-soft text-danger">Não foi possível carregar o painel. Recarregue a página para tentar de novo.</div>
+	{/if}
+
+	{#if avisoModalAberto}
+		<div class="modal-backdrop">
+			<div class="modal max-w-lg" role="dialog" aria-modal="true">
+				<div class="modal-head">
+					<h3 class="modal-title">{avisoId ? 'Editar aviso' : 'Novo aviso'}</h3>
+					<button onclick={() => (avisoModalAberto = false)} class="icon-btn -mr-1.5 -mt-1" aria-label="Fechar">
+						<X class="size-5" />
+					</button>
+				</div>
+
+				<div class="modal-body">
+					<div>
+						<label class="label" for="av-titulo">Título</label>
+						<input
+							id="av-titulo"
+							type="text"
+							bind:value={avisoTitulo}
+							maxlength="200"
+							placeholder="Ex.: Link da operadora X instável"
+							class="field"
+							autofocus
+						/>
+					</div>
+
+					<div>
+						<label class="label" for="av-msg">Mensagem <span class="font-normal text-ink-3">(opcional)</span></label>
+						<textarea id="av-msg" bind:value={avisoMensagem} maxlength="2000" rows="3" class="field"></textarea>
+					</div>
+
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+						<div>
+							<label class="label" for="av-nivel">Nível</label>
+							<select id="av-nivel" bind:value={avisoNivel} class="field">
+								<option value="info">Informativo</option>
+								<option value="atencao">Atenção</option>
+								<option value="critico">Crítico</option>
+							</select>
+						</div>
+						<div>
+							<label class="label" for="av-expira">Mostrar até <span class="font-normal text-ink-3">(opcional)</span></label>
+							<input id="av-expira" type="date" bind:value={avisoExpira} min={dataLocalISO(new Date())} class="field" />
+						</div>
+					</div>
+					<p class="hint">Some do mural sozinho no fim do dia escolhido. Deixe a data em branco para ficar até alguém excluir.</p>
+				</div>
+
+				<div class="modal-foot">
+					<button onclick={() => (avisoModalAberto = false)} class="btn btn-ghost">Cancelar</button>
+					<button onclick={salvarAviso} class="btn btn-primary" disabled={avisoSalvando}>
+						{avisoId ? 'Salvar alterações' : 'Publicar aviso'}
+					</button>
+				</div>
+			</div>
+		</div>
 	{/if}
 </div>

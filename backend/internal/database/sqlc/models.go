@@ -24,6 +24,17 @@ type Atendimentos struct {
 	AtualizadoEm    pgtype.Timestamptz `json:"atualizado_em"`
 }
 
+type Avisos struct {
+	ID           pgtype.UUID        `json:"id"`
+	Titulo       string             `json:"titulo"`
+	Mensagem     string             `json:"mensagem"`
+	Nivel        string             `json:"nivel"`
+	ExpiraEm     pgtype.Timestamptz `json:"expira_em"`
+	CriadoPor    pgtype.UUID        `json:"criado_por"`
+	CriadoEm     pgtype.Timestamptz `json:"criado_em"`
+	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
+}
+
 type EventoParticipantes struct {
 	EventoID  pgtype.UUID `json:"evento_id"`
 	UsuarioID pgtype.UUID `json:"usuario_id"`
