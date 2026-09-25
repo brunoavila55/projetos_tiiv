@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Avatar from '$lib/components/Avatar.svelte';
 	import { ModoTV, lerChaveTV, esquecerChaveTV } from '$lib/modoTV.svelte';
 	import {
 		CIDADES,
@@ -151,6 +150,13 @@
 		})
 	);
 
+	// Nome do noturno o maior possível: menor quando é comprido ou divide o card
+	function tamanhoNome(nome: string, noCard: number): string {
+		const longo = nome.length > 16;
+		if (noCard > 1) return longo ? 'text-[2rem]' : 'text-[2.6rem]';
+		return longo ? 'text-[2.8rem]' : 'text-[3.75rem]';
+	}
+
 	function horaCurta(ms: number): string {
 		return new Date(ms + desvio).toLocaleTimeString('pt-BR', { timeZone: FUSO, hour: '2-digit', minute: '2-digit' });
 	}
@@ -227,10 +233,13 @@
 									</p>
 									<div class="flex-1 flex flex-col justify-center gap-5 min-w-0">
 										{#each c.noturno as t (t.id)}
-											<div class="flex flex-col items-center text-center gap-3 min-w-0">
-												<Avatar id={t.id} nome={t.nome} cor={corDaPessoa(t.nome)} class="{c.noturno.length > 1 ? 'size-16 text-[1.4rem]' : 'size-28 text-[2.4rem]'} shrink-0" />
+											<div class="flex flex-col items-center text-center min-w-0">
 												<div class="min-w-0 max-w-full">
-													<p class="{c.noturno.length > 1 ? 'text-[2.2rem]' : 'text-[3rem]'} font-bold leading-[1.05] tracking-[-0.02em] truncate">{t.nome}</p>
+													<p
+														class="{tamanhoNome(t.nome, c.noturno.length)} font-bold leading-[1.1] tracking-[-0.02em] [overflow-wrap:anywhere] line-clamp-3"
+													>
+														{t.nome}
+													</p>
 													<p class="mt-1.5 text-[1.25rem] text-ink-2 tabular truncate">
 														{t.fim === hoje ? 'Última noite' : `Até ${diaSemana(t.fim)} · ${quantoFalta(t.fim, hoje)}`}
 													</p>
