@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -19,6 +20,9 @@ type PainelHandler struct {
 func NewPainelHandler(db *database.DB) *PainelHandler {
 	return &PainelHandler{db: db}
 }
+
+// DiasAntecedenciaPainel é quantos dias à frente o painel avisa das marcações.
+const DiasAntecedenciaPainel = 7
 
 type PainelResponse struct {
 	ProximosEventos  []EventoResponse     `json:"proximos_eventos"`
@@ -40,15 +44,15 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 	}
 
 	now := time.Now()
-	// Fim de amanhã (23:59:59)
 	ano, mes, dia := now.Date()
 	inicioHoje := time.Date(ano, mes, dia, 0, 0, 0, 0, now.Location())
-	fimAmanha := inicioHoje.Add(48 * time.Hour)
+	// Antecedência de uma semana: hoje + os próximos 7 dias
+	fimJanela := inicioHoje.AddDate(0, 0, DiasAntecedenciaPainel+1).Add(-time.Nanosecond)
 
-	// 1. Próximos eventos do usuário (hoje e amanhã)
+	// 1. Marcações do usuário na próxima semana (recorrências desdobradas)
 	eventos, err := h.db.Queries.ListarEventosIntervalo(r.Context(), sqlc.ListarEventosIntervaloParams{
 		Fim:    database.TimeToTimestamptz(inicioHoje),
-		Inicio: database.TimeToTimestamptz(fimAmanha),
+		Inicio: database.TimeToTimestamptz(fimJanela),
 	})
 	if err != nil {
 		eventos = []sqlc.ListarEventosIntervaloRow{}
@@ -72,8 +76,7 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 
 	proximosEventos := make([]EventoResponse, 0)
 	for _, e := range eventos {
-		eID := database.UUIDToString(e.ID)
-		parts := participantesPorEvento[eID]
+		parts := participantesPorEvento[database.UUIDToString(e.ID)]
 
 		// Inclui apenas se o usuário for participante
 		souParticipante := false
@@ -87,20 +90,12 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 			continue
 		}
 
-		proximosEventos = append(proximosEventos, EventoResponse{
-			ID:            eID,
-			Titulo:        e.Titulo,
-			Descricao:     e.Descricao,
-			Inicio:        e.Inicio.Time.Format(time.RFC3339),
-			Fim:           e.Fim.Time.Format(time.RFC3339),
-			DiaInteiro:    e.DiaInteiro,
-			CriadoPor:     database.UUIDToString(e.CriadoPor),
-			CriadorNome:   e.CriadorNome,
-			CriadorCor:    e.CriadorCor,
-			Participantes: parts,
-			PodeEditar:    (user.Papel == "admin") || (database.UUIDToString(e.CriadoPor) == user.ID),
-		})
+		podeEditar := (user.Papel == "admin") || (database.UUIDToString(e.CriadoPor) == user.ID)
+		proximosEventos = append(proximosEventos, expandirOcorrencias(e, parts, podeEditar, inicioHoje, fimJanela)...)
 	}
+	sort.SliceStable(proximosEventos, func(i, j int) bool {
+		return proximosEventos[i].Inicio < proximosEventos[j].Inicio
+	})
 
 	// 2. Tarefas pendentes atribuídas ao usuário (atrasadas primeiro)
 	tarefas, err := h.db.Queries.ListarTarefasPendentesUsuario(r.Context(), userUUID)

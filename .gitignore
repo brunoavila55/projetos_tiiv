@@ -28,3 +28,6 @@ backups/
 *.swp
 *~
 .DS_Store
+
+# Auditoria de segurança (relatório local)
+docs/security-audit/

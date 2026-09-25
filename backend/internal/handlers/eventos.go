@@ -138,89 +138,89 @@ func (h *EventoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 		}
 
 		podeEditar := (user.Papel == "admin") || (eCriadoPor == user.ID)
-
-		var recFimStr *string
-		if e.RecorrenciaFim.Valid {
-			s := e.RecorrenciaFim.Time.Format(time.RFC3339)
-			recFimStr = &s
-		}
-
-		recorrencia := e.Recorrencia
-		if recorrencia == "" {
-			recorrencia = "nenhuma"
-		}
-
-		if recorrencia == "nenhuma" {
-			if !e.Fim.Time.Before(inicio) && !e.Inicio.Time.After(fim) {
-				result = append(result, EventoResponse{
-					ID:             eID,
-					OriginalID:     eID,
-					Titulo:         e.Titulo,
-					Descricao:      e.Descricao,
-					Inicio:         e.Inicio.Time.Format(time.RFC3339),
-					Fim:            e.Fim.Time.Format(time.RFC3339),
-					DiaInteiro:     e.DiaInteiro,
-					Recorrencia:    recorrencia,
-					RecorrenciaFim: recFimStr,
-					CriadoPor:      eCriadoPor,
-					CriadorNome:    e.CriadorNome,
-					CriadorCor:     e.CriadorCor,
-					Participantes:  partList,
-					PodeEditar:     podeEditar,
-				})
-			}
-		} else {
-			dur := e.Fim.Time.Sub(e.Inicio.Time)
-			var recFim time.Time
-			if e.RecorrenciaFim.Valid {
-				recFim = e.RecorrenciaFim.Time
-			}
-
-			for step := 0; step < 500; step++ {
-				var occInicio time.Time
-				if recorrencia == "semanal" {
-					occInicio = e.Inicio.Time.AddDate(0, 0, step*7)
-				} else if recorrencia == "mensal" {
-					occInicio = e.Inicio.Time.AddDate(0, step, 0)
-				} else {
-					break
-				}
-
-				if occInicio.After(fim) {
-					break
-				}
-				if !recFim.IsZero() && occInicio.After(recFim) {
-					break
-				}
-
-				occFim := occInicio.Add(dur)
-				if !occFim.Before(inicio) && !occInicio.After(fim) {
-					occID := eID
-					if step > 0 {
-						occID = fmt.Sprintf("%s_rec_%d", eID, occInicio.Unix())
-					}
-					result = append(result, EventoResponse{
-						ID:             occID,
-						OriginalID:     eID,
-						Titulo:         e.Titulo,
-						Descricao:      e.Descricao,
-						Inicio:         occInicio.Format(time.RFC3339),
-						Fim:            occFim.Format(time.RFC3339),
-						DiaInteiro:     e.DiaInteiro,
-						Recorrencia:    recorrencia,
-						RecorrenciaFim: recFimStr,
-						CriadoPor:      eCriadoPor,
-						CriadorNome:    e.CriadorNome,
-						CriadorCor:     e.CriadorCor,
-						Participantes:  partList,
-						PodeEditar:     podeEditar,
-					})
-				}
-			}
-		}
+		result = append(result, expandirOcorrencias(e, partList, podeEditar, inicio, fim)...)
 	}
 
 	response.JSON(w, http.StatusOK, result)
+}
+
+// expandirOcorrencias devolve as ocorrências do evento que caem em [inicio, fim],
+// desdobrando as recorrências semanais e mensais.
+func expandirOcorrencias(e sqlc.ListarEventosIntervaloRow, partList []ParticipanteResponse, podeEditar bool, inicio, fim time.Time) []EventoResponse {
+	eID := database.UUIDToString(e.ID)
+	eCriadoPor := database.UUIDToString(e.CriadoPor)
+
+	var recFimStr *string
+	if e.RecorrenciaFim.Valid {
+		s := e.RecorrenciaFim.Time.Format(time.RFC3339)
+		recFimStr = &s
+	}
+
+	recorrencia := e.Recorrencia
+	if recorrencia == "" {
+		recorrencia = "nenhuma"
+	}
+
+	ocorrencia := func(id string, occInicio, occFim time.Time) EventoResponse {
+		return EventoResponse{
+			ID:             id,
+			OriginalID:     eID,
+			Titulo:         e.Titulo,
+			Descricao:      e.Descricao,
+			Inicio:         occInicio.Format(time.RFC3339),
+			Fim:            occFim.Format(time.RFC3339),
+			DiaInteiro:     e.DiaInteiro,
+			Recorrencia:    recorrencia,
+			RecorrenciaFim: recFimStr,
+			CriadoPor:      eCriadoPor,
+			CriadorNome:    e.CriadorNome,
+			CriadorCor:     e.CriadorCor,
+			Participantes:  partList,
+			PodeEditar:     podeEditar,
+		}
+	}
+
+	var result []EventoResponse
+	if recorrencia == "nenhuma" {
+		if !e.Fim.Time.Before(inicio) && !e.Inicio.Time.After(fim) {
+			result = append(result, ocorrencia(eID, e.Inicio.Time, e.Fim.Time))
+		}
+		return result
+	}
+
+	dur := e.Fim.Time.Sub(e.Inicio.Time)
+	var recFim time.Time
+	if e.RecorrenciaFim.Valid {
+		recFim = e.RecorrenciaFim.Time
+	}
+
+	for step := 0; step < 500; step++ {
+		var occInicio time.Time
+		if recorrencia == "semanal" {
+			occInicio = e.Inicio.Time.AddDate(0, 0, step*7)
+		} else if recorrencia == "mensal" {
+			occInicio = e.Inicio.Time.AddDate(0, step, 0)
+		} else {
+			break
+		}
+
+		if occInicio.After(fim) {
+			break
+		}
+		if !recFim.IsZero() && occInicio.After(recFim) {
+			break
+		}
+
+		occFim := occInicio.Add(dur)
+		if !occFim.Before(inicio) && !occInicio.After(fim) {
+			occID := eID
+			if step > 0 {
+				occID = fmt.Sprintf("%s_rec_%d", eID, occInicio.Unix())
+			}
+			result = append(result, ocorrencia(occID, occInicio, occFim))
+		}
+	}
+	return result
 }
 
 func parseRecorrencia(rec string, recFimStr *string) (string, pgtype.Timestamptz) {
@@ -299,7 +299,7 @@ func (h *EventoHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		Descricao:      req.Descricao,
 		Inicio:         database.TimeToTimestamptz(inicio),
 		Fim:            database.TimeToTimestamptz(fim),
-		DiaInteiro:     req.DiaInteiro,
+		DiaInteiro:     true, // o calendário marca apenas dias, sem horário
 		CriadoPor:      criadorUUID,
 		Recorrencia:    recorrencia,
 		RecorrenciaFim: recFim,
@@ -393,7 +393,7 @@ func (h *EventoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 		Descricao:      req.Descricao,
 		Inicio:         database.TimeToTimestamptz(inicio),
 		Fim:            database.TimeToTimestamptz(fim),
-		DiaInteiro:     req.DiaInteiro,
+		DiaInteiro:     true, // o calendário marca apenas dias, sem horário
 		Recorrencia:    recorrencia,
 		RecorrenciaFim: recFim,
 	})

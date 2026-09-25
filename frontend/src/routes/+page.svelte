@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { Calendar, CheckSquare, Plus, Flag } from 'lucide-svelte';
+	import { Calendar, CalendarClock, CheckSquare, Plus, Flag } from 'lucide-svelte';
 
 	interface PainelDados {
 		proximos_eventos: {
@@ -55,13 +55,31 @@
 		return nome?.trim().split(/\s+/)[0] ?? '';
 	}
 
-	function rotuloDia(iso: string): string {
+	// Dias de calendário entre hoje e a data (0 = hoje; negativo = já começou)
+	function diasAte(iso: string): number {
 		const d = new Date(iso);
-		return d.toDateString() === hoje.toDateString() ? 'Hoje' : 'Amanhã';
+		const alvo = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+		const base = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+		return Math.round((alvo.getTime() - base.getTime()) / 86_400_000);
 	}
 
-	function hora(iso: string): string {
-		return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+	function rotuloDia(iso: string): string {
+		const n = diasAte(iso);
+		if (n <= 0) return 'Hoje';
+		if (n === 1) return 'Amanhã';
+		return new Date(iso).toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+	}
+
+	function dataCurta(iso: string): string {
+		return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+	}
+
+	function quandoFalta(iso: string): string {
+		const n = diasAte(iso);
+		if (n < 0) return 'em andamento';
+		if (n === 0) return 'é hoje';
+		if (n === 1) return 'é amanhã';
+		return `em ${n} dias`;
 	}
 </script>
 
@@ -100,24 +118,43 @@
 	{#if loading}
 		<div class="flex justify-center py-20"><div class="spinner"></div></div>
 	{:else if dados}
+		{#if dados.proximos_eventos.length > 0}
+			{@const proximo = dados.proximos_eventos[0]}
+			<a href="/calendario" class="flex items-start gap-3 px-4 py-3.5 rounded-xl border border-accent/30 bg-accent-soft hover:border-accent/50 transition-colors">
+				<CalendarClock class="size-5 mt-0.5 text-accent shrink-0" />
+				<div class="min-w-0 text-sm text-ink">
+					<div class="font-semibold">
+						{dados.proximos_eventos.length === 1
+							? 'Você tem 1 marcação nos próximos 7 dias'
+							: `Você tem ${dados.proximos_eventos.length} marcações nos próximos 7 dias`}
+					</div>
+					<div class="text-ink-2 mt-0.5">
+						A próxima, <span class="font-semibold">{proximo.titulo}</span>, {quandoFalta(proximo.inicio)}
+						({rotuloDia(proximo.inicio).toLowerCase()}, {dataCurta(proximo.inicio)}).
+					</div>
+				</div>
+			</a>
+		{/if}
+
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
 			<!-- Agenda -->
 			<section class="panel">
-				{@render cabecalho('Agenda', dados.proximos_eventos.length, '/calendario', 'Calendário')}
+				{@render cabecalho('Próximos 7 dias', dados.proximos_eventos.length, '/calendario', 'Calendário')}
 				{#if dados.proximos_eventos.length === 0}
-					{@render vazio('Nada marcado para hoje ou amanhã.')}
+					{@render vazio('Nada marcado para a próxima semana.')}
 				{:else}
 					<ul class="divide-y divide-line">
 						{#each dados.proximos_eventos.slice(0, 6) as ev (ev.id)}
 							<li class="flex gap-4 px-5 py-3">
 								<div class="w-14 shrink-0 tabular">
-									<div class="text-[13px] font-semibold text-ink-3">{rotuloDia(ev.inicio)}</div>
-									<div class="text-[15px] font-bold text-ink">{ev.dia_inteiro ? 'Dia todo' : hora(ev.inicio)}</div>
+									<div class="text-[13px] font-semibold text-ink-3 first-letter:uppercase">{rotuloDia(ev.inicio)}</div>
+									<div class="text-[15px] font-bold text-ink">{dataCurta(ev.inicio)}</div>
 								</div>
 								<div class="min-w-0 flex-1 border-l-[3px] pl-3" style="border-color: {ev.criador_cor};">
 									<div class="font-semibold text-ink text-sm leading-snug">{ev.titulo}</div>
 									<div class="flex gap-3 text-[13px] text-ink-3 mt-0.5 min-w-0">
-										{#if !ev.dia_inteiro}<span class="shrink-0">até {hora(ev.fim)}</span>{/if}
+										<span class="shrink-0 {diasAte(ev.inicio) <= 1 ? 'font-semibold text-accent' : ''}">{quandoFalta(ev.inicio)}</span>
+										{#if diasAte(ev.fim) !== diasAte(ev.inicio)}<span class="shrink-0">até {dataCurta(ev.fim)}</span>{/if}
 										<span class="truncate">{ev.criador_nome}</span>
 									</div>
 								</div>
@@ -167,7 +204,7 @@
 		<nav class="grid grid-cols-2 gap-3" aria-label="Atalhos">
 			{#each [
 				{ href: '/tarefas', label: 'Tarefas', desc: 'Quadro da equipe', icon: CheckSquare },
-				{ href: '/calendario', label: 'Calendário', desc: 'Reuniões da semana', icon: Calendar }
+				{ href: '/calendario', label: 'Calendário', desc: 'Marcações do mês', icon: Calendar }
 			] as atalho}
 				{@const Icon = atalho.icon}
 				<a href={atalho.href} class="group flex items-center gap-3 px-4 py-3.5 rounded-xl border border-line hover:bg-surface hover:border-line-strong transition-colors">

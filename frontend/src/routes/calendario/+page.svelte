@@ -2,10 +2,10 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth, type UsuarioPublico } from '$lib/auth.svelte';
-	import { Calendar, TimeGrid, DayGrid, Interaction, List } from '@event-calendar/core';
+	import { Calendar, DayGrid, Interaction, List } from '@event-calendar/core';
 	import { 
 		Plus, 
-		Clock, 
+		CalendarDays,
 		Users, 
 		X, 
 		Trash2, 
@@ -48,18 +48,17 @@
 	let formDescricao = $state<string>('');
 	let formInicio = $state<string>('');
 	let formFim = $state<string>('');
-	let formDiaInteiro = $state<boolean>(false);
 	let formRecorrencia = $state<'nenhuma' | 'semanal' | 'mensal'>('nenhuma');
 	let formRecorrenciaFim = $state<string>('');
 	let formParticipantes = $state<string[]>([]);
 
-	let plugins = [TimeGrid, DayGrid, Interaction, List];
+	let plugins = [DayGrid, Interaction, List];
 	let options = $state({
-		view: 'timeGridWeek',
+		view: 'dayGridMonth',
 		headerToolbar: {
 			start: 'prev,next today',
 			center: 'title',
-			end: 'dayGridMonth,timeGridWeek,timeGridDay'
+			end: 'dayGridMonth,listMonth'
 		},
 		buttonText: {
 			today: 'Hoje',
@@ -70,19 +69,16 @@
 			dayGridMonth: 'Mês',
 			timeGridWeek: 'Semana',
 			timeGridDay: 'Dia',
-			listWeek: 'Lista'
+			listMonth: 'Lista'
 		},
-		allDayContent: 'Dia todo',
 		locale: 'pt-br',
 		firstDay: 0 as const,
-		slotMinTime: '06:00:00',
-		slotMaxTime: '22:00:00',
-		allDaySlot: true,
 		selectable: true,
 		editable: true,
 		events: [] as any[],
 		select: (info: any) => {
-			abrirCriarComDatas(info.startStr, info.endStr, info.allDay);
+			// No dayGrid o fim da seleção é exclusivo (dia seguinte ao último marcado)
+			abrirCriarComDatas(toDateInput(info.start), toDateInput(somarDias(info.end, -1)));
 		},
 		eventClick: (info: any) => {
 			const ev = eventos.find(e => e.id === info.event.id);
@@ -91,10 +87,10 @@
 			}
 		},
 		eventDrop: async (info: any) => {
-			await persistirMudancaHorario(info.event);
+			await persistirMudancaDias(info.event);
 		},
 		eventResize: async (info: any) => {
-			await persistirMudancaHorario(info.event);
+			await persistirMudancaDias(info.event);
 		}
 	});
 
@@ -107,12 +103,14 @@
 			options.events = res.map(e => ({
 				id: e.id,
 				title: e.recorrencia && e.recorrencia !== 'nenhuma' ? `↻ ${e.titulo}` : e.titulo,
-				start: e.inicio,
-				end: e.fim,
-				allDay: e.dia_inteiro,
+				// Marcações são por dia: o fim exibido é exclusivo (dia seguinte ao último)
+				start: toDateInput(new Date(e.inicio)),
+				end: toDateInput(somarDias(new Date(e.fim), 1)),
+				allDay: true,
 				backgroundColor: e.criador_cor || '#1d5bbf',
 				borderColor: e.criador_cor || '#1d5bbf',
-				editable: e.pode_editar,
+				// Arrastar uma ocorrência moveria a série inteira; recorrentes só pelo formulário
+				editable: e.pode_editar && (!e.recorrencia || e.recorrencia === 'nenhuma'),
 				extendedProps: {
 					descricao: e.descricao,
 					criadorNome: e.criador_nome,
@@ -135,26 +133,22 @@
 		}
 	}
 
-	function abrirCriarComDatas(inicioISO: string, fimISO: string, diaInteiro: boolean) {
+	function abrirCriarComDatas(inicioDia: string, fimDia: string) {
 		formId = null;
 		formTitulo = '';
 		formDescricao = '';
-		formDiaInteiro = diaInteiro;
 		formRecorrencia = 'nenhuma';
 		formRecorrenciaFim = '';
-
-		// Converte para formato local datetime-local "YYYY-MM-DDTHH:mm"
-		formInicio = toDateTimeLocal(new Date(inicioISO));
-		formFim = toDateTimeLocal(new Date(fimISO));
+		formInicio = inicioDia;
+		formFim = fimDia < inicioDia ? inicioDia : fimDia;
 
 		formParticipantes = auth.user ? [auth.user.id] : [];
 		modalAberto = true;
 	}
 
 	function abrirCriarManual() {
-		const agora = new Date();
-		const maisUmaHora = new Date(agora.getTime() + 60 * 60 * 1000);
-		abrirCriarComDatas(agora.toISOString(), maisUmaHora.toISOString(), false);
+		const hoje = toDateInput(new Date());
+		abrirCriarComDatas(hoje, hoje);
 	}
 
 	function abrirDetalhes(e: EventoItem) {
@@ -167,9 +161,8 @@
 		formId = eventoSelecionado.original_id || eventoSelecionado.id;
 		formTitulo = eventoSelecionado.titulo;
 		formDescricao = eventoSelecionado.descricao;
-		formInicio = toDateTimeLocal(new Date(eventoSelecionado.inicio));
-		formFim = toDateTimeLocal(new Date(eventoSelecionado.fim));
-		formDiaInteiro = eventoSelecionado.dia_inteiro;
+		formInicio = toDateInput(new Date(eventoSelecionado.inicio));
+		formFim = toDateInput(new Date(eventoSelecionado.fim));
 		formRecorrencia = eventoSelecionado.recorrencia || 'nenhuma';
 		formRecorrenciaFim = eventoSelecionado.recorrencia_fim ? eventoSelecionado.recorrencia_fim.split('T')[0] : '';
 		formParticipantes = eventoSelecionado.participantes.map(p => p.id);
@@ -180,24 +173,19 @@
 
 	async function salvarEvento() {
 		if (!formTitulo || !formInicio || !formFim) {
-			alert('Título, início e fim são obrigatórios.');
+			alert('Título, dia de início e dia de término são obrigatórios.');
 			return;
 		}
 
-		const inicioDate = new Date(formInicio);
-		const fimDate = new Date(formFim);
-
-		if (fimDate < inicioDate) {
-			alert('O horário de término não pode ser anterior ao início.');
+		if (formFim < formInicio) {
+			alert('O dia de término não pode ser anterior ao de início.');
 			return;
 		}
 
 		const payload: any = {
 			titulo: formTitulo,
 			descricao: formDescricao,
-			inicio: inicioDate.toISOString(),
-			fim: fimDate.toISOString(),
-			dia_inteiro: formDiaInteiro,
+			...intervaloDias(formInicio, formFim),
 			recorrencia: formRecorrencia,
 			participantes: formParticipantes
 		};
@@ -237,28 +225,51 @@
 		}
 	}
 
-	async function persistirMudancaHorario(calEvent: any) {
+	async function persistirMudancaDias(calEvent: any) {
+		const ev = eventos.find(e => e.id === calEvent.id);
+		const inicioDia = toDateInput(new Date(calEvent.start));
+		// O fim do calendário é exclusivo: o último dia marcado é o anterior
+		const fimDia = calEvent.end ? toDateInput(somarDias(new Date(calEvent.end), -1)) : inicioDia;
 		try {
-			await apiFetch(`/api/eventos/${calEvent.id}`, {
+			await apiFetch(`/api/eventos/${ev?.original_id || calEvent.id}`, {
 				method: 'PUT',
 				body: JSON.stringify({
-					titulo: calEvent.title,
-					descricao: calEvent.extendedProps?.descricao || '',
-					inicio: new Date(calEvent.start).toISOString(),
-					fim: new Date(calEvent.end || calEvent.start).toISOString(),
-					dia_inteiro: calEvent.allDay
+					titulo: ev?.titulo ?? calEvent.title,
+					descricao: ev?.descricao ?? '',
+					...intervaloDias(inicioDia, fimDia < inicioDia ? inicioDia : fimDia),
+					recorrencia: ev?.recorrencia ?? 'nenhuma',
+					recorrencia_fim: ev?.recorrencia_fim ?? null
 				})
 			});
 			await carregarEventos();
 		} catch (err: any) {
-			alert(err.message || 'Erro ao atualizar horário do evento');
+			alert(err.message || 'Erro ao mudar o dia do evento');
 			await carregarEventos(); // reverte visualmente em caso de erro
 		}
 	}
 
-	function toDateTimeLocal(d: Date): string {
+	// Marcação por dia: do início do primeiro dia ao fim do último, no fuso local
+	function intervaloDias(inicioDia: string, fimDia: string) {
+		return {
+			inicio: new Date(inicioDia + 'T00:00:00').toISOString(),
+			fim: new Date(fimDia + 'T23:59:59').toISOString(),
+			dia_inteiro: true
+		};
+	}
+
+	function toDateInput(d: Date): string {
 		const pad = (n: number) => n.toString().padStart(2, '0');
-		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+	}
+
+	function somarDias(d: Date, dias: number): Date {
+		const r = new Date(d);
+		r.setDate(r.getDate() + dias);
+		return r;
+	}
+
+	function mesmoDia(a: string, b: string): boolean {
+		return new Date(a).toDateString() === new Date(b).toDateString();
 	}
 
 	function alternarParticipante(uId: string) {
@@ -287,7 +298,7 @@
 	<div class="page-head">
 		<div>
 			<h1 class="page-title">Calendário</h1>
-			<p class="page-sub">Reuniões e compromissos da equipe. Arraste um evento para mudar o horário.</p>
+			<p class="page-sub">Marcações da equipe por dia. Arraste um evento para mudar o dia.</p>
 		</div>
 
 		<div class="flex items-center gap-2">
@@ -330,19 +341,14 @@
 
 					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div>
-							<label class="label" for="ev-inicio">Início</label>
-							<input id="ev-inicio" type="datetime-local" bind:value={formInicio} class="field" />
+							<label class="label" for="ev-inicio">Dia</label>
+							<input id="ev-inicio" type="date" bind:value={formInicio} class="field" />
 						</div>
 						<div>
-							<label class="label" for="ev-fim">Término</label>
-							<input id="ev-fim" type="datetime-local" bind:value={formFim} class="field" />
+							<label class="label" for="ev-fim">Até <span class="font-normal text-ink-3">(se durar mais de um dia)</span></label>
+							<input id="ev-fim" type="date" bind:value={formFim} min={formInicio} class="field" />
 						</div>
 					</div>
-
-					<label class="flex items-center gap-2.5 text-sm text-ink cursor-pointer">
-						<input type="checkbox" bind:checked={formDiaInteiro} class="check" />
-						Dia inteiro
-					</label>
 
 					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div>
@@ -415,12 +421,10 @@
 						<div class="min-w-0">
 							<h3 class="modal-title">{eventoSelecionado.titulo}</h3>
 							<p class="mt-1 flex items-center gap-1.5 text-sm text-ink-2 tabular">
-								<Clock class="size-4 text-ink-3" />
-								{#if eventoSelecionado.dia_inteiro}
-									{new Date(eventoSelecionado.inicio).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}, dia inteiro
-								{:else}
-									{new Date(eventoSelecionado.inicio).toLocaleString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-									até {new Date(eventoSelecionado.fim).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+								<CalendarDays class="size-4 text-ink-3" />
+								{new Date(eventoSelecionado.inicio).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+								{#if !mesmoDia(eventoSelecionado.inicio, eventoSelecionado.fim)}
+									até {new Date(eventoSelecionado.fim).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
 								{/if}
 							</p>
 							{#if eventoSelecionado.recorrencia && eventoSelecionado.recorrencia !== 'nenhuma'}
