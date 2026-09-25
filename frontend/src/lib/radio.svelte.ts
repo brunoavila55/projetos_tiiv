@@ -1,3 +1,5 @@
+import type Hls from 'hls.js';
+
 // Rádio online via Radio Browser API (https://api.radio-browser.info).
 // O áudio vive neste store, fora dos componentes, para continuar tocando
 // ao navegar entre as telas.
@@ -11,6 +13,7 @@ export interface Estacao {
 	country: string;
 	codec: string;
 	bitrate: number;
+	hls: number;
 }
 
 type Estado = 'parado' | 'carregando' | 'tocando' | 'erro';
@@ -27,6 +30,9 @@ class RadioStore {
 	favoritas = $state<Estacao[]>([]);
 
 	private audio: HTMLAudioElement | null = null;
+	// Chrome/Firefox não tocam HLS (.m3u8) nativamente: hls.js monta o stream via MSE
+	private hls: Hls | null = null;
+	private sessao = 0;
 	private servidor: Promise<string> | null = null;
 
 	constructor() {
@@ -70,7 +76,9 @@ class RadioStore {
 		return lista.filter((e) => e.url_resolved && (!https || e.url_resolved.startsWith('https:')));
 	}
 
-	tocar(estacao: Estacao) {
+	async tocar(estacao: Estacao) {
+		const sessao = ++this.sessao;
+		this.soltarHls();
 		if (!this.audio) {
 			this.audio = new Audio();
 			this.audio.addEventListener('playing', () => (this.estado = 'tocando'));
@@ -79,11 +87,47 @@ class RadioStore {
 				if (this.audio?.getAttribute('src')) this.estado = 'erro';
 			});
 		}
+		// Cala a estação anterior já, sem esperar a próxima conectar
+		this.audio.pause();
+		this.audio.removeAttribute('src');
 		this.atual = estacao;
 		this.estado = 'carregando';
-		this.audio.src = estacao.url_resolved;
 		this.audio.volume = this.volume;
-		this.audio.play().catch(() => (this.estado = 'erro'));
+
+		// Estações mortas no diretório às vezes nunca respondem: desiste após 15 s
+		setTimeout(() => {
+			if (sessao === this.sessao && this.estado === 'carregando' && !this.audio?.currentTime) {
+				this.parar();
+				this.estado = 'erro';
+			}
+		}, 15_000);
+
+		const url = estacao.url_resolved;
+		const ehHls = estacao.hls === 1 || /\.m3u8(\?|$)/i.test(url);
+		if (ehHls && !this.audio.canPlayType('application/vnd.apple.mpegurl')) {
+			const { default: Hls } = await import('hls.js');
+			// Outra estação foi escolhida (ou a rádio parou) enquanto a biblioteca carregava
+			if (sessao !== this.sessao || !this.audio) return;
+			if (!Hls.isSupported()) {
+				this.estado = 'erro';
+				return;
+			}
+			const hls = new Hls({ enableWorker: false });
+			hls.on(Hls.Events.ERROR, (_e, dados) => {
+				if (dados.fatal && this.hls === hls) {
+					this.soltarHls();
+					this.estado = 'erro';
+				}
+			});
+			hls.loadSource(url);
+			hls.attachMedia(this.audio);
+			this.hls = hls;
+		} else {
+			this.audio.src = url;
+		}
+		this.audio.play().catch(() => {
+			if (sessao === this.sessao) this.estado = 'erro';
+		});
 
 		// Contabiliza o clique na API (ajuda o ranking de estações); falha é irrelevante
 		this.base()
@@ -97,7 +141,14 @@ class RadioStore {
 		else this.tocar(this.atual);
 	}
 
+	private soltarHls() {
+		this.hls?.destroy();
+		this.hls = null;
+	}
+
 	parar() {
+		this.sessao++;
+		this.soltarHls();
 		if (this.audio) {
 			this.audio.pause();
 			// Solta a conexão do stream em vez de só pausar
