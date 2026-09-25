@@ -58,6 +58,8 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 	estoqueHandler := handlers.NewEstoqueHandler(db)
 	painelHandler := handlers.NewPainelHandler(db)
 	avisoHandler := handlers.NewAvisoHandler(db)
+	monitorHandler := handlers.NewMonitorHandler(db)
+	linkHandler := handlers.NewLinkHandler(db)
 	tecnicoHandler := handlers.NewTecnicoHandler(db)
 	ticketHandler := handlers.NewTicketHandler(db)
 	procedimentoHandler := handlers.NewProcedimentoHandler(db)
@@ -104,6 +106,29 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 				a.Post("/", avisoHandler.Criar)
 				a.Put("/{id}", avisoHandler.Atualizar)
 				a.Delete("/{id}", avisoHandler.Deletar)
+			})
+
+			// Monitor de disponibilidade (cadastro só admin)
+			protected.Route("/monitores", func(m chi.Router) {
+				m.Get("/", monitorHandler.Listar)
+				m.Get("/resumo", monitorHandler.Resumo)
+				m.Post("/{id}/verificar", monitorHandler.Verificar)
+				m.Get("/{id}/quedas", monitorHandler.ListarQuedas)
+
+				m.Group(func(adminMon chi.Router) {
+					adminMon.Use(authMiddleware.RequireAdmin)
+					adminMon.Post("/", monitorHandler.Criar)
+					adminMon.Put("/{id}", monitorHandler.Atualizar)
+					adminMon.Delete("/{id}", monitorHandler.Deletar)
+				})
+			})
+
+			// Links úteis (autor ou admin editam e excluem)
+			protected.Route("/links", func(l chi.Router) {
+				l.Get("/", linkHandler.Listar)
+				l.Post("/", linkHandler.Criar)
+				l.Put("/{id}", linkHandler.Atualizar)
+				l.Delete("/{id}", linkHandler.Deletar)
 			})
 
 			// Calendário

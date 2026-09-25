@@ -12,6 +12,7 @@ import (
 
 	"tiiv/backend/internal/config"
 	"tiiv/backend/internal/database"
+	"tiiv/backend/internal/monitor"
 	"tiiv/backend/internal/routes"
 )
 
@@ -40,6 +41,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Pool.Close()
+
+	// Monitor de disponibilidade em segundo plano (para junto com o ctx)
+	go monitor.NovoVerificador(db).Rodar(ctx)
 
 	// Configurar rotas
 	router, err := routes.SetupRouter(cfg, db)
@@ -70,6 +74,7 @@ func main() {
 
 	<-stop
 	slog.Info("Sinal de encerramento recebido. Desligando servidor graciosamente...")
+	cancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

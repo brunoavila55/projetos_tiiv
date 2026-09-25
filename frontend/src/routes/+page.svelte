@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { Calendar, CalendarClock, CheckSquare, Plus, Flag, Megaphone, Pencil, Trash2, X } from 'lucide-svelte';
+	import { Calendar, CalendarClock, CheckSquare, Plus, Flag, Megaphone, Pencil, Trash2, X, Activity, CircleAlert } from 'lucide-svelte';
 
 	type NivelAviso = 'info' | 'atencao' | 'critico';
 
@@ -20,6 +20,12 @@
 
 	interface PainelDados {
 		avisos: Aviso[];
+		monitores: {
+			ativos: number;
+			online: number;
+			offline: number;
+			fora: { id: string; nome: string; alvo: string; ultimo_erro: string; status_desde: string }[];
+		};
 		proximos_eventos: {
 			id: string;
 			titulo: string;
@@ -167,6 +173,16 @@
 		return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 	}
 
+	function haQuanto(iso: string): string {
+		const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+		if (min < 1) return 'agora';
+		if (min < 60) return `há ${min} min`;
+		const h = Math.floor(min / 60);
+		if (h < 24) return `há ${h} h`;
+		const d = Math.floor(h / 24);
+		return `há ${d} ${d === 1 ? 'dia' : 'dias'}`;
+	}
+
 	function quandoFalta(iso: string): string {
 		const n = diasAte(iso);
 		if (n < 0) return 'em andamento';
@@ -261,6 +277,33 @@
 				</ul>
 			{/if}
 		</section>
+
+		<!-- Monitor de disponibilidade -->
+		{#if dados.monitores.fora.length > 0}
+			<section class="rounded-xl border border-danger/40 bg-danger-soft">
+				<a href="/monitor" class="flex items-center gap-2 px-4 pt-3.5 pb-2 text-sm font-bold text-danger hover:underline underline-offset-2">
+					<CircleAlert class="size-5 shrink-0" />
+					{dados.monitores.fora.length === 1 ? '1 serviço fora do ar' : `${dados.monitores.fora.length} serviços fora do ar`}
+				</a>
+				<ul class="px-4 pb-3.5 pl-11 space-y-1 text-sm">
+					{#each dados.monitores.fora as m (m.id)}
+						<li class="text-ink">
+							<span class="font-semibold">{m.nome}</span>
+							<span class="text-ink-2">· {haQuanto(m.status_desde)}{m.ultimo_erro ? ` · ${m.ultimo_erro}` : ''}</span>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{:else if dados.monitores.ativos > 0}
+			<a href="/monitor" class="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-line hover:border-line-strong text-sm transition-colors">
+				<Activity class="size-4 text-ok shrink-0" />
+				<span class="text-ink-2">
+					{dados.monitores.online === dados.monitores.ativos
+						? `Todos os ${dados.monitores.ativos} serviços monitorados estão no ar.`
+						: `${dados.monitores.online} de ${dados.monitores.ativos} serviços confirmados no ar.`}
+				</span>
+			</a>
+		{/if}
 
 		{#if dados.proximos_eventos.length > 0}
 			{@const proximo = dados.proximos_eventos[0]}

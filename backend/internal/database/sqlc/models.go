@@ -65,6 +65,45 @@ type ItensEstoque struct {
 	CriadoEm      pgtype.Timestamptz `json:"criado_em"`
 }
 
+type Links struct {
+	ID           pgtype.UUID        `json:"id"`
+	Titulo       string             `json:"titulo"`
+	Url          string             `json:"url"`
+	Descricao    string             `json:"descricao"`
+	Categoria    string             `json:"categoria"`
+	CriadoPor    pgtype.UUID        `json:"criado_por"`
+	CriadoEm     pgtype.Timestamptz `json:"criado_em"`
+	AtualizadoEm pgtype.Timestamptz `json:"atualizado_em"`
+}
+
+type MonitorQuedas struct {
+	ID        pgtype.UUID        `json:"id"`
+	MonitorID pgtype.UUID        `json:"monitor_id"`
+	Inicio    pgtype.Timestamptz `json:"inicio"`
+	Fim       pgtype.Timestamptz `json:"fim"`
+	Erro      string             `json:"erro"`
+	TicketID  pgtype.UUID        `json:"ticket_id"`
+}
+
+type Monitores struct {
+	ID             pgtype.UUID        `json:"id"`
+	Nome           string             `json:"nome"`
+	Tipo           string             `json:"tipo"`
+	Alvo           string             `json:"alvo"`
+	IntervaloSeg   int32              `json:"intervalo_seg"`
+	AbrirTicket    bool               `json:"abrir_ticket"`
+	Ativo          bool               `json:"ativo"`
+	Status         string             `json:"status"`
+	FalhasSeguidas int32              `json:"falhas_seguidas"`
+	LatenciaMs     pgtype.Int4        `json:"latencia_ms"`
+	UltimoErro     string             `json:"ultimo_erro"`
+	VerificadoEm   pgtype.Timestamptz `json:"verificado_em"`
+	StatusDesde    pgtype.Timestamptz `json:"status_desde"`
+	CriadoPor      pgtype.UUID        `json:"criado_por"`
+	CriadoEm       pgtype.Timestamptz `json:"criado_em"`
+	AtualizadoEm   pgtype.Timestamptz `json:"atualizado_em"`
+}
+
 type MovimentacoesEstoque struct {
 	ID              pgtype.UUID        `json:"id"`
 	ItemID          pgtype.UUID        `json:"item_id"`

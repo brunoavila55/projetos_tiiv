@@ -6,6 +6,8 @@ Aplicação web interna para uso de equipe em rede local (LAN), englobando:
 3. **Estoque**: Controle material baseado em movimentações transacionais (entrada/saída/ajuste).
 4. **Técnicos**: Cadastro de técnicos, marcação de entrada/saída e relatório de horas.
 5. **Acesso PDV**: Terminal com seleção visual de operador e PIN numérico de 4 dígitos.
+6. **Monitor**: Disponibilidade de hosts e serviços (ping, porta TCP, HTTP) verificada pelo servidor, com histórico de quedas e abertura opcional de ticket.
+7. **Links úteis**: Endereços de sistemas, painéis e documentação da equipe, por categoria.
 
 ---
 

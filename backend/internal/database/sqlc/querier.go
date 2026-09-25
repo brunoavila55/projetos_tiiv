@@ -11,10 +11,13 @@ import (
 )
 
 type Querier interface {
+	AbrirQueda(ctx context.Context, arg AbrirQuedaParams) (pgtype.UUID, error)
 	AdicionarParticipanteEvento(ctx context.Context, arg AdicionarParticipanteEventoParams) error
 	AtualizarAviso(ctx context.Context, arg AtualizarAvisoParams) (Avisos, error)
 	AtualizarEvento(ctx context.Context, arg AtualizarEventoParams) (Eventos, error)
 	AtualizarItemEstoque(ctx context.Context, arg AtualizarItemEstoqueParams) (ItensEstoque, error)
+	AtualizarLink(ctx context.Context, arg AtualizarLinkParams) (Links, error)
+	AtualizarMonitor(ctx context.Context, arg AtualizarMonitorParams) (Monitores, error)
 	AtualizarPin(ctx context.Context, arg AtualizarPinParams) (pgtype.UUID, error)
 	AtualizarProcedimento(ctx context.Context, arg AtualizarProcedimentoParams) (Procedimentos, error)
 	// Troca feita pelo próprio usuário: cumpre a troca obrigatória e zera as tentativas
@@ -28,6 +31,7 @@ type Querier interface {
 	AtualizarUltimoUsoSessao(ctx context.Context, arg AtualizarUltimoUsoSessaoParams) error
 	AtualizarUsuario(ctx context.Context, arg AtualizarUsuarioParams) (AtualizarUsuarioRow, error)
 	BloquearItemEstoqueParaAtualizacao(ctx context.Context, id pgtype.UUID) (ItensEstoque, error)
+	BloquearMonitor(ctx context.Context, id pgtype.UUID) (Monitores, error)
 	BloquearTicket(ctx context.Context, id pgtype.UUID) (Tickets, error)
 	BuscarComentarioPorID(ctx context.Context, id pgtype.UUID) (TarefaComentarios, error)
 	BuscarEventoPorID(ctx context.Context, id pgtype.UUID) (Eventos, error)
@@ -52,6 +56,8 @@ type Querier interface {
 	CriarComentarioTarefa(ctx context.Context, arg CriarComentarioTarefaParams) (TarefaComentarios, error)
 	CriarEvento(ctx context.Context, arg CriarEventoParams) (Eventos, error)
 	CriarItemEstoque(ctx context.Context, arg CriarItemEstoqueParams) (ItensEstoque, error)
+	CriarLink(ctx context.Context, arg CriarLinkParams) (Links, error)
+	CriarMonitor(ctx context.Context, arg CriarMonitorParams) (Monitores, error)
 	CriarMovimentacaoEstoque(ctx context.Context, arg CriarMovimentacaoEstoqueParams) (MovimentacoesEstoque, error)
 	CriarProcedimento(ctx context.Context, arg CriarProcedimentoParams) (Procedimentos, error)
 	CriarRevisaoProcedimento(ctx context.Context, arg CriarRevisaoProcedimentoParams) error
@@ -64,6 +70,8 @@ type Querier interface {
 	DeletarComentarioTarefa(ctx context.Context, id pgtype.UUID) error
 	DeletarEvento(ctx context.Context, id pgtype.UUID) error
 	DeletarItemEstoque(ctx context.Context, id pgtype.UUID) error
+	DeletarLink(ctx context.Context, id pgtype.UUID) error
+	DeletarMonitor(ctx context.Context, id pgtype.UUID) error
 	DeletarOutrasSessoesUsuario(ctx context.Context, arg DeletarOutrasSessoesUsuarioParams) error
 	DeletarRegistroTecnico(ctx context.Context, id pgtype.UUID) error
 	DeletarSessaoPorHash(ctx context.Context, tokenHash string) error
@@ -72,6 +80,7 @@ type Querier interface {
 	DeletarTarefa(ctx context.Context, id pgtype.UUID) error
 	DesativarItemEstoque(ctx context.Context, id pgtype.UUID) error
 	DesbloquearUsuario(ctx context.Context, id pgtype.UUID) (DesbloquearUsuarioRow, error)
+	FecharQuedaAberta(ctx context.Context, monitorID pgtype.UUID) error
 	ListarAvisosAtivos(ctx context.Context) ([]ListarAvisosAtivosRow, error)
 	ListarCategoriasEstoque(ctx context.Context) ([]string, error)
 	ListarCategoriasProcedimentos(ctx context.Context) ([]string, error)
@@ -79,10 +88,15 @@ type Querier interface {
 	ListarEventosIntervalo(ctx context.Context, arg ListarEventosIntervaloParams) ([]ListarEventosIntervaloRow, error)
 	ListarItensAbaixoDoMinimo(ctx context.Context) ([]ItensEstoque, error)
 	ListarItensEstoque(ctx context.Context, arg ListarItensEstoqueParams) ([]ListarItensEstoqueRow, error)
+	ListarLinks(ctx context.Context) ([]ListarLinksRow, error)
+	ListarMonitores(ctx context.Context) ([]Monitores, error)
+	ListarMonitoresOffline(ctx context.Context) ([]ListarMonitoresOfflineRow, error)
+	ListarMonitoresParaVerificar(ctx context.Context) ([]Monitores, error)
 	ListarMovimentacoesEstoque(ctx context.Context, arg ListarMovimentacoesEstoqueParams) ([]ListarMovimentacoesEstoqueRow, error)
 	ListarParticipantesPorEvento(ctx context.Context, eventoID pgtype.UUID) ([]ListarParticipantesPorEventoRow, error)
 	ListarParticipantesPorEventos(ctx context.Context, dollar_1 []pgtype.UUID) ([]ListarParticipantesPorEventosRow, error)
 	ListarProcedimentos(ctx context.Context, arg ListarProcedimentosParams) ([]ListarProcedimentosRow, error)
+	ListarQuedasMonitor(ctx context.Context, monitorID pgtype.UUID) ([]ListarQuedasMonitorRow, error)
 	ListarRegistrosTecnicos(ctx context.Context, arg ListarRegistrosTecnicosParams) ([]ListarRegistrosTecnicosRow, error)
 	ListarRevisoesProcedimento(ctx context.Context, procedimentoID pgtype.UUID) ([]ListarRevisoesProcedimentoRow, error)
 	ListarTarefas(ctx context.Context, arg ListarTarefasParams) ([]ListarTarefasRow, error)
@@ -95,12 +109,17 @@ type Querier interface {
 	MarcarTrocaPinObrigatoria(ctx context.Context, id pgtype.UUID) error
 	ObterAviso(ctx context.Context, id pgtype.UUID) (Avisos, error)
 	ObterFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (ObterFotoUsuarioRow, error)
+	ObterLink(ctx context.Context, id pgtype.UUID) (Links, error)
+	ObterMonitor(ctx context.Context, id pgtype.UUID) (Monitores, error)
 	ObterUltimaMovimentacaoItem(ctx context.Context, itemID pgtype.UUID) (MovimentacoesEstoque, error)
 	ObterUsoAssistente(ctx context.Context) (ObterUsoAssistenteRow, error)
 	ObterVersaoFotoUsuario(ctx context.Context, usuarioID pgtype.UUID) (pgtype.Timestamptz, error)
 	RegistrarEntradaTecnico(ctx context.Context, arg RegistrarEntradaTecnicoParams) (TecnicoRegistros, error)
 	RegistrarSaidaTecnico(ctx context.Context, arg RegistrarSaidaTecnicoParams) (TecnicoRegistros, error)
 	RegistrarUsoAssistente(ctx context.Context, neurons float64) error
+	RegistrarVerificacao(ctx context.Context, arg RegistrarVerificacaoParams) error
+	// Depois de trocar o alvo ou desligar: a próxima verificação decide de novo.
+	ReiniciarEstadoMonitor(ctx context.Context, id pgtype.UUID) error
 	// Consolidado por técnico no período (pela data de entrada). Registros ainda
 	// em aberto contam como visita, mas não somam horas.
 	RelatorioTecnicos(ctx context.Context, arg RelatorioTecnicosParams) ([]RelatorioTecnicosRow, error)
@@ -113,7 +132,11 @@ type Querier interface {
 	// (o WHERE garante que bloqueado_ate, se preenchido, já expirou). A 5ª
 	// tentativa seguida bloqueia por 5 min, 15 min, 45 min e depois 1 h.
 	ReservarTentativaPin(ctx context.Context, id pgtype.UUID) (ReservarTentativaPinRow, error)
+	ResumoMonitores(ctx context.Context) (ResumoMonitoresRow, error)
 	SalvarFotoUsuario(ctx context.Context, arg SalvarFotoUsuarioParams) (pgtype.Timestamptz, error)
+	// Tempo em queda de cada monitor dentro das últimas 24 horas
+	SegundosForaUltimas24h(ctx context.Context) ([]SegundosForaUltimas24hRow, error)
+	VincularTicketQueda(ctx context.Context, arg VincularTicketQuedaParams) error
 	ZerarTentativasFalhas(ctx context.Context, id pgtype.UUID) error
 }
 

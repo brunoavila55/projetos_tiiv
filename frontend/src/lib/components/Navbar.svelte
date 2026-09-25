@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { ticketsStore } from '$lib/tickets.svelte';
+	import { monitoresStore } from '$lib/monitores.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { themeStore } from '$lib/theme.svelte';
 	import { radio } from '$lib/radio.svelte';
@@ -21,15 +22,21 @@
 		Sun,
 		Moon,
 		Monitor,
-		Radio
+		Radio,
+		Activity,
+		Link
 	} from 'lucide-svelte';
 
 	let mobileMenuOpen = $state(false);
 
-	// Contador de tickets abertos no menu, atualizado a cada minuto
+	// Contadores de tickets abertos e monitores fora do ar, atualizados a cada minuto
 	onMount(() => {
-		ticketsStore.atualizar();
-		const timer = setInterval(() => ticketsStore.atualizar(), 60_000);
+		const atualizar = () => {
+			ticketsStore.atualizar();
+			monitoresStore.atualizar();
+		};
+		atualizar();
+		const timer = setInterval(atualizar, 60_000);
 		return () => clearInterval(timer);
 	});
 
@@ -39,7 +46,9 @@
 		{ href: '/tarefas', label: 'Tarefas', icon: CheckSquare },
 		{ href: '/calendario', label: 'Calendário', icon: Calendar },
 		{ href: '/estoque', label: 'Estoque', icon: Package },
-		{ href: '/tecnicos', label: 'Técnicos', icon: HardHat }
+		{ href: '/tecnicos', label: 'Técnicos', icon: HardHat },
+		{ href: '/monitor', label: 'Monitor', icon: Activity },
+		{ href: '/links', label: 'Links úteis', icon: Link }
 	];
 
 	const adminLinks = [
@@ -94,6 +103,12 @@
 					<span
 						class="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-accent text-on-accent text-xs font-bold grid place-items-center tabular"
 						aria-label="{ticketsStore.abertos} tickets abertos">{ticketsStore.abertos}</span
+					>
+				{/if}
+				{#if item.href === '/monitor' && monitoresStore.offline > 0}
+					<span
+						class="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-danger text-surface text-xs font-bold grid place-items-center tabular"
+						aria-label="{monitoresStore.offline} fora do ar">{monitoresStore.offline}</span
 					>
 				{/if}
 			</a>

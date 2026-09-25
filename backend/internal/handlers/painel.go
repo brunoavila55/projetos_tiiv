@@ -25,9 +25,10 @@ func NewPainelHandler(db *database.DB) *PainelHandler {
 const DiasAntecedenciaPainel = 7
 
 type PainelResponse struct {
-	Avisos           []AvisoResponse      `json:"avisos"`
-	ProximosEventos  []EventoResponse     `json:"proximos_eventos"`
-	TarefasPendentes []TarefaItemResponse `json:"tarefas_pendentes"`
+	Avisos           []AvisoResponse         `json:"avisos"`
+	Monitores        ResumoMonitoresResponse `json:"monitores"`
+	ProximosEventos  []EventoResponse        `json:"proximos_eventos"`
+	TarefasPendentes []TarefaItemResponse    `json:"tarefas_pendentes"`
 }
 
 // ObterDadosPainel: GET /api/painel (única chamada para o painel inicial)
@@ -143,8 +144,15 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 		avisos = []AvisoResponse{}
 	}
 
+	// 4. Monitores fora do ar
+	monitores, err := resumoMonitores(r, h.db.Queries)
+	if err != nil {
+		monitores = ResumoMonitoresResponse{Fora: []MonitorForaResponse{}}
+	}
+
 	response.JSON(w, http.StatusOK, PainelResponse{
 		Avisos:           avisos,
+		Monitores:        monitores,
 		ProximosEventos:  proximosEventos,
 		TarefasPendentes: tarefasPendentes,
 	})
