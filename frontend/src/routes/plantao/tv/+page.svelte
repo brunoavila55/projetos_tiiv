@@ -4,7 +4,6 @@
 	import { ModoTV, lerChaveTV, esquecerChaveTV } from '$lib/modoTV.svelte';
 	import {
 		CIDADES,
-		rotuloCurto,
 		daEscala,
 		ehDomingo,
 		proximoDomingo,
@@ -13,7 +12,6 @@
 		diaComFeriado,
 		diasFeriado,
 		type Feriado,
-		diaMes,
 		corDaPessoa,
 		cobre,
 		deFolga,
@@ -23,6 +21,8 @@
 		diaSemana,
 		periodo,
 		quandoComeca,
+		quantoFalta,
+		nomeCidade,
 		type Turno
 	} from '$lib/plantao';
 	import { Maximize, Minimize, ArrowLeft, ShieldCheck, ShieldAlert, WifiOff, Tv, Coffee, Moon, Sun, MapPin } from 'lucide-svelte';
@@ -113,8 +113,8 @@
 	// Plantão interno (domingos e feriados): o de hoje ou o do próximo dia desses
 	const diaInterno = $derived(proximoDiaInterno(hoje, feriados));
 	const internoDoDia = $derived(escala.filter((t) => t.tipo === 'interno' && cobre(t, diaInterno)));
-	const internoAgora = $derived(diaInterno === hoje ? internoDoDia : []);
-	// Técnicos externos: o noturno de hoje e o plantão do domingo (hoje ou o próximo)
+	// Técnicos externos: o noturno de hoje (o destaque da tela) e o plantão do
+	// domingo (hoje ou o próximo)
 	const domingo = $derived(proximoDomingo(hoje));
 	const externos = $derived(
 		CIDADES.map((c) => ({
@@ -125,7 +125,9 @@
 	);
 	const folgaAgora = $derived(dados?.escala.filter((t) => deFolga(t, hoje)) ?? []);
 	// Próximas entradas na escala (turnos que ainda vão começar)
-	const proximos = $derived(dados?.escala.filter((t) => t.inicio > hoje).slice(0, 7) ?? []);
+	// Próximas trocas do noturno; o interno e o domingo aparecem na faixa
+	const proximos = $derived(escala.filter((t) => t.tipo === 'noturno' && t.inicio > hoje).slice(0, 7));
+	const noturnoAgora = $derived(externos.flatMap((c) => c.noturno));
 
 	const faixa = $derived(
 		Array.from({ length: DIAS_FAIXA }, (_, i) => {
@@ -155,7 +157,7 @@
 </script>
 
 <svelte:head>
-	<title>{internoAgora.length ? `${internoAgora.map((t) => t.nome).join(', ')} · ` : ''}Plantão · Projetos NOC</title>
+	<title>{noturnoAgora.length ? `${noturnoAgora.map((t) => t.nome).join(', ')} · ` : ''}Plantão · Projetos NOC</title>
 </svelte:head>
 
 <div class="h-screen overflow-hidden bg-paper text-ink flex flex-col {tv.controlesVisiveis ? '' : 'cursor-none'}">
@@ -199,76 +201,71 @@
 
 		<main class="flex-1 min-h-0 grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 px-8">
 			<div class="min-h-0 flex flex-col gap-5 overflow-hidden">
-				<!-- Plantão interno -->
-				<section class="flex flex-col gap-3" aria-label="Plantão interno agora">
-					<h2 class="titulo-bloco">Plantão interno</h2>
-					{#if internoDoDia.length === 0}
-						<div class="rounded-2xl border-2 border-warn bg-warn-soft px-6 py-4 flex items-center gap-4">
-							<ShieldAlert class="size-10 text-warn shrink-0" strokeWidth={1.8} />
-							<p class="text-[1.9rem] font-bold leading-tight">
-								{diaInterno === hoje ? 'Ninguém no plantão interno hoje' : `Ninguém no plantão interno de ${diaComFeriado(diaInterno, feriados)}`}
-							</p>
-						</div>
-					{:else}
-						<div class="grid gap-4 {internoDoDia.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}">
-							{#each internoDoDia as t (t.id)}
-								<article class="rounded-2xl bg-surface border border-line px-6 py-4 flex items-center gap-5 min-w-0" style="border-left: 0.5rem solid {corDaPessoa(t.nome)};">
-									<Avatar id={t.id} nome={t.nome} cor={corDaPessoa(t.nome)} class="size-20 text-[1.75rem] shrink-0" />
-									<div class="min-w-0">
-										<p class="text-[1.05rem] font-semibold text-ink-3 truncate">
-											{diaInterno === hoje ? `Hoje${feriados.has(hoje) ? ` · ${feriados.get(hoje)}` : ''}` : `Próximo: ${diaComFeriado(diaInterno, feriados)} · ${quandoComeca(diaInterno, hoje)}`}
-										</p>
-										<p class="text-[2.6rem] font-bold leading-[1.05] tracking-[-0.02em] truncate">{t.nome}</p>
-										{#if t.observacao}
-											<p class="mt-1 text-[1.2rem] text-ink-2 truncate">{t.observacao}</p>
-										{/if}
+				<!-- Destaque: quem está no plantão noturno hoje, por cidade -->
+				<section class="flex-1 min-h-0 flex flex-col gap-3" aria-label="Plantão noturno hoje">
+					<h2 class="titulo-bloco flex items-center gap-2"><Moon class="size-5" /> Plantão noturno hoje</h2>
+					<div class="flex-1 min-h-0 grid grid-cols-3 gap-4">
+						{#each externos as c (c.id)}
+							{#if c.noturno.length === 0}
+								<article class="rounded-2xl border-2 border-warn bg-warn-soft px-6 py-5 min-w-0 flex flex-col gap-3 overflow-hidden">
+									<p class="flex items-center gap-2 text-[1.35rem] font-bold leading-tight">
+										<MapPin class="size-5 text-warn shrink-0" />
+										<span class="truncate">{c.nome}</span>
+									</p>
+									<p class="flex-1 flex items-center justify-center gap-3 text-[2.4rem] font-bold leading-tight text-warn">
+										<ShieldAlert class="size-10 shrink-0" strokeWidth={1.8} /> Sem técnico
+									</p>
+								</article>
+							{:else}
+								<article
+									class="rounded-2xl bg-surface border border-line px-6 py-5 min-w-0 flex flex-col gap-4 overflow-hidden"
+									style="border-top: 0.5rem solid {corDaPessoa(c.noturno[0].nome)};"
+								>
+									<p class="flex items-center gap-2 text-[1.35rem] font-bold leading-tight">
+										<MapPin class="size-5 text-accent shrink-0" />
+										<span class="truncate">{c.nome}</span>
+									</p>
+									<div class="flex-1 flex flex-col justify-center gap-5 min-w-0">
+										{#each c.noturno as t (t.id)}
+											<div class="flex flex-col items-center text-center gap-3 min-w-0">
+												<Avatar id={t.id} nome={t.nome} cor={corDaPessoa(t.nome)} class="{c.noturno.length > 1 ? 'size-16 text-[1.4rem]' : 'size-28 text-[2.4rem]'} shrink-0" />
+												<div class="min-w-0 max-w-full">
+													<p class="{c.noturno.length > 1 ? 'text-[2.2rem]' : 'text-[3rem]'} font-bold leading-[1.05] tracking-[-0.02em] truncate">{t.nome}</p>
+													<p class="mt-1.5 text-[1.25rem] text-ink-2 tabular truncate">
+														{t.fim === hoje ? 'Última noite' : `Até ${diaSemana(t.fim)} · ${quantoFalta(t.fim, hoje)}`}
+													</p>
+													{#if t.observacao}
+														<p class="mt-1 text-[1.1rem] text-ink-3 truncate">{t.observacao}</p>
+													{/if}
+												</div>
+											</div>
+										{/each}
 									</div>
 								</article>
-							{/each}
-						</div>
-					{/if}
+							{/if}
+						{/each}
+					</div>
 				</section>
 
-				<!-- Técnicos externos -->
-				<section class="flex flex-col gap-3" aria-label="Técnicos externos">
-					<h2 class="titulo-bloco">Técnicos externos</h2>
-					<div class="grid grid-cols-3 gap-4">
-						{#each externos as c (c.id)}
-							<article class="rounded-2xl bg-surface border border-line px-5 py-4 min-w-0 flex flex-col gap-3">
-								<p class="flex items-center gap-2 text-[1.35rem] font-bold leading-tight">
-									<MapPin class="size-5 text-accent shrink-0" />
-									<span class="truncate">{c.nome}</span>
-								</p>
-								<div class="min-w-0">
-									<p class="flex items-center gap-1.5 text-[0.95rem] font-semibold text-ink-3"><Moon class="size-4" /> Noturno hoje</p>
-									{#if c.noturno.length === 0}
-										<p class="text-[1.6rem] font-bold text-warn leading-tight">Sem técnico</p>
-									{:else}
-										{#each c.noturno as t (t.id)}
-											<p class="flex items-center gap-2.5 min-w-0">
-												<span class="size-3 rounded-full shrink-0" style="background-color: {corDaPessoa(t.nome)};"></span>
-												<span class="text-[1.9rem] font-bold leading-tight truncate">{t.nome}</span>
-											</p>
-										{/each}
-									{/if}
-								</div>
-								<div class="min-w-0">
-									<p class="flex items-center gap-1.5 text-[0.95rem] font-semibold text-ink-3">
-										<Sun class="size-4" /> Domingo{ehDomingo(hoje) ? ', hoje' : ` ${diaMes(diaLocal(domingo))}`}
-									</p>
-									{#if c.domingo.length === 0}
-										<p class="text-[1.2rem] font-semibold text-warn leading-tight">Sem técnico</p>
-									{:else}
-										{#each c.domingo as t (t.id)}
-											<p class="flex items-center gap-2 min-w-0">
-												<span class="size-2.5 rounded-full shrink-0" style="background-color: {corDaPessoa(t.nome)};"></span>
-												<span class="text-[1.3rem] font-semibold leading-tight truncate">{t.nome}</span>
-											</p>
-										{/each}
-									{/if}
-								</div>
-							</article>
-						{/each}
+				<!-- Secundário: plantão interno e de domingo -->
+				<section class="rounded-2xl bg-surface border border-line px-5 py-3.5 flex flex-col gap-2.5" aria-label="Plantão interno e de domingo">
+					<div class="flex items-baseline gap-3 min-w-0 text-[1.15rem]">
+						<span class="flex items-center gap-2 w-[13rem] shrink-0 font-semibold text-ink-3"><ShieldCheck class="size-4.5" /> Interno</span>
+						<span class="text-ink-3 tabular shrink-0">{diaInterno === hoje ? 'hoje' : diaComFeriado(diaInterno, feriados)}</span>
+						<span class="min-w-0 truncate font-semibold {internoDoDia.length ? 'text-ink' : 'text-warn'}">
+							{internoDoDia.length ? internoDoDia.map((t) => t.nome).join(', ') : 'ninguém escalado'}
+						</span>
+					</div>
+					<div class="flex items-baseline gap-3 min-w-0 text-[1.15rem]">
+						<span class="flex items-center gap-2 w-[13rem] shrink-0 font-semibold text-ink-3"><Sun class="size-4.5" /> Domingo</span>
+						<span class="text-ink-3 tabular shrink-0">{ehDomingo(hoje) ? 'hoje' : diaSemana(domingo)}</span>
+						<span class="min-w-0 truncate">
+							{#each externos as c, i (c.id)}
+								{#if i > 0}<span class="text-ink-3">{' · '}</span>{/if}
+								<span class="text-ink-3">{c.nome}</span>
+								<span class="font-semibold {c.domingo.length ? 'text-ink' : 'text-warn'}">{c.domingo.length ? c.domingo.map((t) => t.nome).join(', ') : '—'}</span>
+							{/each}
+						</span>
 					</div>
 				</section>
 
@@ -288,11 +285,11 @@
 				{/if}
 			</div>
 
-			<!-- Próximas entradas -->
-			<aside class="min-h-0 rounded-2xl bg-surface border border-line px-5 py-4 flex flex-col overflow-hidden" aria-label="Próximos turnos">
-				<h2 class="titulo-bloco">Próximos turnos</h2>
+			<!-- Próximas trocas do noturno -->
+			<aside class="min-h-0 rounded-2xl bg-surface border border-line px-5 py-4 flex flex-col overflow-hidden" aria-label="Próximas trocas do noturno">
+				<h2 class="titulo-bloco">Próximas trocas do noturno</h2>
 				{#if proximos.length === 0}
-					<p class="mt-2 text-[1.05rem] text-ink-3">Nada escalado nas próximas semanas.</p>
+					<p class="mt-2 text-[1.05rem] text-ink-3">Nenhuma troca nas próximas semanas.</p>
 				{:else}
 					<ul class="mt-3 space-y-3 overflow-hidden">
 						{#each proximos as t (t.id)}
@@ -300,7 +297,7 @@
 								<span class="w-1.5 self-stretch rounded-full shrink-0" style="background-color: {corDaPessoa(t.nome)};"></span>
 								<div class="min-w-0 flex-1">
 									<div class="text-[1.25rem] font-semibold leading-tight truncate">{t.nome}</div>
-									<div class="text-[0.95rem] text-ink-3 tabular truncate">{periodo(t)} · {rotuloCurto(t)}</div>
+									<div class="text-[0.95rem] text-ink-3 tabular truncate">{nomeCidade(t.cidade)} · {periodo(t)}</div>
 								</div>
 								<span class="text-[1rem] font-semibold text-ink-2 tabular shrink-0">{quandoComeca(t.inicio, hoje)}</span>
 							</li>
@@ -310,7 +307,7 @@
 			</aside>
 		</main>
 
-		<!-- Faixa das próximas duas semanas: interno e, por cidade, noturno (cheio) e domingo (tracejado) -->
+		<!-- Faixa das próximas duas semanas: por cidade, noturno (cheio) e domingo (tracejado); depois o interno -->
 		<section class="px-8 pt-5 pb-3" aria-label="Escala das próximas duas semanas">
 			<div class="grid gap-1.5" style="grid-template-columns: 8.5rem repeat({DIAS_FAIXA}, minmax(0, 1fr));">
 				<span></span>
@@ -321,21 +318,6 @@
 					>
 						<div class="text-[0.85rem] font-semibold uppercase">{d.feriado ? 'Feriado' : d.semana}</div>
 						<div class="text-[1.25rem] font-bold tabular leading-tight">{d.numero}</div>
-					</div>
-				{/each}
-
-				<span class="self-center text-[0.95rem] font-semibold text-ink-3">Interno</span>
-				{#each faixa as d (d.dia)}
-					<div
-						class="min-h-[2.75rem] rounded-lg px-1.5 py-1 flex flex-col justify-center gap-0.5 overflow-hidden {d.dia === hoje ? 'ring-2 ring-accent' : ''} {d.temInterno && d.interno.length === 0 ? 'bg-warn-soft' : ''}"
-					>
-						{#each d.interno as t (t.id)}
-							<span class="block truncate rounded px-1.5 text-[0.9rem] font-semibold leading-snug text-white" style="background-color: {corDaPessoa(t.nome)}" title={t.nome}
-								>{t.nome.split(' ')[0]}</span
-							>
-						{:else}
-							{#if d.temInterno}<span class="text-center text-[0.85rem] text-warn">—</span>{/if}
-						{/each}
 					</div>
 				{/each}
 
@@ -362,6 +344,21 @@
 							{/if}
 						</div>
 					{/each}
+				{/each}
+
+				<span class="self-center text-[0.95rem] font-semibold text-ink-3">Interno</span>
+				{#each faixa as d (d.dia)}
+					<div
+						class="min-h-[2.75rem] rounded-lg px-1.5 py-1 flex flex-col justify-center gap-0.5 overflow-hidden {d.dia === hoje ? 'ring-2 ring-accent' : ''} {d.temInterno && d.interno.length === 0 ? 'bg-warn-soft' : ''}"
+					>
+						{#each d.interno as t (t.id)}
+							<span class="block truncate rounded px-1.5 text-[0.9rem] font-semibold leading-snug text-white" style="background-color: {corDaPessoa(t.nome)}" title={t.nome}
+								>{t.nome.split(' ')[0]}</span
+							>
+						{:else}
+							{#if d.temInterno}<span class="text-center text-[0.85rem] text-warn">—</span>{/if}
+						{/each}
+					</div>
 				{/each}
 
 				{#if faixa.some((d) => d.folga.length > 0)}
