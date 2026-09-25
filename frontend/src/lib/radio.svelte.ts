@@ -18,6 +18,27 @@ export interface Estacao {
 
 type Estado = 'parado' | 'carregando' | 'tocando' | 'erro';
 
+// Codecs que o navegador toca, do melhor para o pior. AAC+ (HE-AAC) soa melhor que
+// MP3 no mesmo bitrate; HLS conta como AAC. FLV e desconhecidos costumam falhar no <audio>.
+const CODECS = ['AAC+', 'AAC', 'OGG', 'MP3'];
+
+function qualidade(e: Estacao): number {
+	const codec = CODECS.indexOf(e.codec.toUpperCase());
+	const peso = e.hls === 1 ? CODECS.length - 1 : codec < 0 ? -1 : CODECS.length - codec;
+	return peso * 1000 + Math.min(e.bitrate, 320);
+}
+
+// Mesma rádio cadastrada várias vezes ("Rádio Antena 1", "antena 1 ")
+function chave(nome: string): string {
+	return nome
+		.toLowerCase()
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.replace(/^radio\s+/, '')
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim();
+}
+
 const SERVIDOR_PADRAO = 'https://de1.api.radio-browser.info';
 const CHAVE_FAVORITAS = 'tiiv_radio_favoritas';
 const CHAVE_VOLUME = 'tiiv_radio_volume';
@@ -26,7 +47,7 @@ class RadioStore {
 	aberto = $state(false);
 	atual = $state<Estacao | null>(null);
 	estado = $state<Estado>('parado');
-	volume = $state(0.7);
+	volume = $state(0.8);
 	favoritas = $state<Estacao[]>([]);
 
 	private audio: HTMLAudioElement | null = null;
@@ -63,7 +84,7 @@ class RadioStore {
 			order: 'clickcount',
 			reverse: 'true',
 			hidebroken: 'true',
-			limit: '40'
+			limit: '100'
 		});
 		if (termo.trim()) params.set('name', termo.trim());
 		else params.set('countrycode', 'BR');
@@ -73,7 +94,18 @@ class RadioStore {
 		const lista = (await r.json()) as Estacao[];
 		// Em HTTPS o navegador bloqueia streams HTTP (conteúdo misto)
 		const https = location.protocol === 'https:';
-		return lista.filter((e) => e.url_resolved && (!https || e.url_resolved.startsWith('https:')));
+		const tocaveis = lista.filter(
+			(e) => e.url_resolved && (!https || e.url_resolved.startsWith('https:')) && qualidade(e) >= 0
+		);
+
+		// Das duplicatas fica a de melhor codec/bitrate, na posição da mais popular
+		const melhores = new Map<string, Estacao>();
+		for (const e of tocaveis) {
+			const k = chave(e.name);
+			const atual = melhores.get(k);
+			if (!atual || qualidade(e) > qualidade(atual)) melhores.set(k, e);
+		}
+		return [...melhores.values()].slice(0, 40);
 	}
 
 	async tocar(estacao: Estacao) {

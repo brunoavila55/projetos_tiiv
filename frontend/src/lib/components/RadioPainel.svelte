@@ -49,6 +49,11 @@
 		return [local, tags].filter(Boolean).join(' — ');
 	}
 
+	function formato(e: Estacao): string {
+		const codec = e.codec && e.codec !== 'UNKNOWN' ? e.codec : '';
+		return [codec, e.bitrate ? `${e.bitrate} kbps` : ''].filter(Boolean).join(' ');
+	}
+
 	const lista = $derived(aba === 'favoritas' ? radio.favoritas : estacoes);
 	const tocandoOuCarregando = $derived(radio.estado === 'tocando' || radio.estado === 'carregando');
 </script>
@@ -97,7 +102,7 @@
 							{:else if radio.estado === 'carregando'}
 								Conectando…
 							{:else if radio.estado === 'tocando'}
-								Ao vivo{radio.atual.bitrate ? ` · ${radio.atual.bitrate} kbps` : ''}
+								Ao vivo{formato(radio.atual) ? ` · ${formato(radio.atual)}` : ''}
 							{:else}
 								Parada
 							{/if}
@@ -107,7 +112,7 @@
 				<div class="flex items-center gap-2 mt-3">
 					<button
 						class="icon-btn size-7"
-						onclick={() => radio.setVolume(radio.volume > 0 ? 0 : 0.7)}
+						onclick={() => radio.setVolume(radio.volume > 0 ? 0 : 0.8)}
 						aria-label={radio.volume > 0 ? 'Silenciar' : 'Ativar som'}
 					>
 						{#if radio.volume > 0}
