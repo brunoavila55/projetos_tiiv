@@ -15,7 +15,9 @@ func CabecalhosSeguranca(scriptsInline []string, hsts bool) func(http.Handler) h
 		// Svelte aplica estilos inline (style=, transições)
 		"style-src 'self' 'unsafe-inline'",
 		"img-src 'self' blob: data:",
-		"connect-src 'self'",
+		// Rádio: API do Radio Browser e streams de áudio de qualquer emissora
+		"connect-src 'self' https://*.api.radio-browser.info",
+		"media-src 'self' https: http:",
 		"object-src 'none'",
 		"frame-ancestors 'none'",
 		"base-uri 'none'",

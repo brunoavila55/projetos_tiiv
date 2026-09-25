@@ -6,11 +6,21 @@
 	import TrocarPinInicial from '$lib/components/TrocarPinInicial.svelte';
 	import Navbar from '$lib/components/Navbar.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
+	import RadioPainel from '$lib/components/RadioPainel.svelte';
+	import { radio } from '$lib/radio.svelte';
 
 	let { children } = $props();
 
 	onMount(() => {
 		auth.checkAuth();
+	});
+
+	// Sessão encerrada (sair, inatividade ou 401): a rádio para junto
+	$effect(() => {
+		if (!auth.user) {
+			radio.parar();
+			radio.aberto = false;
+		}
 	});
 </script>
 
@@ -38,6 +48,7 @@
 				{@render children()}
 			</div>
 		</main>
+		<RadioPainel />
 	</div>
 {/if}
 

@@ -1,0 +1,136 @@
+// Rádio online via Radio Browser API (https://api.radio-browser.info).
+// O áudio vive neste store, fora dos componentes, para continuar tocando
+// ao navegar entre as telas.
+
+export interface Estacao {
+	stationuuid: string;
+	name: string;
+	url_resolved: string;
+	tags: string;
+	state: string;
+	country: string;
+	codec: string;
+	bitrate: number;
+}
+
+type Estado = 'parado' | 'carregando' | 'tocando' | 'erro';
+
+const SERVIDOR_PADRAO = 'https://de1.api.radio-browser.info';
+const CHAVE_FAVORITAS = 'tiiv_radio_favoritas';
+const CHAVE_VOLUME = 'tiiv_radio_volume';
+
+class RadioStore {
+	aberto = $state(false);
+	atual = $state<Estacao | null>(null);
+	estado = $state<Estado>('parado');
+	volume = $state(0.7);
+	favoritas = $state<Estacao[]>([]);
+
+	private audio: HTMLAudioElement | null = null;
+	private servidor: Promise<string> | null = null;
+
+	constructor() {
+		if (typeof window === 'undefined') return;
+		try {
+			this.favoritas = JSON.parse(localStorage.getItem(CHAVE_FAVORITAS) ?? '[]');
+			const v = Number(localStorage.getItem(CHAVE_VOLUME));
+			if (localStorage.getItem(CHAVE_VOLUME) !== null && v >= 0 && v <= 1) this.volume = v;
+		} catch {
+			// preferências corrompidas: segue com o padrão
+		}
+	}
+
+	// Descobre um espelho ativo da API; se falhar, usa o servidor padrão
+	private base(): Promise<string> {
+		this.servidor ??= fetch('https://all.api.radio-browser.info/json/servers')
+			.then((r) => r.json() as Promise<{ name: string }[]>)
+			.then((lista) => {
+				const nomes = [...new Set(lista.map((s) => s.name))];
+				return nomes.length ? `https://${nomes[Math.floor(Math.random() * nomes.length)]}` : SERVIDOR_PADRAO;
+			})
+			.catch(() => SERVIDOR_PADRAO);
+		return this.servidor;
+	}
+
+	async buscar(termo: string): Promise<Estacao[]> {
+		const params = new URLSearchParams({
+			order: 'clickcount',
+			reverse: 'true',
+			hidebroken: 'true',
+			limit: '40'
+		});
+		if (termo.trim()) params.set('name', termo.trim());
+		else params.set('countrycode', 'BR');
+
+		const r = await fetch(`${await this.base()}/json/stations/search?${params}`);
+		if (!r.ok) throw new Error(`Radio Browser respondeu ${r.status}`);
+		const lista = (await r.json()) as Estacao[];
+		// Em HTTPS o navegador bloqueia streams HTTP (conteúdo misto)
+		const https = location.protocol === 'https:';
+		return lista.filter((e) => e.url_resolved && (!https || e.url_resolved.startsWith('https:')));
+	}
+
+	tocar(estacao: Estacao) {
+		if (!this.audio) {
+			this.audio = new Audio();
+			this.audio.addEventListener('playing', () => (this.estado = 'tocando'));
+			this.audio.addEventListener('waiting', () => (this.estado = 'carregando'));
+			this.audio.addEventListener('error', () => {
+				if (this.audio?.getAttribute('src')) this.estado = 'erro';
+			});
+		}
+		this.atual = estacao;
+		this.estado = 'carregando';
+		this.audio.src = estacao.url_resolved;
+		this.audio.volume = this.volume;
+		this.audio.play().catch(() => (this.estado = 'erro'));
+
+		// Contabiliza o clique na API (ajuda o ranking de estações); falha é irrelevante
+		this.base()
+			.then((b) => fetch(`${b}/json/url/${encodeURIComponent(estacao.stationuuid)}`))
+			.catch(() => {});
+	}
+
+	alternar() {
+		if (!this.atual) return;
+		if (this.estado === 'tocando' || this.estado === 'carregando') this.parar();
+		else this.tocar(this.atual);
+	}
+
+	parar() {
+		if (this.audio) {
+			this.audio.pause();
+			// Solta a conexão do stream em vez de só pausar
+			this.audio.removeAttribute('src');
+			this.audio.load();
+		}
+		this.estado = 'parado';
+	}
+
+	setVolume(v: number) {
+		this.volume = v;
+		if (this.audio) this.audio.volume = v;
+		try {
+			localStorage.setItem(CHAVE_VOLUME, String(v));
+		} catch {
+			// sem armazenamento local: volume vale só nesta sessão
+		}
+	}
+
+	ehFavorita(uuid: string): boolean {
+		return this.favoritas.some((e) => e.stationuuid === uuid);
+	}
+
+	alternarFavorita(estacao: Estacao) {
+		this.favoritas = this.ehFavorita(estacao.stationuuid)
+			? this.favoritas.filter((e) => e.stationuuid !== estacao.stationuuid)
+			: [...this.favoritas, estacao];
+		try {
+			localStorage.setItem(CHAVE_FAVORITAS, JSON.stringify(this.favoritas));
+		} catch {
+			// idem
+		}
+	}
+}
+
+export const radio = new RadioStore();

@@ -4,6 +4,7 @@
 	import { ticketsStore } from '$lib/tickets.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { themeStore } from '$lib/theme.svelte';
+	import { radio } from '$lib/radio.svelte';
 	import Avatar from './Avatar.svelte';
 	import {
 		LayoutDashboard,
@@ -19,7 +20,8 @@
 		X,
 		Sun,
 		Moon,
-		Monitor
+		Monitor,
+		Radio
 	} from 'lucide-svelte';
 
 	let mobileMenuOpen = $state(false);
@@ -122,6 +124,28 @@
 	{#if auth.user}
 		<div class="space-y-1">
 			<button
+				onclick={() => {
+					radio.aberto = !radio.aberto;
+					mobileMenuOpen = false;
+				}}
+				class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer {radio.aberto
+					? 'bg-muted text-ink'
+					: 'text-ink-2 hover:bg-muted hover:text-ink'}"
+				aria-expanded={radio.aberto}
+			>
+				<Radio class="size-4 {radio.estado === 'tocando' ? 'text-accent' : 'text-ink-3'}" />
+				<span class="truncate">
+					{radio.estado === 'tocando' && radio.atual ? radio.atual.name.trim() : 'Rádio'}
+				</span>
+				{#if radio.estado === 'tocando'}
+					<span class="ml-auto flex items-end gap-[2px] h-3" aria-label="Tocando">
+						<span class="eq-bar"></span><span class="eq-bar [animation-delay:-0.3s]"></span><span
+							class="eq-bar [animation-delay:-0.6s]"
+						></span>
+					</span>
+				{/if}
+			</button>
+			<button
 				onclick={toggleTheme}
 				class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium text-ink-2 hover:bg-muted hover:text-ink transition-colors cursor-pointer"
 				aria-label="Alternar tema (atual: {temaLabel[themeStore.tema]})"
@@ -186,3 +210,21 @@
 		<div class="mt-3">{@render rodape()}</div>
 	</div>
 {/if}
+
+<style>
+	.eq-bar {
+		width: 3px;
+		height: 100%;
+		border-radius: 1px;
+		background: var(--accent);
+		transform-origin: bottom;
+		animation: eq 0.9s ease-in-out infinite;
+	}
+	@keyframes eq {
+		0%, 100% { transform: scaleY(0.3); }
+		50% { transform: scaleY(1); }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.eq-bar { animation: none; transform: scaleY(0.6); }
+	}
+</style>
