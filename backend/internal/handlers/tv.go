@@ -319,6 +319,7 @@ type TVPlantaoResponse struct {
 	AgoraServidor string            `json:"agora_servidor"`
 	Hoje          string            `json:"hoje"`
 	Escala        []PlantaoResponse `json:"escala"`
+	Feriados      []Feriado         `json:"feriados"`
 }
 
 // Plantao: GET /api/tv/plantao (chave da tela no cabeçalho X-TV-Chave, ou sessão).
@@ -340,5 +341,6 @@ func (h *TVHandler) Plantao(w http.ResponseWriter, r *http.Request) {
 		AgoraServidor: time.Now().Format(time.RFC3339),
 		Hoje:          hoje.Format(formatoDia),
 		Escala:        escala,
+		Feriados:      feriadosEntre(hoje, hoje.AddDate(0, 0, diasEscalaNaTV-1)),
 	})
 }

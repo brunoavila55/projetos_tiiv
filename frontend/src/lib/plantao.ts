@@ -1,12 +1,17 @@
 // Escala de plantão: tipos e utilitários compartilhados pelo módulo, painel e modo TV.
 // Quem fica escalado é só um nome (não precisa ser usuário do sistema).
+// Três escalas: plantão interno (a equipe do setor, aos domingos e feriados)
+// e, para os técnicos externos, plantão noturno e plantão de domingo, cada um
+// por cidade.
 
-export type TipoPlantao = 'plantao' | 'sobreaviso';
+export type TipoPlantao = 'interno' | 'noturno' | 'domingo';
+export type Cidade = 'sao_gabriel' | 'bage' | 'passo_fundo';
 
 export interface Turno {
 	id: string;
 	nome: string;
 	tipo: TipoPlantao;
+	cidade: Cidade | null; // só no noturno e no de domingo
 	inicio: string; // AAAA-MM-DD
 	fim: string; // AAAA-MM-DD, inclusivo
 	observacao: string;
@@ -15,7 +20,94 @@ export interface Turno {
 	folga_fim: string | null;
 }
 
-export const TIPO_PLANTAO: Record<TipoPlantao, string> = { plantao: 'Plantão', sobreaviso: 'Sobreaviso' };
+export const TIPO_PLANTAO: Record<TipoPlantao, string> = {
+	interno: 'Plantão interno',
+	noturno: 'Plantão noturno',
+	domingo: 'Plantão de domingo'
+};
+
+// Na ordem em que aparecem na dash e na TV
+export const CIDADES: { id: Cidade; nome: string }[] = [
+	{ id: 'sao_gabriel', nome: 'São Gabriel' },
+	{ id: 'bage', nome: 'Bagé' },
+	{ id: 'passo_fundo', nome: 'Passo Fundo' }
+];
+
+export function nomeCidade(c: Cidade | null): string {
+	return CIDADES.find((x) => x.id === c)?.nome ?? '';
+}
+
+// "Plantão interno", "Plantão noturno · Bagé"
+export function rotuloEscala(t: { tipo: TipoPlantao; cidade: Cidade | null }): string {
+	return t.cidade ? `${TIPO_PLANTAO[t.tipo]} · ${nomeCidade(t.cidade)}` : TIPO_PLANTAO[t.tipo];
+}
+
+// Rótulo curto, para listas e o calendário: "interno", "noturno Bagé"
+export function rotuloCurto(t: { tipo: TipoPlantao; cidade: Cidade | null }): string {
+	return t.cidade ? `${t.tipo} ${nomeCidade(t.cidade)}` : t.tipo;
+}
+
+// Feriados que o plantão interno cobre (vêm do servidor: nacionais e do RS)
+export interface Feriado {
+	dia: string; // AAAA-MM-DD
+	nome: string;
+}
+
+// Dias de feriado, para consultar rápido
+export type DiasFeriado = Map<string, string>;
+
+export function diasFeriado(lista: Feriado[]): DiasFeriado {
+	return new Map(lista.map((f) => [f.dia, f.nome]));
+}
+
+// O plantão interno é aos domingos e feriados
+export function diaDoInterno(dia: string, feriados: DiasFeriado): boolean {
+	return ehDomingo(dia) || feriados.has(dia);
+}
+
+// O próprio dia, se tiver plantão interno, ou o próximo que tiver
+export function proximoDiaInterno(dia: string, feriados: DiasFeriado): string {
+	let d = dia;
+	while (!diaDoInterno(d, feriados)) d = paraDia(somarDias(diaLocal(d), 1));
+	return d;
+}
+
+// "dom, 27/09" ou "seg, 12/10 · Nossa Senhora Aparecida"
+export function diaComFeriado(dia: string, feriados: DiasFeriado): string {
+	const f = feriados.get(dia);
+	return f ? `${diaSemana(dia)} · ${f}` : diaSemana(dia);
+}
+
+// Uma escala a cobrir: o noturno todo dia, o de domingo aos domingos e o
+// interno aos domingos e feriados
+export interface Escala {
+	tipo: TipoPlantao;
+	cidade: Cidade | null;
+	rotulo: string;
+	precisa: (dia: string, feriados: DiasFeriado) => boolean;
+}
+
+export const ESCALAS: Escala[] = [
+	{ tipo: 'interno', cidade: null, rotulo: TIPO_PLANTAO.interno, precisa: diaDoInterno },
+	...CIDADES.flatMap((c) => [
+		{ tipo: 'noturno' as const, cidade: c.id, rotulo: `Noturno · ${c.nome}`, precisa: () => true },
+		{ tipo: 'domingo' as const, cidade: c.id, rotulo: `Domingo · ${c.nome}`, precisa: ehDomingo }
+	])
+];
+
+export function daEscala(t: Turno, tipo: TipoPlantao, cidade: Cidade | null): boolean {
+	return t.tipo === tipo && t.cidade === cidade;
+}
+
+export function ehDomingo(dia: string): boolean {
+	return diaLocal(dia).getDay() === 0;
+}
+
+// O próprio dia, se for domingo, ou o domingo seguinte
+export function proximoDomingo(dia: string): string {
+	const d = diaLocal(dia);
+	return paraDia(somarDias(d, (7 - d.getDay()) % 7));
+}
 
 // Mesma paleta das cores de operador
 const CORES = [

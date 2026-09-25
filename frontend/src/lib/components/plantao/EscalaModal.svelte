@@ -4,24 +4,45 @@
 	import { toast } from '$lib/toast.svelte';
 	import type { UsuarioPublico } from '$lib/auth.svelte';
 	import { X, Repeat, ArrowRight, Plus } from 'lucide-svelte';
-	import { corDaPessoa, mesmaPessoa, diaLocal, diaMes, paraDia, somarDias, type TipoPlantao, type Turno } from '$lib/plantao';
+	import {
+		CIDADES,
+		TIPO_PLANTAO,
+		corDaPessoa,
+		mesmaPessoa,
+		diaLocal,
+		diaMes,
+		ehDomingo,
+		diaDoInterno,
+		diaComFeriado,
+		diasFeriado,
+		type Feriado,
+		paraDia,
+		somarDias,
+		type Cidade,
+		type TipoPlantao,
+		type Turno
+	} from '$lib/plantao';
 
 	interface Props {
 		// Turno em edição; sem ele, cria (avulso ou rodízio)
 		turno?: Turno | null;
+		// Valores iniciais ao criar (ex.: cobrir um buraco da escala)
+		tipo?: TipoPlantao;
+		cidade?: Cidade | null;
 		inicio?: string;
 		fim?: string;
 		onfechar: () => void;
 		onsalvo: () => void;
 	}
 
-	let { turno = null, inicio, fim, onfechar, onsalvo }: Props = $props();
+	let { turno = null, tipo: tipoInicial, cidade: cidadeInicial, inicio, fim, onfechar, onsalvo }: Props = $props();
 
 	// As props só dão os valores iniciais do formulário (o modal abre de novo a cada uso)
 	const hoje = paraDia(new Date());
 	const ini = untrack(() => ({
 		nome: turno?.nome ?? '',
-		tipo: turno?.tipo ?? ('plantao' as TipoPlantao),
+		tipo: turno?.tipo ?? tipoInicial ?? ('interno' as TipoPlantao),
+		cidade: turno?.cidade ?? cidadeInicial ?? CIDADES[0].id,
 		inicio: turno?.inicio ?? inicio ?? hoje,
 		fim: turno?.fim ?? fim ?? inicio ?? hoje,
 		obs: turno?.observacao ?? '',
@@ -32,6 +53,7 @@
 	let salvando = $state(false);
 	let nome = $state(ini.nome);
 	let tipo = $state<TipoPlantao>(ini.tipo);
+	let cidade = $state<Cidade>(ini.cidade);
 	let eInicio = $state(ini.inicio);
 	let eFim = $state(ini.fim);
 	let obs = $state(ini.obs);
@@ -47,13 +69,19 @@
 	let dias = $state(7);
 	let turnos = $state(8);
 
-	// Sugestões: quem já esteve na escala e a equipe do setor
+	// Sugestões: quem já esteve na escala e a equipe do setor. Os feriados
+	// (de um pouco antes de hoje a pouco mais de 2 anos) guiam o rodízio do interno.
 	let sugestoes = $state<string[]>([]);
+	let feriados = $state(diasFeriado([]));
 	onMount(async () => {
-		const [escala, equipe] = await Promise.all([
+		const de = paraDia(somarDias(new Date(), -60));
+		const ate = paraDia(somarDias(new Date(), 760));
+		const [escala, equipe, lista] = await Promise.all([
 			apiFetch<string[]>('/api/plantoes/pessoas', { silent: true }).catch(() => []),
-			apiFetch<UsuarioPublico[]>('/api/equipe', { silent: true }).catch(() => [])
+			apiFetch<UsuarioPublico[]>('/api/equipe', { silent: true }).catch(() => []),
+			apiFetch<Feriado[]>(`/api/plantoes/feriados?inicio=${de}&fim=${ate}`, { silent: true }).catch(() => [])
 		]);
+		feriados = diasFeriado(lista);
 		const todos: string[] = [];
 		for (const n of [...escala, ...equipe.map((u) => u.nome)]) {
 			if (!todos.some((x) => mesmaPessoa(x, n))) todos.push(n);
@@ -61,14 +89,50 @@
 		sugestoes = todos.sort((a, b) => a.localeCompare(b, 'pt-BR'));
 	});
 
+	// Rodízio de domingo e do interno: um dia por turno (um domingo; ou um
+	// domingo ou feriado), um depois do outro, começando num dia desses.
+	// O noturno vai em turnos seguidos de "dias" dias.
+	const diaDoRodizio = $derived.by((): ((dia: string) => boolean) | null => {
+		if (tipo === 'domingo') return ehDomingo;
+		if (tipo === 'interno') return (d) => diaDoInterno(d, feriados);
+		return null;
+	});
+	const rodizioPorDia = $derived(modo === 'rodizio' && diaDoRodizio !== null);
+	const diasTurno = $derived(rodizioPorDia ? 1 : dias);
+	const textoDia = $derived(tipo === 'interno' ? 'domingo ou feriado' : 'domingo');
+	const inicioForaDoDia = $derived(rodizioPorDia && !!eInicio && !diaDoRodizio!(eInicio));
+
+	function proximoDiaDoRodizio(dia: string): string {
+		let d = dia;
+		for (let i = 0; i < 400 && diaDoRodizio && !diaDoRodizio(d); i++) d = paraDia(somarDias(diaLocal(d), 1));
+		return d;
+	}
+
+	// Começo de cada turno do rodízio, igual ao que o servidor gera
+	const inicios = $derived.by(() => {
+		if (!eInicio || turnos < 1 || dias < 1) return [];
+		const res: string[] = [];
+		let d = eInicio;
+		while (res.length < Math.min(turnos, 104)) {
+			if (!rodizioPorDia) {
+				res.push(d);
+				d = paraDia(somarDias(diaLocal(d), dias));
+				continue;
+			}
+			if (diaDoRodizio!(d)) res.push(d);
+			d = paraDia(somarDias(diaLocal(d), 1));
+		}
+		return res;
+	});
+
 	const sugestoesRodizio = $derived(sugestoes.filter((s) => !pessoas.some((p) => mesmaPessoa(p, s))));
 
 	// Prévia dos primeiros turnos do rodízio, igual ao que o servidor gera
 	const previa = $derived.by(() => {
-		if (!eInicio || pessoas.length === 0 || dias < 1 || turnos < 1) return [];
-		return Array.from({ length: Math.min(turnos, 6) }, (_, i) => {
-			const ini = somarDias(diaLocal(eInicio), i * dias);
-			const fim = somarDias(ini, dias - 1);
+		if (pessoas.length === 0) return [];
+		return inicios.slice(0, 6).map((dia, i) => {
+			const ini = diaLocal(dia);
+			const fim = somarDias(ini, diasTurno - 1);
 			const folga = folgaDiasAntes > 0 ? somarDias(ini, -folgaDiasAntes) : null;
 			return { pessoa: pessoas[i % pessoas.length], inicio: ini, fim, folga };
 		});
@@ -114,11 +178,16 @@
 					toast.error('Escreva quem entra no rodízio.');
 					return;
 				}
+				if (inicioForaDoDia) {
+					toast.error(`O rodízio deve começar num ${textoDia}.`);
+					return;
+				}
 				const res = await apiFetch<{ criados: number }>('/api/plantoes/rodizio', {
 					method: 'POST',
 					body: JSON.stringify({
 						pessoas,
 						tipo,
+						cidade: tipo === 'interno' ? '' : cidade,
 						inicio: eInicio,
 						dias_por_turno: Number(dias),
 						turnos: Number(turnos),
@@ -137,6 +206,7 @@
 					body: JSON.stringify({
 						nome: nome.trim(),
 						tipo,
+						cidade: tipo === 'interno' ? '' : cidade,
 						inicio: eInicio,
 						fim: eFim < eInicio ? eInicio : eFim,
 						observacao: obs.trim(),
@@ -181,12 +251,25 @@
 				</div>
 			{/if}
 
-			<div>
-				<label class="label" for="es-tipo">Tipo</label>
-				<select id="es-tipo" bind:value={tipo} class="field">
-					<option value="plantao">Plantão</option>
-					<option value="sobreaviso">Sobreaviso</option>
-				</select>
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+				<div class={tipo === 'interno' ? 'sm:col-span-2' : ''}>
+					<label class="label" for="es-tipo">Escala</label>
+					<select id="es-tipo" bind:value={tipo} class="field">
+						{#each Object.entries(TIPO_PLANTAO) as [valor, rotulo] (valor)}
+							<option value={valor}>{rotulo}</option>
+						{/each}
+					</select>
+				</div>
+				{#if tipo !== 'interno'}
+					<div>
+						<label class="label" for="es-cidade">Cidade</label>
+						<select id="es-cidade" bind:value={cidade} class="field">
+							{#each CIDADES as c (c.id)}
+								<option value={c.id}>{c.nome}</option>
+							{/each}
+						</select>
+					</div>
+				{/if}
 			</div>
 
 			{#if modo === 'avulso'}
@@ -199,7 +282,7 @@
 						list="plantao-pessoas"
 						maxlength="80"
 						autocomplete="off"
-						placeholder="Nome de quem fica de plantão"
+						placeholder={tipo === 'interno' ? 'Nome de quem fica de plantão' : 'Nome do técnico'}
 						class="field"
 					/>
 				</div>
@@ -288,25 +371,41 @@
 						</div>
 					{/if}
 				</div>
-				<div class="grid grid-cols-3 gap-3">
+				<div class="grid gap-3 {rodizioPorDia ? 'grid-cols-2' : 'grid-cols-3'}">
 					<div>
 						<label class="label" for="es-rini">Começa em</label>
 						<input id="es-rini" type="date" bind:value={eInicio} class="field" />
 					</div>
+					{#if !rodizioPorDia}
+						<div>
+							<label class="label" for="es-rdias">Cada turno</label>
+							<select id="es-rdias" bind:value={dias} class="field">
+								<option value={1}>1 dia</option>
+								<option value={2}>2 dias</option>
+								<option value={7}>1 semana</option>
+								<option value={14}>2 semanas</option>
+							</select>
+						</div>
+					{/if}
 					<div>
-						<label class="label" for="es-rdias">Cada turno</label>
-						<select id="es-rdias" bind:value={dias} class="field">
-							<option value={1}>1 dia</option>
-							<option value={2}>2 dias</option>
-							<option value={7}>1 semana</option>
-							<option value={14}>2 semanas</option>
-						</select>
-					</div>
-					<div>
-						<label class="label" for="es-rturnos">Turnos</label>
+						<label class="label" for="es-rturnos">{tipo === 'domingo' && rodizioPorDia ? 'Domingos' : 'Turnos'}</label>
 						<input id="es-rturnos" type="number" min="1" max="104" bind:value={turnos} class="field tabular" />
 					</div>
 				</div>
+				{#if inicioForaDoDia}
+					<p class="-mt-2 text-[13px] text-warn">
+						O rodízio começa num {textoDia}.
+						<button type="button" onclick={() => (eInicio = proximoDiaDoRodizio(eInicio))} class="font-semibold underline underline-offset-2 cursor-pointer">
+							Usar {diaComFeriado(proximoDiaDoRodizio(eInicio), feriados)}
+						</button>
+					</p>
+				{:else if rodizioPorDia}
+					<p class="-mt-2 text-[13px] text-ink-3">
+						{tipo === 'interno'
+							? 'Cada pessoa fica com um dia, alternando pelos domingos e feriados.'
+							: 'Cada pessoa fica com um domingo, alternando semana a semana.'}
+					</p>
+				{/if}
 				<div>
 					<label class="label" for="es-rfolga">Folga antes de cada turno <span class="font-normal text-ink-3">(opcional, um dia)</span></label>
 					<select id="es-rfolga" bind:value={folgaDiasAntes} class="field">
@@ -321,9 +420,12 @@
 						<ul class="space-y-0.5">
 							{#each previa as t}
 								<li class="flex items-center gap-2 tabular">
-									<span class="text-ink-3 w-28 shrink-0">{dias === 1 ? diaMes(t.inicio) : `${diaMes(t.inicio)} a ${diaMes(t.fim)}`}</span>
+									<span class="text-ink-3 w-28 shrink-0">{diasTurno === 1 ? diaMes(t.inicio) : `${diaMes(t.inicio)} a ${diaMes(t.fim)}`}</span>
 									<ArrowRight class="size-3 text-ink-3" />
 									<span class="font-semibold text-ink">{t.pessoa}</span>
+									{#if feriados.has(paraDia(t.inicio)) && rodizioPorDia}
+										<span class="text-ink-3">· {feriados.get(paraDia(t.inicio))}</span>
+									{/if}
 									{#if t.folga}
 										<span class="text-ink-3">· folga {t.folga.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')} {diaMes(t.folga)}</span>
 									{/if}
@@ -331,7 +433,7 @@
 							{/each}
 						</ul>
 						{#if turnos > previa.length}
-							<p class="mt-1 text-ink-3">e mais {turnos - previa.length} turnos, até {diaMes(somarDias(diaLocal(eInicio), turnos * dias - 1))}</p>
+							<p class="mt-1 text-ink-3">e mais {turnos - previa.length} turnos, até {diaMes(somarDias(diaLocal(inicios[inicios.length - 1]), diasTurno - 1))}</p>
 						{/if}
 					</div>
 				{/if}

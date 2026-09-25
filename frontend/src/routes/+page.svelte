@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { corDaPessoa, mesmaPessoa, type Turno } from '$lib/plantao';
+	import { TIPO_PLANTAO, corDaPessoa, mesmaPessoa, nomeCidade, rotuloCurto, type Turno } from '$lib/plantao';
 	import { Calendar, CalendarClock, CheckSquare, Plus, Flag, Megaphone, Pencil, Trash2, X, Activity, CircleAlert, ShieldCheck } from 'lucide-svelte';
 
 	type NivelAviso = 'info' | 'atencao' | 'critico';
@@ -190,7 +190,8 @@
 
 	// Turno do usuário: em andamento ou quando começa (datas AAAA-MM-DD, fim inclusivo)
 	function textoMeuTurno(t: Turno): string {
-		const tipo = t.tipo === 'plantao' ? 'plantão' : 'sobreaviso';
+		// "plantão interno", "plantão noturno em Bagé"
+		const tipo = TIPO_PLANTAO[t.tipo].toLowerCase() + (t.cidade ? ` em ${nomeCidade(t.cidade)}` : '');
 		const dia = (d: string) =>
 			new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).replace('.', '');
 		const inicio = diasAte(t.inicio + 'T00:00:00');
@@ -334,7 +335,7 @@
 							<span class="tag h-7 px-2.5 text-[13px] {auth.user && mesmaPessoa(t.nome, auth.user.nome) ? 'tag-accent' : ''}">
 								<span class="dot size-2" style="background-color: {corDaPessoa(t.nome)};"></span>
 								{t.nome}
-								{#if t.tipo === 'sobreaviso'}<span class="font-normal text-ink-3">sobreaviso</span>{/if}
+								{#if t.tipo !== 'interno'}<span class="font-normal text-ink-3">{rotuloCurto(t)}</span>{/if}
 							</span>
 						{/each}
 					{/if}

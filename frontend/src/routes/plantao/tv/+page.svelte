@@ -3,7 +3,17 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { ModoTV, lerChaveTV, esquecerChaveTV } from '$lib/modoTV.svelte';
 	import {
-		TIPO_PLANTAO,
+		CIDADES,
+		rotuloCurto,
+		daEscala,
+		ehDomingo,
+		proximoDomingo,
+		proximoDiaInterno,
+		diaDoInterno,
+		diaComFeriado,
+		diasFeriado,
+		type Feriado,
+		diaMes,
 		corDaPessoa,
 		cobre,
 		deFolga,
@@ -13,10 +23,9 @@
 		diaSemana,
 		periodo,
 		quandoComeca,
-		quantoFalta,
 		type Turno
 	} from '$lib/plantao';
-	import { Maximize, Minimize, ArrowLeft, ShieldCheck, ShieldAlert, WifiOff, Tv, BellRing, Coffee } from 'lucide-svelte';
+	import { Maximize, Minimize, ArrowLeft, ShieldCheck, ShieldAlert, WifiOff, Tv, Coffee, Moon, Sun, MapPin } from 'lucide-svelte';
 
 	interface PlantaoTV {
 		tela: string;
@@ -24,6 +33,7 @@
 		agora_servidor: string;
 		hoje: string; // AAAA-MM-DD, no fuso do servidor
 		escala: Turno[];
+		feriados: Feriado[];
 	}
 
 	const FUSO = 'America/Sao_Paulo';
@@ -98,8 +108,21 @@
 	const dadosVelhos = $derived(ultimoSucesso > 0 && agora - ultimoSucesso > DADOS_VELHOS_MS);
 
 	const hoje = $derived(dados?.hoje ?? paraDia(new Date()));
-	const plantaoAgora = $derived(dados?.escala.filter((t) => t.tipo === 'plantao' && cobre(t, hoje)) ?? []);
-	const sobreavisoAgora = $derived(dados?.escala.filter((t) => t.tipo === 'sobreaviso' && cobre(t, hoje)) ?? []);
+	const escala = $derived(dados?.escala ?? []);
+	const feriados = $derived(diasFeriado(dados?.feriados ?? []));
+	// Plantão interno (domingos e feriados): o de hoje ou o do próximo dia desses
+	const diaInterno = $derived(proximoDiaInterno(hoje, feriados));
+	const internoDoDia = $derived(escala.filter((t) => t.tipo === 'interno' && cobre(t, diaInterno)));
+	const internoAgora = $derived(diaInterno === hoje ? internoDoDia : []);
+	// Técnicos externos: o noturno de hoje e o plantão do domingo (hoje ou o próximo)
+	const domingo = $derived(proximoDomingo(hoje));
+	const externos = $derived(
+		CIDADES.map((c) => ({
+			...c,
+			noturno: escala.filter((t) => daEscala(t, 'noturno', c.id) && cobre(t, hoje)),
+			domingo: escala.filter((t) => daEscala(t, 'domingo', c.id) && cobre(t, domingo))
+		}))
+	);
 	const folgaAgora = $derived(dados?.escala.filter((t) => deFolga(t, hoje)) ?? []);
 	// Próximas entradas na escala (turnos que ainda vão começar)
 	const proximos = $derived(dados?.escala.filter((t) => t.inicio > hoje).slice(0, 7) ?? []);
@@ -113,9 +136,15 @@
 				semana: d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''),
 				numero: d.getDate(),
 				fimDeSemana: d.getDay() === 0 || d.getDay() === 6,
-				plantao: dados?.escala.filter((t) => t.tipo === 'plantao' && cobre(t, dia)) ?? [],
-				sobreaviso: dados?.escala.filter((t) => t.tipo === 'sobreaviso' && cobre(t, dia)) ?? [],
-				folga: dados?.escala.filter((t) => deFolga(t, dia)) ?? []
+				domingo: ehDomingo(dia),
+				interno: escala.filter((t) => t.tipo === 'interno' && cobre(t, dia)),
+				cidades: CIDADES.map((c) => ({
+					noturno: escala.filter((t) => daEscala(t, 'noturno', c.id) && cobre(t, dia)),
+					domingo: escala.filter((t) => daEscala(t, 'domingo', c.id) && cobre(t, dia))
+				})),
+				feriado: feriados.get(dia) ?? null,
+				temInterno: diaDoInterno(dia, feriados),
+				folga: escala.filter((t) => deFolga(t, dia))
 			};
 		})
 	);
@@ -126,7 +155,7 @@
 </script>
 
 <svelte:head>
-	<title>{plantaoAgora.length ? `${plantaoAgora.map((t) => t.nome).join(', ')} · ` : ''}Plantão · Projetos NOC</title>
+	<title>{internoAgora.length ? `${internoAgora.map((t) => t.nome).join(', ')} · ` : ''}Plantão · Projetos NOC</title>
 </svelte:head>
 
 <div class="h-screen overflow-hidden bg-paper text-ink flex flex-col {tv.controlesVisiveis ? '' : 'cursor-none'}">
@@ -169,51 +198,80 @@
 		</header>
 
 		<main class="flex-1 min-h-0 grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 px-8">
-			<!-- Quem está agora -->
-			<section class="min-h-0 flex flex-col gap-4 overflow-hidden" aria-label="De plantão agora">
-				<h2 class="titulo-bloco">De plantão agora</h2>
-				{#if plantaoAgora.length === 0}
-					<div class="rounded-2xl border-2 border-warn bg-warn-soft px-7 py-6 flex items-center gap-5">
-						<ShieldAlert class="size-14 text-warn shrink-0" strokeWidth={1.8} />
-						<div>
-							<p class="text-[2.25rem] font-bold leading-tight">Ninguém de plantão hoje</p>
-							<p class="mt-1 text-[1.2rem] text-ink-2">
-								{sobreavisoAgora.length ? 'Acione quem está de sobreaviso.' : 'A escala de hoje está vazia.'}
+			<div class="min-h-0 flex flex-col gap-5 overflow-hidden">
+				<!-- Plantão interno -->
+				<section class="flex flex-col gap-3" aria-label="Plantão interno agora">
+					<h2 class="titulo-bloco">Plantão interno</h2>
+					{#if internoDoDia.length === 0}
+						<div class="rounded-2xl border-2 border-warn bg-warn-soft px-6 py-4 flex items-center gap-4">
+							<ShieldAlert class="size-10 text-warn shrink-0" strokeWidth={1.8} />
+							<p class="text-[1.9rem] font-bold leading-tight">
+								{diaInterno === hoje ? 'Ninguém no plantão interno hoje' : `Ninguém no plantão interno de ${diaComFeriado(diaInterno, feriados)}`}
 							</p>
 						</div>
-					</div>
-				{:else}
-					<div class="grid gap-4 {plantaoAgora.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}">
-						{#each plantaoAgora as t (t.id)}
-							<article class="rounded-2xl bg-surface border border-line px-7 py-6 flex items-center gap-6 min-w-0" style="border-left: 0.5rem solid {corDaPessoa(t.nome)};">
-								<Avatar id={t.id} nome={t.nome} cor={corDaPessoa(t.nome)} class="size-24 text-[2rem] shrink-0" />
+					{:else}
+						<div class="grid gap-4 {internoDoDia.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}">
+							{#each internoDoDia as t (t.id)}
+								<article class="rounded-2xl bg-surface border border-line px-6 py-4 flex items-center gap-5 min-w-0" style="border-left: 0.5rem solid {corDaPessoa(t.nome)};">
+									<Avatar id={t.id} nome={t.nome} cor={corDaPessoa(t.nome)} class="size-20 text-[1.75rem] shrink-0" />
+									<div class="min-w-0">
+										<p class="text-[1.05rem] font-semibold text-ink-3 truncate">
+											{diaInterno === hoje ? `Hoje${feriados.has(hoje) ? ` · ${feriados.get(hoje)}` : ''}` : `Próximo: ${diaComFeriado(diaInterno, feriados)} · ${quandoComeca(diaInterno, hoje)}`}
+										</p>
+										<p class="text-[2.6rem] font-bold leading-[1.05] tracking-[-0.02em] truncate">{t.nome}</p>
+										{#if t.observacao}
+											<p class="mt-1 text-[1.2rem] text-ink-2 truncate">{t.observacao}</p>
+										{/if}
+									</div>
+								</article>
+							{/each}
+						</div>
+					{/if}
+				</section>
+
+				<!-- Técnicos externos -->
+				<section class="flex flex-col gap-3" aria-label="Técnicos externos">
+					<h2 class="titulo-bloco">Técnicos externos</h2>
+					<div class="grid grid-cols-3 gap-4">
+						{#each externos as c (c.id)}
+							<article class="rounded-2xl bg-surface border border-line px-5 py-4 min-w-0 flex flex-col gap-3">
+								<p class="flex items-center gap-2 text-[1.35rem] font-bold leading-tight">
+									<MapPin class="size-5 text-accent shrink-0" />
+									<span class="truncate">{c.nome}</span>
+								</p>
 								<div class="min-w-0">
-									<p class="text-[3rem] font-bold leading-[1.05] tracking-[-0.02em] truncate">{t.nome}</p>
-									<p class="mt-2 text-[1.3rem] text-ink-2 tabular">
-										{t.fim === hoje ? 'Até o fim do dia' : `Até ${diaSemana(t.fim)}`} · {quantoFalta(t.fim, hoje)}
+									<p class="flex items-center gap-1.5 text-[0.95rem] font-semibold text-ink-3"><Moon class="size-4" /> Noturno hoje</p>
+									{#if c.noturno.length === 0}
+										<p class="text-[1.6rem] font-bold text-warn leading-tight">Sem técnico</p>
+									{:else}
+										{#each c.noturno as t (t.id)}
+											<p class="flex items-center gap-2.5 min-w-0">
+												<span class="size-3 rounded-full shrink-0" style="background-color: {corDaPessoa(t.nome)};"></span>
+												<span class="text-[1.9rem] font-bold leading-tight truncate">{t.nome}</span>
+											</p>
+										{/each}
+									{/if}
+								</div>
+								<div class="min-w-0">
+									<p class="flex items-center gap-1.5 text-[0.95rem] font-semibold text-ink-3">
+										<Sun class="size-4" /> Domingo{ehDomingo(hoje) ? ', hoje' : ` ${diaMes(diaLocal(domingo))}`}
 									</p>
-									{#if t.observacao}
-										<p class="mt-1 text-[1.15rem] text-ink-3 truncate">{t.observacao}</p>
+									{#if c.domingo.length === 0}
+										<p class="text-[1.2rem] font-semibold text-warn leading-tight">Sem técnico</p>
+									{:else}
+										{#each c.domingo as t (t.id)}
+											<p class="flex items-center gap-2 min-w-0">
+												<span class="size-2.5 rounded-full shrink-0" style="background-color: {corDaPessoa(t.nome)};"></span>
+												<span class="text-[1.3rem] font-semibold leading-tight truncate">{t.nome}</span>
+											</p>
+										{/each}
 									{/if}
 								</div>
 							</article>
 						{/each}
 					</div>
-				{/if}
+				</section>
 
-				{#if sobreavisoAgora.length > 0}
-					<div class="flex items-center gap-4 flex-wrap">
-						<span class="flex items-center gap-2 text-[1.15rem] font-semibold text-ink-2">
-							<BellRing class="size-5" /> Sobreaviso
-						</span>
-						{#each sobreavisoAgora as t (t.id)}
-							<span class="inline-flex items-center gap-3 rounded-full border-2 border-dashed px-4 py-1.5" style="border-color: {corDaPessoa(t.nome)};">
-								<span class="text-[1.35rem] font-semibold">{t.nome}</span>
-								<span class="text-[1rem] text-ink-3 tabular">{t.fim === hoje ? 'hoje' : `até ${diaSemana(t.fim)}`}</span>
-							</span>
-						{/each}
-					</div>
-				{/if}
 				{#if folgaAgora.length > 0}
 					<div class="flex items-center gap-4 flex-wrap">
 						<span class="flex items-center gap-2 text-[1.15rem] font-semibold text-ink-2">
@@ -228,7 +286,7 @@
 						{/each}
 					</div>
 				{/if}
-			</section>
+			</div>
 
 			<!-- Próximas entradas -->
 			<aside class="min-h-0 rounded-2xl bg-surface border border-line px-5 py-4 flex flex-col overflow-hidden" aria-label="Próximos turnos">
@@ -241,11 +299,8 @@
 							<li class="flex items-center gap-3 min-w-0">
 								<span class="w-1.5 self-stretch rounded-full shrink-0" style="background-color: {corDaPessoa(t.nome)};"></span>
 								<div class="min-w-0 flex-1">
-									<div class="text-[1.25rem] font-semibold leading-tight truncate">
-										{t.nome}
-										{#if t.tipo === 'sobreaviso'}<span class="font-normal text-ink-3 text-[1rem]">sobreaviso</span>{/if}
-									</div>
-									<div class="text-[0.95rem] text-ink-3 tabular truncate">{periodo(t)}</div>
+									<div class="text-[1.25rem] font-semibold leading-tight truncate">{t.nome}</div>
+									<div class="text-[0.95rem] text-ink-3 tabular truncate">{periodo(t)} · {rotuloCurto(t)}</div>
 								</div>
 								<span class="text-[1rem] font-semibold text-ink-2 tabular shrink-0">{quandoComeca(t.inicio, hoje)}</span>
 							</li>
@@ -255,33 +310,56 @@
 			</aside>
 		</main>
 
-		<!-- Faixa das próximas duas semanas -->
+		<!-- Faixa das próximas duas semanas: interno e, por cidade, noturno (cheio) e domingo (tracejado) -->
 		<section class="px-8 pt-5 pb-3" aria-label="Escala das próximas duas semanas">
-			<div class="grid gap-1.5" style="grid-template-columns: 7.5rem repeat({DIAS_FAIXA}, minmax(0, 1fr));">
+			<div class="grid gap-1.5" style="grid-template-columns: 8.5rem repeat({DIAS_FAIXA}, minmax(0, 1fr));">
 				<span></span>
 				{#each faixa as d (d.dia)}
-					<div class="text-center pb-1 {d.dia === hoje ? 'text-accent' : d.fimDeSemana ? 'text-ink-3' : 'text-ink-2'}">
-						<div class="text-[0.85rem] font-semibold uppercase">{d.semana}</div>
+					<div
+						class="text-center pb-1 {d.dia === hoje ? 'text-accent' : d.feriado ? 'text-warn' : d.fimDeSemana ? 'text-ink-3' : 'text-ink-2'}"
+						title={d.feriado ?? undefined}
+					>
+						<div class="text-[0.85rem] font-semibold uppercase">{d.feriado ? 'Feriado' : d.semana}</div>
 						<div class="text-[1.25rem] font-bold tabular leading-tight">{d.numero}</div>
 					</div>
 				{/each}
 
-				{#each ['plantao', 'sobreaviso'] as const as tipo}
-					<span class="self-center text-[0.95rem] font-semibold text-ink-3">{TIPO_PLANTAO[tipo]}</span>
+				<span class="self-center text-[0.95rem] font-semibold text-ink-3">Interno</span>
+				{#each faixa as d (d.dia)}
+					<div
+						class="min-h-[2.75rem] rounded-lg px-1.5 py-1 flex flex-col justify-center gap-0.5 overflow-hidden {d.dia === hoje ? 'ring-2 ring-accent' : ''} {d.temInterno && d.interno.length === 0 ? 'bg-warn-soft' : ''}"
+					>
+						{#each d.interno as t (t.id)}
+							<span class="block truncate rounded px-1.5 text-[0.9rem] font-semibold leading-snug text-white" style="background-color: {corDaPessoa(t.nome)}" title={t.nome}
+								>{t.nome.split(' ')[0]}</span
+							>
+						{:else}
+							{#if d.temInterno}<span class="text-center text-[0.85rem] text-warn">—</span>{/if}
+						{/each}
+					</div>
+				{/each}
+
+				{#each CIDADES as c, i (c.id)}
+					<span class="self-center text-[0.95rem] font-semibold text-ink-3 truncate">{c.nome}</span>
 					{#each faixa as d (d.dia)}
-						{@const turnos = tipo === 'plantao' ? d.plantao : d.sobreaviso}
+						{@const cel = d.cidades[i]}
+						{@const falta = cel.noturno.length === 0 || (d.domingo && cel.domingo.length === 0)}
 						<div
-							class="min-h-[3.25rem] rounded-lg px-1.5 py-1 flex flex-col justify-center gap-0.5 overflow-hidden {d.dia === hoje ? 'ring-2 ring-accent' : ''} {turnos.length === 0 && tipo === 'plantao' ? 'bg-warn-soft' : turnos.length === 0 ? 'bg-sunken' : ''}"
+							class="min-h-[2.75rem] rounded-lg px-1.5 py-1 flex flex-col justify-center gap-0.5 overflow-hidden {d.dia === hoje ? 'ring-2 ring-accent' : ''} {falta ? 'bg-warn-soft' : ''}"
 						>
-							{#each turnos as t (t.id)}
-								<span
-									class="block truncate rounded px-1.5 text-[0.9rem] font-semibold leading-snug {tipo === 'plantao' ? 'text-white' : 'border border-dashed'}"
-									style={tipo === 'plantao' ? `background-color: ${corDaPessoa(t.nome)}` : `border-color: ${corDaPessoa(t.nome)}`}
-									title={t.nome}>{t.nome.split(' ')[0]}</span
+							{#each cel.noturno as t (t.id)}
+								<span class="block truncate rounded px-1.5 text-[0.9rem] font-semibold leading-snug text-white" style="background-color: {corDaPessoa(t.nome)}" title="{t.nome} · noturno"
+									>{t.nome.split(' ')[0]}</span
 								>
-							{:else}
-								{#if tipo === 'plantao'}<span class="text-center text-[0.85rem] text-warn">—</span>{/if}
 							{/each}
+							{#each cel.domingo as t (t.id)}
+								<span class="block truncate rounded px-1.5 text-[0.9rem] font-semibold leading-snug border border-dashed" style="border-color: {corDaPessoa(t.nome)}" title="{t.nome} · domingo"
+									>{t.nome.split(' ')[0]}</span
+								>
+							{/each}
+							{#if falta && cel.noturno.length + cel.domingo.length === 0}
+								<span class="text-center text-[0.85rem] text-warn">—</span>
+							{/if}
 						</div>
 					{/each}
 				{/each}
@@ -308,7 +386,7 @@
 					<WifiOff class="size-4" /> Sem conexão com o servidor desde {horaCurta(ultimoSucesso)}. A escala pode estar desatualizada.
 				</span>
 			{:else}
-				<span>Atualizado às {horaCurta(ultimoSucesso)} · atualiza a cada minuto</span>
+				<span>Atualizado às {horaCurta(ultimoSucesso)} · atualiza a cada minuto · interno aos domingos e feriados · nas cidades, noturno em cheio e domingo tracejado</span>
 			{/if}
 			{#if erro === 'nao_autorizada'}
 				<span class="font-semibold text-danger">{chave ? 'A chave desta tela foi revogada.' : 'A sessão foi encerrada.'}</span>

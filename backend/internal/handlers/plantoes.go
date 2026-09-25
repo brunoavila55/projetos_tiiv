@@ -19,10 +19,11 @@ import (
 	"tiiv/backend/internal/response"
 )
 
-// Escala de plantão e sobreaviso: módulo próprio (calendário, dash e modo TV),
-// que toda a equipe vê; só admin monta, avulsa ou em rodízio. Quem fica
-// escalado é só um nome em texto livre, não precisa ser usuário do sistema.
-// Datas por dia, fim inclusivo.
+// Escala de plantão: módulo próprio (calendário, dash e modo TV), que toda a
+// equipe vê; só admin monta, avulsa ou em rodízio. São três escalas: plantão
+// interno (a equipe do setor, aos domingos e feriados) e, para os técnicos
+// externos, plantão noturno e plantão de domingo, cada um por cidade. Quem fica escalado é só um nome em
+// texto livre, não precisa ser usuário do sistema. Datas por dia, fim inclusivo.
 type PlantaoHandler struct {
 	db *database.DB
 }
@@ -42,6 +43,7 @@ const (
 type PlantaoRequest struct {
 	Nome       string `json:"nome"`
 	Tipo       string `json:"tipo"`
+	Cidade     string `json:"cidade"`
 	Inicio     string `json:"inicio"`
 	Fim        string `json:"fim"`
 	Observacao string `json:"observacao"`
@@ -51,12 +53,15 @@ type PlantaoRequest struct {
 }
 
 type RodizioRequest struct {
-	Pessoas      []string `json:"pessoas"`
-	Tipo         string   `json:"tipo"`
-	Inicio       string   `json:"inicio"`
-	DiasPorTurno int      `json:"dias_por_turno"`
-	Turnos       int      `json:"turnos"`
-	Observacao   string   `json:"observacao"`
+	Pessoas []string `json:"pessoas"`
+	Tipo    string   `json:"tipo"`
+	Cidade  string   `json:"cidade"`
+	Inicio  string   `json:"inicio"`
+	// Só no noturno; no de domingo e no interno cada turno é um dia (domingo,
+	// ou domingo e feriado), um depois do outro
+	DiasPorTurno int    `json:"dias_por_turno"`
+	Turnos       int    `json:"turnos"`
+	Observacao   string `json:"observacao"`
 	// Folga de um dia, tantos dias antes do começo de cada turno (0 = sem
 	// folga). Ex.: plantão no domingo com 3 → folga na quinta.
 	FolgaDiasAntes int `json:"folga_dias_antes"`
@@ -66,6 +71,7 @@ type PlantaoResponse struct {
 	ID          string  `json:"id"`
 	Nome        string  `json:"nome"`
 	Tipo        string  `json:"tipo"`
+	Cidade      *string `json:"cidade"`
 	Inicio      string  `json:"inicio"`
 	Fim         string  `json:"fim"`
 	Observacao  string  `json:"observacao"`
@@ -83,6 +89,7 @@ type PainelPlantaoResponse struct {
 type turno struct {
 	nome       string
 	tipo       string
+	cidade     string // vazia no plantão interno
 	inicio     time.Time
 	fim        time.Time
 	observacao string
@@ -131,21 +138,94 @@ func diaCurto(d pgtype.Date) string {
 	return d.Time.Format("02/01")
 }
 
-func rotuloTipoPlantao(tipo string) string {
-	if tipo == "sobreaviso" {
-		return "sobreaviso"
-	}
-	return "plantão"
+const (
+	tipoInterno = "interno"
+	tipoNoturno = "noturno"
+	tipoDomingo = "domingo"
+)
+
+// Cidades dos técnicos externos (plantão noturno e de domingo)
+var cidadesPlantao = map[string]string{
+	"sao_gabriel": "São Gabriel",
+	"bage":        "Bagé",
+	"passo_fundo": "Passo Fundo",
 }
 
-func validarTipoPlantao(tipo string) (string, error) {
+// rotuloEscala: "plantão interno", "plantão noturno de Bagé"...
+func rotuloEscala(tipo string, cidade pgtype.Text) string {
+	r := "plantão interno"
+	switch tipo {
+	case tipoNoturno:
+		r = "plantão noturno"
+	case tipoDomingo:
+		r = "plantão de domingo"
+	}
+	if cidade.Valid {
+		r += " de " + cidadesPlantao[cidade.String]
+	}
+	return r
+}
+
+// diaDaEscala: os dias em que a escala acontece, quando não é todo dia
+// (domingo: só domingos; interno: domingos e feriados); nil no noturno
+func diaDaEscala(tipo string) func(time.Time) bool {
+	switch tipo {
+	case tipoDomingo:
+		return func(d time.Time) bool { return d.Weekday() == time.Sunday }
+	case tipoInterno:
+		return diaDePlantaoInterno
+	}
+	return nil
+}
+
+func textoDiaDaEscala(tipo string) string {
+	if tipo == tipoInterno {
+		return "domingo ou feriado"
+	}
+	return "domingo"
+}
+
+// iniciosDoRodizio: com diaDoRodizio, um turno por dia desses a partir de
+// inicio; sem ele, turnos seguidos de diasPorTurno dias
+func iniciosDoRodizio(inicio time.Time, diasPorTurno, turnos int, diaDoRodizio func(time.Time) bool) []time.Time {
+	res := make([]time.Time, 0, turnos)
+	for d := inicio; len(res) < turnos; {
+		if diaDoRodizio == nil {
+			res = append(res, d)
+			d = d.AddDate(0, 0, diasPorTurno)
+			continue
+		}
+		if diaDoRodizio(d) {
+			res = append(res, d)
+		}
+		d = d.AddDate(0, 0, 1)
+	}
+	return res
+}
+
+// validarEscala confere o tipo e a cidade: o plantão interno não tem cidade;
+// o noturno e o de domingo exigem uma das cidades
+func validarEscala(tipo, cidade string) (string, string, error) {
 	if tipo == "" {
-		return "plantao", nil
+		tipo = tipoInterno
 	}
-	if tipo != "plantao" && tipo != "sobreaviso" {
-		return "", errors.New("tipo inválido (plantao ou sobreaviso)")
+	switch tipo {
+	case tipoInterno:
+		if cidade != "" {
+			return "", "", errors.New("o plantão interno não tem cidade")
+		}
+	case tipoNoturno, tipoDomingo:
+		if _, ok := cidadesPlantao[cidade]; !ok {
+			return "", "", errors.New("escolha a cidade do plantão (sao_gabriel, bage ou passo_fundo)")
+		}
+	default:
+		return "", "", errors.New("tipo inválido (interno, noturno ou domingo)")
 	}
-	return tipo, nil
+	return tipo, cidade, nil
+}
+
+func textoOpcional(s string) pgtype.Text {
+	return pgtype.Text{String: s, Valid: s != ""}
 }
 
 // validarNomePlantao junta espaços repetidos, para "Ana  Paula" e
@@ -157,7 +237,7 @@ func validarNomePlantao(nome string) (string, error) {
 func validarPlantao(req PlantaoRequest) (turno, error) {
 	var t turno
 	var err error
-	if t.tipo, err = validarTipoPlantao(req.Tipo); err != nil {
+	if t.tipo, t.cidade, err = validarEscala(req.Tipo, req.Cidade); err != nil {
 		return t, err
 	}
 	if t.nome, err = validarNomePlantao(req.Nome); err != nil {
@@ -204,8 +284,8 @@ func validarPlantao(req PlantaoRequest) (turno, error) {
 	return t, nil
 }
 
-// conferirTurno barra turno do mesmo tipo sobreposto e trabalho em dia de
-// folga da pessoa; no conflito devolve errConflitoEscala e a mensagem.
+// conferirTurno barra turno do mesmo tipo sobreposto (mesmo em outra cidade)
+// e trabalho em dia de folga da pessoa; no conflito devolve errConflitoEscala e a mensagem.
 func conferirTurno(ctx context.Context, q *sqlc.Queries, setor pgtype.UUID, t turno, ignorarID pgtype.UUID) (string, error) {
 	c, err := q.BuscarConflitoPlantao(ctx, sqlc.BuscarConflitoPlantaoParams{
 		SetorID:   setor,
@@ -216,7 +296,7 @@ func conferirTurno(ctx context.Context, q *sqlc.Queries, setor pgtype.UUID, t tu
 		IgnorarID: ignorarID,
 	})
 	if err == nil {
-		return fmt.Sprintf("%s já está de %s de %s a %s", c.Nome, rotuloTipoPlantao(t.tipo), diaCurto(c.Inicio), diaCurto(c.Fim)), errConflitoEscala
+		return fmt.Sprintf("%s já está no %s de %s a %s", c.Nome, rotuloEscala(t.tipo, c.Cidade), diaCurto(c.Inicio), diaCurto(c.Fim)), errConflitoEscala
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", err
@@ -240,7 +320,7 @@ func conferirTurno(ctx context.Context, q *sqlc.Queries, setor pgtype.UUID, t tu
 	if f.FolgaInicio.Valid && !f.FolgaFim.Time.Before(t.inicio) && !f.FolgaInicio.Time.After(t.fim) {
 		return fmt.Sprintf("%s está de folga de %s a %s", t.nome, diaCurto(f.FolgaInicio), diaCurto(f.FolgaFim)), errConflitoEscala
 	}
-	return fmt.Sprintf("a folga de %s cai no %s de %s a %s", t.nome, rotuloTipoPlantao(f.Tipo), diaCurto(f.Inicio), diaCurto(f.Fim)), errConflitoEscala
+	return fmt.Sprintf("a folga de %s cai no %s de %s a %s", t.nome, rotuloEscala(f.Tipo, f.Cidade), diaCurto(f.Inicio), diaCurto(f.Fim)), errConflitoEscala
 }
 
 // gravarTurnos grava tudo ou nada; um conflito devolve errConflitoEscala
@@ -263,13 +343,13 @@ func (h *PlantaoHandler) gravarTurnos(ctx context.Context, setor pgtype.UUID, tu
 		}
 		if atualizarID.Valid {
 			_, err = q.AtualizarPlantao(ctx, sqlc.AtualizarPlantaoParams{
-				ID: atualizarID, Nome: t.nome, Tipo: t.tipo,
+				ID: atualizarID, Nome: t.nome, Tipo: t.tipo, Cidade: textoOpcional(t.cidade),
 				Inicio: paraDate(t.inicio), Fim: paraDate(t.fim), Observacao: t.observacao,
 				FolgaInicio: dateOpcional(t.folgaInicio), FolgaFim: dateOpcional(t.folgaFim),
 			})
 		} else {
 			_, err = q.CriarPlantao(ctx, sqlc.CriarPlantaoParams{
-				Nome: t.nome, Tipo: t.tipo,
+				Nome: t.nome, Tipo: t.tipo, Cidade: textoOpcional(t.cidade),
 				Inicio: paraDate(t.inicio), Fim: paraDate(t.fim), Observacao: t.observacao,
 				FolgaInicio: dateOpcional(t.folgaInicio), FolgaFim: dateOpcional(t.folgaFim),
 				CriadoPor: criadoPor, SetorID: setor,
@@ -282,11 +362,19 @@ func (h *PlantaoHandler) gravarTurnos(ctx context.Context, setor pgtype.UUID, tu
 	return "", tx.Commit(ctx)
 }
 
+func textoResposta(t pgtype.Text) *string {
+	if !t.Valid {
+		return nil
+	}
+	return &t.String
+}
+
 func paraPlantaoResponse(p sqlc.ListarPlantoesIntervaloRow) PlantaoResponse {
 	return PlantaoResponse{
 		ID:          database.UUIDToString(p.ID),
 		Nome:        p.Nome,
 		Tipo:        p.Tipo,
+		Cidade:      textoResposta(p.Cidade),
 		Inicio:      p.Inicio.Time.Format(formatoDia),
 		Fim:         p.Fim.Time.Format(formatoDia),
 		Observacao:  p.Observacao,
@@ -424,7 +512,7 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tipo, err := validarTipoPlantao(req.Tipo)
+	tipo, cidade, err := validarEscala(req.Tipo, req.Cidade)
 	if err != nil {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return
@@ -438,11 +526,26 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusBadRequest, "o rodízio deve ter de 1 a 50 pessoas")
 		return
 	}
+	// Domingo e interno: cada turno é um dia só (um domingo; ou um domingo ou
+	// feriado), e o seguinte é o próximo dia desses
+	diaDoRodizio := diaDaEscala(tipo)
+	if diaDoRodizio != nil {
+		if !diaDoRodizio(inicio) {
+			response.JSONError(w, http.StatusBadRequest, fmt.Sprintf("o rodízio do %s deve começar num %s", rotuloEscala(tipo, pgtype.Text{}), textoDiaDaEscala(tipo)))
+			return
+		}
+		req.DiasPorTurno = 1
+	}
 	if req.DiasPorTurno < 1 || req.DiasPorTurno > 31 {
 		response.JSONError(w, http.StatusBadRequest, "cada turno deve durar de 1 a 31 dias")
 		return
 	}
-	if req.Turnos < 1 || req.Turnos > maxTurnosRodizio || req.Turnos*req.DiasPorTurno > maxDiasRodizio {
+	if req.Turnos < 1 || req.Turnos > maxTurnosRodizio {
+		response.JSONError(w, http.StatusBadRequest, "o rodízio deve ter de 1 a 104 turnos e cobrir no máximo 2 anos")
+		return
+	}
+	inicios := iniciosDoRodizio(inicio, req.DiasPorTurno, req.Turnos, diaDoRodizio)
+	if inicios[len(inicios)-1].Sub(inicio) >= maxDiasRodizio*24*time.Hour {
 		response.JSONError(w, http.StatusBadRequest, "o rodízio deve ter de 1 a 104 turnos e cobrir no máximo 2 anos")
 		return
 	}
@@ -474,10 +577,9 @@ func (h *PlantaoHandler) Rodizio(w http.ResponseWriter, r *http.Request) {
 	}
 
 	turnos := make([]turno, 0, req.Turnos)
-	for i := 0; i < req.Turnos; i++ {
-		ini := inicio.AddDate(0, 0, i*req.DiasPorTurno)
+	for i, ini := range inicios {
 		t := turno{
-			nome: pessoas[i%len(pessoas)], tipo: tipo,
+			nome: pessoas[i%len(pessoas)], tipo: tipo, cidade: cidade,
 			inicio: ini, fim: ini.AddDate(0, 0, req.DiasPorTurno-1),
 			observacao: observacao,
 		}
@@ -544,6 +646,26 @@ func (h *PlantaoHandler) Deletar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Feriados: GET /api/plantoes/feriados?inicio=AAAA-MM-DD&fim=AAAA-MM-DD — os
+// feriados que o plantão interno cobre, além dos domingos
+func (h *PlantaoHandler) Feriados(w http.ResponseWriter, r *http.Request) {
+	de, err := parseDia(r.URL.Query().Get("inicio"), "início")
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ate, err := parseDia(r.URL.Query().Get("fim"), "fim")
+	if err != nil {
+		response.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if ate.Before(de) || ate.Sub(de) > 800*24*time.Hour {
+		response.JSONError(w, http.StatusBadRequest, "intervalo inválido (máximo de 800 dias)")
+		return
+	}
+	response.JSON(w, http.StatusOK, feriadosEntre(de, ate))
 }
 
 // Pessoas: GET /api/plantoes/pessoas — nomes já usados na escala do setor

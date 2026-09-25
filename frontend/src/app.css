@@ -451,14 +451,21 @@
 	box-shadow: none;
 }
 
-/* Calendário do plantão: plantão listrado, sobreaviso tracejado */
-.ec-theme-custom .ec-event.ec-plantao {
+/* Calendário do plantão: interno listrado, noturno cheio, domingo tracejado */
+.ec-theme-custom .ec-event.ec-interno {
 	background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.14) 0 6px, transparent 6px 12px);
 }
-.ec-theme-custom .ec-event.ec-sobreaviso {
+.ec-theme-custom .ec-event.ec-domingo {
 	background-color: transparent !important;
 	border: 1.5px dashed var(--cor-escala, var(--line-strong));
 	color: var(--ink);
+}
+.ec-theme-custom .ec-event.ec-feriado {
+	background-color: var(--warn-soft) !important;
+	border: 0;
+	color: var(--warn);
+	font-weight: 600;
+	pointer-events: none;
 }
 .ec-theme-custom .ec-event.ec-folga {
 	background-color: var(--sunken) !important;

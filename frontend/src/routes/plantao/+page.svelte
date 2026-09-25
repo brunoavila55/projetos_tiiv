@@ -7,9 +7,20 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import EscalaModal from '$lib/components/plantao/EscalaModal.svelte';
 	import { Calendar, DayGrid, Interaction, List } from '@event-calendar/core';
-	import { Plus, CalendarDays, X, Trash2, Edit3, Tv, ShieldAlert, BellRing, ArrowRightLeft, Users, Coffee } from 'lucide-svelte';
+	import { Plus, CalendarDays, X, Trash2, Edit3, Tv, ShieldAlert, ArrowRightLeft, Users, Coffee, Moon, Sun, MapPin } from 'lucide-svelte';
 	import {
-		TIPO_PLANTAO,
+		CIDADES,
+		ESCALAS,
+		rotuloEscala,
+		rotuloCurto,
+		daEscala,
+		ehDomingo,
+		proximoDomingo,
+		proximoDiaInterno,
+		diaComFeriado,
+		diasFeriado,
+		type Feriado,
+		diaMes,
 		corDaPessoa,
 		mesmaPessoa,
 		cobre,
@@ -23,6 +34,9 @@
 		periodo,
 		quandoComeca,
 		quantoFalta,
+		type Cidade,
+		type Escala,
+		type TipoPlantao,
 		type Turno
 	} from '$lib/plantao';
 
@@ -44,13 +58,20 @@
 	// ---------- Resumo ----------
 	let hoje = $state(paraDia(new Date()));
 	let proximos = $state<Turno[]>([]);
+	// Feriados da janela: o plantão interno é aos domingos e feriados
+	let feriados = $state(diasFeriado([]));
 	let carregandoResumo = $state(true);
 
 	async function carregarResumo() {
 		hoje = paraDia(new Date());
 		const fim = paraDia(somarDias(diaLocal(hoje), DIAS_DASH - 1));
 		try {
-			proximos = await apiFetch<Turno[]>(`/api/plantoes?inicio=${hoje}&fim=${fim}`);
+			const [lista, fer] = await Promise.all([
+				apiFetch<Turno[]>(`/api/plantoes?inicio=${hoje}&fim=${fim}`),
+				apiFetch<Feriado[]>(`/api/plantoes/feriados?inicio=${hoje}&fim=${fim}`)
+			]);
+			proximos = lista;
+			feriados = diasFeriado(fer);
 		} catch {
 			// apiFetch já avisou
 		} finally {
@@ -59,34 +80,68 @@
 	}
 
 	const dias = $derived(Array.from({ length: DIAS_DASH }, (_, i) => paraDia(somarDias(diaLocal(hoje), i))));
-	const plantaoHoje = $derived(proximos.filter((t) => t.tipo === 'plantao' && cobre(t, hoje)));
-	const sobreavisoHoje = $derived(proximos.filter((t) => t.tipo === 'sobreaviso' && cobre(t, hoje)));
+	// Plantão interno: o de hoje, se hoje for domingo ou feriado, ou o do próximo dia desses
+	const diaInterno = $derived(proximoDiaInterno(hoje, feriados));
+	const internoDoDia = $derived(proximos.filter((t) => t.tipo === 'interno' && cobre(t, diaInterno)));
+	// Técnicos externos: o noturno de hoje e o plantão do domingo (hoje ou o próximo)
+	const domingo = $derived(proximoDomingo(hoje));
+	const externos = $derived(
+		CIDADES.map((c) => ({
+			...c,
+			noturno: proximos.filter((t) => daEscala(t, 'noturno', c.id) && cobre(t, hoje)),
+			domingo: proximos.filter((t) => daEscala(t, 'domingo', c.id) && cobre(t, domingo))
+		}))
+	);
 	const folgaHoje = $derived(proximos.filter((t) => deFolga(t, hoje)));
 	// A listagem também traz turnos já passados que aparecem só pela folga
 	const vigentes = $derived(proximos.filter((t) => t.fim >= hoje));
 	const aComecar = $derived(proximos.filter((t) => t.inicio > hoje));
-	const proximaTroca = $derived(aComecar.find((t) => t.tipo === 'plantao') ?? null);
+	const proximaTroca = $derived(aComecar[0] ?? null);
 	const meuProximo = $derived(auth.user ? (vigentes.find((t) => mesmaPessoa(t.nome, auth.user!.nome)) ?? null) : null);
 
-	// Dias sem ninguém de plantão, agrupados em trechos seguidos
+	// Dias sem ninguém em cada escala, agrupados em trechos seguidos (no de
+	// domingo, domingos seguidos); dias = quantos dias da escala ficam sem ninguém
+	interface Buraco {
+		escala: Escala;
+		inicio: string;
+		fim: string;
+		dias: number;
+	}
 	const buracos = $derived.by(() => {
-		const trechos: { inicio: string; fim: string }[] = [];
-		for (const d of dias) {
-			if (proximos.some((t) => t.tipo === 'plantao' && cobre(t, d))) continue;
-			const ultimo = trechos.at(-1);
-			if (ultimo && paraDia(somarDias(diaLocal(ultimo.fim), 1)) === d) ultimo.fim = d;
-			else trechos.push({ inicio: d, fim: d });
+		const trechos: Buraco[] = [];
+		for (const e of ESCALAS) {
+			let aberto: Buraco | null = null;
+			for (const d of dias) {
+				if (!e.precisa(d, feriados)) continue;
+				if (proximos.some((t) => daEscala(t, e.tipo, e.cidade) && cobre(t, d))) {
+					aberto = null;
+				} else if (aberto) {
+					aberto.fim = d;
+					aberto.dias++;
+				} else {
+					aberto = { escala: e, inicio: d, fim: d, dias: 1 };
+					trechos.push(aberto);
+				}
+			}
 		}
-		return trechos;
+		return trechos.sort((a, b) => a.inicio.localeCompare(b.inicio));
 	});
-	const diasSemCobertura = $derived(buracos.reduce((n, b) => n + diasEntre(b.inicio, b.fim) + 1, 0));
+	const diasSemCobertura = $derived(buracos.reduce((n, b) => n + b.dias, 0));
+	const escalasDescobertas = $derived(new Set(buracos.map((b) => b.escala.rotulo)).size);
 
-	// Dias de plantão por pessoa na janela (só a parte do turno dentro dela)
+	// O noturno é todo dia: um período. O domingo e o interno contam os dias soltos
+	function textoBuraco(b: Buraco): string {
+		if (b.escala.tipo === 'noturno') return periodo(b);
+		if (b.dias === 1) return diaComFeriado(b.inicio, feriados);
+		const dias = b.escala.tipo === 'domingo' ? 'domingos' : 'domingos e feriados';
+		return `${b.dias} ${dias}, ${diaMes(diaLocal(b.inicio))} a ${diaMes(diaLocal(b.fim))}`;
+	}
+
+	// Dias de plantão por pessoa na janela, somando as escalas (só a parte do turno dentro dela)
 	const carga = $derived.by(() => {
 		const ultimoDia = dias[dias.length - 1];
 		const porPessoa: { nome: string; dias: number }[] = [];
 		for (const t of vigentes) {
-			if (t.tipo !== 'plantao') continue;
 			const ini = t.inicio < hoje ? hoje : t.inicio;
 			const fim = t.fim > ultimoDia ? ultimoDia : t.fim;
 			const n = diasEntre(ini, fim) + 1;
@@ -101,7 +156,10 @@
 	// ---------- Calendário ----------
 	let faixa = $state<{ inicio: Date; fim: Date } | null>(null);
 	let escala = $state<Turno[]>([]);
+	let feriadosCal = $state<Feriado[]>([]);
 	let carregandoCal = $state(false);
+	// Filtro do calendário: todas as escalas, só o interno ou uma cidade
+	let filtro = $state<'todas' | 'interno' | Cidade>('todas');
 
 	const plugins = [DayGrid, Interaction, List];
 	let options = $state({
@@ -113,7 +171,7 @@
 		selectable: false,
 		editable: false,
 		events: [] as any[],
-		// Plantão antes de sobreaviso em cada dia
+		// Interno, noturno e domingo, nessa ordem, em cada dia
 		eventOrder: (a: any, b: any) => (a.extendedProps?.ordem ?? 0) - (b.extendedProps?.ordem ?? 0) || a.start - b.start,
 		datesSet: (info: any) => {
 			faixa = { inicio: info.start, fim: info.end };
@@ -139,38 +197,63 @@
 		// O fim da faixa é exclusivo; a escala usa dias inclusivos
 		const params = new URLSearchParams({ inicio: paraDia(faixa.inicio), fim: paraDia(somarDias(faixa.fim, -1)) });
 		try {
-			escala = await apiFetch<Turno[]>(`/api/plantoes?${params}`);
-			const folgas = escala
-				.filter((t) => t.folga_inicio && t.folga_fim)
-				.map((t) => ({
-					id: PREFIXO_FOLGA + t.id,
-					title: `Folga · ${t.nome}`,
-					start: t.folga_inicio!,
-					end: paraDia(somarDias(diaLocal(t.folga_fim!), 1)),
-					allDay: true,
-					classNames: ['ec-folga'],
-					styles: [`--cor-escala: ${corDaPessoa(t.nome)}`],
-					extendedProps: { ordem: 2 }
-				}));
-			const turnos = escala.map((t) => ({
-				id: PREFIXO + t.id,
-				title: t.tipo === 'plantao' ? t.nome : `${t.nome} · sobreaviso`,
-				start: t.inicio,
-				end: paraDia(somarDias(diaLocal(t.fim), 1)),
-				allDay: true,
-				// Plantão: faixa listrada na cor da pessoa; sobreaviso: só contorno tracejado
-				classNames: [t.tipo === 'plantao' ? 'ec-plantao' : 'ec-sobreaviso'],
-				backgroundColor: t.tipo === 'plantao' ? corDaPessoa(t.nome) : 'transparent',
-				styles: [`--cor-escala: ${corDaPessoa(t.nome)}`],
-				extendedProps: { ordem: t.tipo === 'plantao' ? 0 : 1 }
-			}));
-			options.events = [...turnos, ...folgas];
+			[escala, feriadosCal] = await Promise.all([
+				apiFetch<Turno[]>(`/api/plantoes?${params}`),
+				apiFetch<Feriado[]>(`/api/plantoes/feriados?${params}`)
+			]);
 		} catch {
 			// apiFetch já avisou
 		} finally {
 			carregandoCal = false;
 		}
 	}
+
+	const ORDEM_TIPO: Record<TipoPlantao, number> = { interno: 0, noturno: 1, domingo: 2 };
+
+	function passaFiltro(t: Turno): boolean {
+		if (filtro === 'todas') return true;
+		if (filtro === 'interno') return t.tipo === 'interno';
+		return t.cidade === filtro;
+	}
+
+	// Interno em faixa listrada, noturno cheio e domingo tracejado, na cor da pessoa
+	$effect(() => {
+		const visiveis = escala.filter(passaFiltro);
+		const folgas = visiveis
+			.filter((t) => t.folga_inicio && t.folga_fim)
+			.map((t) => ({
+				id: PREFIXO_FOLGA + t.id,
+				title: `Folga · ${t.nome}`,
+				start: t.folga_inicio!,
+				end: paraDia(somarDias(diaLocal(t.folga_fim!), 1)),
+				allDay: true,
+				classNames: ['ec-folga'],
+				styles: [`--cor-escala: ${corDaPessoa(t.nome)}`],
+				extendedProps: { ordem: 3 }
+			}));
+		const turnos = visiveis.map((t) => ({
+			id: PREFIXO + t.id,
+			title: `${t.nome} · ${rotuloCurto(t)}`,
+			start: t.inicio,
+			end: paraDia(somarDias(diaLocal(t.fim), 1)),
+			allDay: true,
+			classNames: [`ec-${t.tipo}`],
+			backgroundColor: t.tipo === 'domingo' ? 'transparent' : corDaPessoa(t.nome),
+			styles: [`--cor-escala: ${corDaPessoa(t.nome)}`],
+			extendedProps: { ordem: ORDEM_TIPO[t.tipo] }
+		}));
+		// Feriado no topo do dia, para ver onde o interno precisa de alguém
+		const diasDeFeriado = feriadosCal.map((f) => ({
+			id: 'feriado:' + f.dia,
+			title: `Feriado · ${f.nome}`,
+			start: f.dia,
+			end: paraDia(somarDias(diaLocal(f.dia), 1)),
+			allDay: true,
+			classNames: ['ec-feriado'],
+			extendedProps: { ordem: -1 }
+		}));
+		untrack(() => (options.events = [...diasDeFeriado, ...turnos, ...folgas]));
+	});
 
 	$effect(() => {
 		if (aba === 'calendario' && faixa) untrack(carregarCalendario);
@@ -181,7 +264,7 @@
 
 	// ---------- Turnos: detalhes, criar, editar, excluir ----------
 	let selecionado = $state<Turno | null>(null);
-	let novo = $state<{ inicio?: string; fim?: string } | null>(null);
+	let novo = $state<{ inicio?: string; fim?: string; tipo?: TipoPlantao; cidade?: Cidade | null } | null>(null);
 	let editando = $state<Turno | null>(null);
 
 	function aposSalvar() {
@@ -211,7 +294,7 @@
 	<div class="page-head">
 		<div>
 			<h1 class="page-title">Plantão</h1>
-			<p class="page-sub">Quem está de plantão e sobreaviso, e a escala das próximas semanas.</p>
+			<p class="page-sub">Plantão interno e dos técnicos externos por cidade, e a escala das próximas semanas.</p>
 		</div>
 
 		<div class="flex flex-wrap lg:flex-nowrap lg:shrink-0 items-center gap-2">
@@ -237,20 +320,24 @@
 			<div class="flex items-center gap-3 text-sm text-ink-3"><div class="spinner size-5"></div> Carregando…</div>
 		{:else}
 			<!-- Agora -->
-			<section aria-label="De plantão hoje" class="space-y-3">
-				{#if plantaoHoje.length === 0}
+			<section aria-label="Plantão interno" class="space-y-3">
+				<h2 class="text-[13px] font-bold uppercase tracking-wide text-ink-3">Plantão interno</h2>
+				{#if internoDoDia.length === 0}
 					<div class="flex items-start gap-3 px-4 py-3.5 rounded-xl border border-warn/40 bg-warn-soft">
 						<ShieldAlert class="size-5 mt-0.5 text-warn shrink-0" />
-						<div class="text-sm">
-							<p class="font-semibold text-ink">Ninguém de plantão hoje</p>
-							<p class="text-ink-2">
-								{sobreavisoHoje.length ? 'Quem está de sobreaviso aparece abaixo.' : ehAdmin ? 'Monte a escala para cobrir o dia.' : 'A escala de hoje está vazia.'}
+						<div class="text-sm flex-1">
+							<p class="font-semibold text-ink">
+								{diaInterno === hoje ? 'Ninguém no plantão interno hoje' : `Ninguém no plantão interno de ${diaComFeriado(diaInterno, feriados)}`}
 							</p>
+							<p class="text-ink-2">O plantão interno é aos domingos e feriados.</p>
 						</div>
+						{#if ehAdmin}
+							<button onclick={() => (novo = { tipo: 'interno', inicio: diaInterno, fim: diaInterno })} class="btn btn-secondary btn-sm">Escalar</button>
+						{/if}
 					</div>
 				{:else}
 					<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-						{#each plantaoHoje as t (t.id)}
+						{#each internoDoDia as t (t.id)}
 							<button
 								onclick={() => (selecionado = t)}
 								class="panel text-left p-5 flex items-center gap-4 min-w-0 cursor-pointer hover:border-line-strong transition-colors"
@@ -258,10 +345,16 @@
 							>
 								<Avatar id={t.id} nome={t.nome} cor={corDaPessoa(t.nome)} class="size-14 text-lg shrink-0" />
 								<div class="min-w-0">
-									<p class="text-[13px] font-semibold text-ink-3">De plantão hoje</p>
+									<p class="text-[13px] font-semibold text-ink-3 truncate">
+										{diaInterno === hoje ? 'De plantão hoje' : `Próximo: ${diaComFeriado(diaInterno, feriados)}`}
+									</p>
 									<p class="text-xl font-bold text-ink leading-tight truncate">{t.nome}</p>
 									<p class="mt-0.5 text-sm text-ink-2 tabular">
-										{t.fim === hoje ? 'Até o fim do dia' : `Até ${diaSemana(t.fim)}`} · {quantoFalta(t.fim, hoje)}
+										{#if diaInterno === hoje}
+											{feriados.get(hoje) ?? (t.fim === hoje ? 'Até o fim do dia' : `Até ${diaSemana(t.fim)}`)}
+										{:else}
+											{quandoComeca(diaInterno, hoje)}
+										{/if}
 									</p>
 									{#if t.observacao}<p class="text-[13px] text-ink-3 truncate">{t.observacao}</p>{/if}
 								</div>
@@ -269,22 +362,51 @@
 						{/each}
 					</div>
 				{/if}
+			</section>
 
-				{#if sobreavisoHoje.length > 0}
-					<div class="flex flex-wrap items-center gap-2">
-						<span class="flex items-center gap-1.5 text-sm font-semibold text-ink-2"><BellRing class="size-4" /> Sobreaviso hoje</span>
-						{#each sobreavisoHoje as t (t.id)}
-							<button
-								onclick={() => (selecionado = t)}
-								class="inline-flex items-center gap-2 h-8 px-3 rounded-full border border-dashed text-[13px] font-semibold text-ink cursor-pointer hover:bg-sunken"
-								style="border-color: {corDaPessoa(t.nome)};"
-							>
-								{t.nome}
-								<span class="font-normal text-ink-3">{t.fim === hoje ? 'hoje' : `até ${diaSemana(t.fim)}`}</span>
-							</button>
-						{/each}
-					</div>
-				{/if}
+			<section aria-label="Técnicos externos" class="space-y-3">
+				<h2 class="text-[13px] font-bold uppercase tracking-wide text-ink-3">Técnicos externos</h2>
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+					{#each externos as c (c.id)}
+						<div class="panel p-4 space-y-3 min-w-0">
+							<p class="flex items-center gap-1.5 text-[15px] font-bold text-ink"><MapPin class="size-4 text-accent" /> {c.nome}</p>
+							{#each [{ tipo: 'noturno' as const, rotulo: 'Noturno hoje', turnos: c.noturno }, { tipo: 'domingo' as const, rotulo: ehDomingo(hoje) ? 'Domingo, hoje' : `Domingo, ${diaMes(diaLocal(domingo))}`, turnos: c.domingo }] as linha (linha.tipo)}
+								<div class="flex items-start gap-2.5 min-w-0">
+									{#if linha.tipo === 'noturno'}
+										<Moon class="size-4 mt-0.5 text-ink-3 shrink-0" />
+									{:else}
+										<Sun class="size-4 mt-0.5 text-ink-3 shrink-0" />
+									{/if}
+									<div class="min-w-0 flex-1">
+										<p class="text-[12px] font-semibold text-ink-3">{linha.rotulo}</p>
+										{#if linha.turnos.length === 0}
+											<p class="flex items-center gap-2 text-sm font-semibold text-warn">
+												Sem técnico
+												{#if ehAdmin}
+													<button
+														onclick={() => (novo = { tipo: linha.tipo, cidade: c.id, inicio: linha.tipo === 'noturno' ? hoje : domingo })}
+														class="font-semibold text-accent hover:underline underline-offset-2 cursor-pointer">Escalar</button
+													>
+												{/if}
+											</p>
+										{:else}
+											{#each linha.turnos as t (t.id)}
+												<button onclick={() => (selecionado = t)} class="flex items-center gap-2 max-w-full text-left cursor-pointer hover:underline underline-offset-2">
+													<span class="dot size-2 shrink-0" style="background-color: {corDaPessoa(t.nome)};"></span>
+													<span class="text-[15px] font-semibold text-ink truncate">{t.nome}</span>
+													{#if linha.tipo === 'noturno' && t.fim !== hoje}
+														<span class="text-[13px] text-ink-3 tabular shrink-0">até {diaSemana(t.fim)}</span>
+													{/if}
+												</button>
+											{/each}
+										{/if}
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/each}
+				</div>
+
 				{#if folgaHoje.length > 0}
 					<div class="flex flex-wrap items-center gap-2">
 						<span class="flex items-center gap-1.5 text-sm font-semibold text-ink-2"><Coffee class="size-4" /> De folga hoje</span>
@@ -308,29 +430,34 @@
 					<p class="flex items-center gap-1.5 text-[13px] font-semibold text-ink-3"><ArrowRightLeft class="size-4" /> Próxima troca</p>
 					{#if proximaTroca}
 						<p class="mt-1 text-lg font-bold text-ink truncate">{proximaTroca.nome}</p>
-						<p class="text-sm text-ink-2 tabular">{quandoComeca(proximaTroca.inicio, hoje)} · {diaSemana(proximaTroca.inicio)}</p>
+						<p class="text-sm text-ink-2 tabular truncate">
+							{quandoComeca(proximaTroca.inicio, hoje)} · {diaSemana(proximaTroca.inicio)} · {rotuloCurto(proximaTroca)}
+						</p>
 					{:else}
 						<p class="mt-1 text-lg font-bold text-ink-3">—</p>
 						<p class="text-sm text-ink-3">Nenhuma nos próximos 30 dias</p>
 					{/if}
 				</div>
 				<div class="panel p-4">
-					<p class="flex items-center gap-1.5 text-[13px] font-semibold text-ink-3"><ShieldAlert class="size-4" /> Dias sem plantão</p>
+					<p class="flex items-center gap-1.5 text-[13px] font-semibold text-ink-3"><ShieldAlert class="size-4" /> Dias sem cobertura</p>
 					<p class="mt-1 text-lg font-bold tabular {diasSemCobertura > 0 ? 'text-warn' : 'text-ink'}">
-						{diasSemCobertura} <span class="text-sm font-medium text-ink-3">de {DIAS_DASH}</span>
+						{diasSemCobertura}
+						{#if diasSemCobertura > 0}
+							<span class="text-sm font-medium text-ink-3">em {escalasDescobertas} {escalasDescobertas === 1 ? 'escala' : 'escalas'}</span>
+						{/if}
 					</p>
 					<p class="text-sm text-ink-2 truncate">
 						{#if buracos.length === 0}
-							Escala coberta
+							Todas as escalas cobertas
 						{:else}
-							Primeiro: {periodo(buracos[0])}
+							Primeiro: {diaSemana(buracos[0].inicio)} · {buracos[0].escala.rotulo}
 						{/if}
 					</p>
 				</div>
 				<div class="panel p-4">
 					<p class="flex items-center gap-1.5 text-[13px] font-semibold text-ink-3"><Users class="size-4" /> Seu próximo turno</p>
 					{#if meuProximo}
-						<p class="mt-1 text-lg font-bold text-ink">{TIPO_PLANTAO[meuProximo.tipo]}</p>
+						<p class="mt-1 text-lg font-bold text-ink truncate">{rotuloEscala(meuProximo)}</p>
 						<p class="text-sm text-ink-2 tabular">
 							{cobre(meuProximo, hoje) ? `Em andamento, ${quantoFalta(meuProximo.fim, hoje)}` : `${quandoComeca(meuProximo.inicio, hoje)} · ${periodo(meuProximo)}`}
 						</p>
@@ -359,7 +486,7 @@
 										<div class="min-w-0 flex-1">
 											<p class="text-sm font-semibold text-ink truncate">
 												{t.nome}
-												{#if t.tipo === 'sobreaviso'}<span class="ml-1 font-normal text-ink-3">sobreaviso</span>{/if}
+												<span class="ml-1 font-normal text-ink-3">{rotuloCurto(t)}</span>
 											</p>
 											<p class="text-[13px] text-ink-3 tabular">
 												{periodo(t)}{#if periodoFolga(t)}<span> · folga {periodoFolga(t)}</span>{/if}
@@ -369,12 +496,24 @@
 									</button>
 								</li>
 							{/each}
-							{#each buracos as b (b.inicio)}
+							{#each buracos as b (b.escala.rotulo + b.inicio)}
 								<li class="flex items-center gap-3 px-5 py-3 bg-warn-soft/50">
 									<ShieldAlert class="size-4 text-warn shrink-0" />
-									<p class="flex-1 text-sm text-ink">Sem plantão: <span class="tabular">{periodo(b)}</span></p>
+									<p class="flex-1 min-w-0 text-sm text-ink">
+										<span class="font-semibold">{b.escala.rotulo}</span> sem ninguém: <span class="tabular">{textoBuraco(b)}</span>
+									</p>
 									{#if ehAdmin}
-										<button onclick={() => (novo = { inicio: b.inicio, fim: b.fim })} class="btn btn-secondary btn-sm">Cobrir</button>
+										<button
+											onclick={() =>
+												(novo = {
+													tipo: b.escala.tipo,
+													cidade: b.escala.cidade,
+													inicio: b.inicio,
+													// Domingo e interno: um turno por dia; o resto vai pelo rodízio
+													fim: b.escala.tipo === 'noturno' ? b.fim : b.inicio
+												})}
+											class="btn btn-secondary btn-sm">Cobrir</button
+										>
 									{/if}
 								</li>
 							{/each}
@@ -393,7 +532,7 @@
 					{:else}
 						<ul class="px-5 py-4 space-y-3">
 							{#each carga as c (c.nome)}
-								<li title="{c.nome}: {c.dias} {c.dias === 1 ? 'dia' : 'dias'} de plantão">
+								<li title="{c.nome}: {c.dias} {c.dias === 1 ? 'dia' : 'dias'} de plantão, somando as escalas">
 									<div class="flex items-baseline justify-between gap-3 text-sm">
 										<span class="flex items-center gap-2 min-w-0 font-medium text-ink">
 											<span class="dot size-2 shrink-0" style="background-color: {corDaPessoa(c.nome)};"></span>
@@ -412,6 +551,13 @@
 			</div>
 		{/if}
 	{:else}
+		<div class="segmented" role="group" aria-label="Escala">
+			<button aria-pressed={filtro === 'todas'} onclick={() => (filtro = 'todas')}>Todas</button>
+			<button aria-pressed={filtro === 'interno'} onclick={() => (filtro = 'interno')}>Interno</button>
+			{#each CIDADES as c (c.id)}
+				<button aria-pressed={filtro === c.id} onclick={() => (filtro = c.id)}>{c.nome}</button>
+			{/each}
+		</div>
 		<div class="panel relative p-3 sm:p-5">
 			{#if carregandoCal}
 				<div class="absolute top-5 right-5 z-10"><div class="spinner size-5"></div></div>
@@ -421,7 +567,7 @@
 			</div>
 		</div>
 		<p class="text-[13px] text-ink-3">
-			Plantão em faixa listrada, sobreaviso em contorno tracejado e folga em cinza, na cor de cada pessoa.
+			Interno (domingos e feriados) em faixa listrada, noturno cheio, domingo em contorno tracejado e folga em cinza, na cor de cada pessoa.
 			{#if ehAdmin}Selecione dias no calendário para escalar alguém.{/if}
 		</p>
 	{/if}
@@ -435,7 +581,7 @@
 					<div class="flex gap-3 min-w-0">
 						<span class="w-1 self-stretch rounded-full shrink-0" style="background-color: {corDaPessoa(t.nome)};"></span>
 						<div class="min-w-0">
-							<p class="text-[13px] font-semibold text-ink-3">{TIPO_PLANTAO[t.tipo]}</p>
+							<p class="text-[13px] font-semibold text-ink-3">{rotuloEscala(t)}</p>
 							<h3 class="modal-title">{t.nome}</h3>
 							<p class="mt-1 flex items-center gap-1.5 text-sm text-ink-2 tabular">
 								<CalendarDays class="size-4 text-ink-3" />
@@ -486,6 +632,8 @@
 	{#if novo || editando}
 		<EscalaModal
 			turno={editando}
+			tipo={novo?.tipo}
+			cidade={novo?.cidade}
 			inicio={novo?.inicio}
 			fim={novo?.fim}
 			onfechar={() => {

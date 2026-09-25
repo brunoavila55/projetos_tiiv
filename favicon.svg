@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">Projetos NOC</title>
+  <rect width="256" height="256" rx="54" fill="#164896"/>
+  <g transform="translate(9 13) scale(.72)">
+    <path d="M 36 188 L 164 252 L 292 188 V 218 L 164 282 L 36 218 Z" fill="#A5D2E9"/>
+    <path d="M 36 137 L 164 201 L 292 137 V 167 L 164 231 L 36 167 Z" fill="#1EB7C9"/>
+    <path d="M 164 37 L 292 101 L 164 165 L 36 101 Z" fill="#FFFFFF"/>
+    <path d="M 107 105 L 164 77 L 221 105" fill="none" stroke="#164896" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="107" cy="105" r="8" fill="#164896"/>
+    <circle cx="164" cy="77" r="10" fill="#F2AE62"/>
+    <circle cx="221" cy="105" r="8" fill="#164896"/>
+  </g>
+</svg>

@@ -175,6 +175,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 			protected.Route("/plantoes", func(p chi.Router) {
 				p.Get("/", plantaoHandler.Listar)
 				p.Get("/pessoas", plantaoHandler.Pessoas)
+				p.Get("/feriados", plantaoHandler.Feriados)
 
 				p.Group(func(adminPl chi.Router) {
 					adminPl.Use(authMiddleware.RequireAdmin)

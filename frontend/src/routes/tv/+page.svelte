@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { ModoTV, lerChaveTV, esquecerChaveTV } from '$lib/modoTV.svelte';
-	import { corDaPessoa, type Turno } from '$lib/plantao';
+	import { corDaPessoa, rotuloEscala, type Turno } from '$lib/plantao';
 	import { Maximize, Minimize, ArrowLeft, Inbox, ShieldCheck, Megaphone, TriangleAlert, WifiOff, Tv } from 'lucide-svelte';
 
 	type Status = 'pendente' | 'online' | 'offline';
@@ -245,7 +245,7 @@
 									<div class="min-w-0">
 										<div class="text-[1.25rem] font-semibold leading-tight truncate">{p.nome}</div>
 										<div class="text-[0.9rem] text-ink-3 truncate">
-											{p.tipo === 'plantao' ? 'Plantão' : 'Sobreaviso'}{p.observacao ? ` · ${p.observacao}` : ''}
+											{rotuloEscala(p)}{p.observacao ? ` · ${p.observacao}` : ''}
 										</div>
 									</div>
 								</li>
