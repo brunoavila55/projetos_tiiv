@@ -1,72 +1,12 @@
 /*
- * Telas de TV (/tv e /plantao/tv) — "painel anunciador"
- * Lidas de longe, numa sala: fundo noturno azul tirado do logo, janelas
- * apagadas quando está tudo bem e acesas quando algo precisa de alguém.
- * Os tokens do sistema são redefinidos dentro de .tv, então as utilidades
- * (bg-surface, text-ink-3…) continuam valendo.
+ * Telas de TV (/tv e /plantao/tv): usam os tokens do tema escuro do sistema;
+ * aqui ficam só as peças próprias de uma tela lida de longe.
  */
-.tv {
-	--paper: #0a1426;
-	--surface: #101e36;
-	--sunken: #0d1930;
-	--muted: #16284a;
-	--muted-strong: #1f3560;
-	--line: #1c2e4d;
-	--line-strong: #2a4068;
 
-	--ink: #eaf1fb;
-	--ink-2: #a9bad3;
-	--ink-3: #7189ab;
-
-	--accent: #7db4ff;
-	--accent-strong: #a6ccff;
-	--accent-soft: #15294a;
-	--on-accent: #06142b;
-
-	/* No ar: o ciano do logo */
-	--ok: #3fd0c9;
-	--ok-soft: #0f3340;
-	/* Atenção: o âmbar do ponto do logo */
-	--warn: #f2ae62;
-	--warn-soft: #33260f;
-	--danger: #ff7a6b;
-	--danger-soft: #3a1618;
-	/* Janela acesa de alarme */
-	--alarme: #d93a2b;
-	--on-alarme: #ffffff;
-
-	/* O @theme resolve --color-* na raiz; aqui elas passam a ler os tokens acima */
-	--color-paper: var(--paper);
-	--color-surface: var(--surface);
-	--color-sunken: var(--sunken);
-	--color-muted: var(--muted);
-	--color-muted-strong: var(--muted-strong);
-	--color-line: var(--line);
-	--color-line-strong: var(--line-strong);
-	--color-ink: var(--ink);
-	--color-ink-2: var(--ink-2);
-	--color-ink-3: var(--ink-3);
-	--color-accent: var(--accent);
-	--color-accent-strong: var(--accent-strong);
-	--color-accent-soft: var(--accent-soft);
-	--color-on-accent: var(--on-accent);
-	--color-danger: var(--danger);
-	--color-danger-soft: var(--danger-soft);
-	--color-warn: var(--warn);
-	--color-warn-soft: var(--warn-soft);
-	--color-ok: var(--ok);
-	--color-ok-soft: var(--ok-soft);
-
-	background: var(--paper);
-	color: var(--ink);
-}
-
-/* Nomes, relógio e serviços: condensado, para caber grande */
+/* Nomes, relógio e serviços em destaque */
 .tv-display {
-	font-family: 'Archivo Variable', var(--font-sans);
-	font-stretch: 78%;
 	font-weight: 700;
-	letter-spacing: -0.01em;
+	letter-spacing: -0.02em;
 	font-variant-numeric: tabular-nums;
 }
 
@@ -78,19 +18,30 @@
 	height: 0.85rem;
 	border-radius: 999px;
 	background: currentColor;
-	box-shadow: 0 0 0.9rem -0.1rem currentColor;
 }
 
 .tv-pisca {
-	animation: tv-pisca 1.6s ease-in-out infinite;
+	animation: tv-pisca 2s ease-in-out infinite;
 }
 @keyframes tv-pisca {
 	50% {
-		opacity: 0.35;
+		opacity: 0.45;
 	}
 }
 @media (prefers-reduced-motion: reduce) {
 	.tv-pisca {
 		animation: none;
 	}
+}
+
+/* Só mostra itens inteiros: o que não cabe quebra para uma coluna escondida */
+.tv-lista {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-flow: column wrap;
+	overflow: hidden;
+}
+.tv-lista > li {
+	width: 100%;
 }
