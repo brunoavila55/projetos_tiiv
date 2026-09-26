@@ -20,8 +20,6 @@
 		somarDias,
 		diaSemana,
 		quandoComeca,
-		quantoFalta,
-		nomeCidade,
 		type Turno
 	} from '$lib/plantao';
 	import { Maximize, Minimize, ArrowLeft, WifiOff, Tv } from 'lucide-svelte';
@@ -42,6 +40,8 @@
 	const DADOS_VELHOS_MS = 3 * 60_000;
 	// Dias na faixa da escala, no rodapé
 	const DIAS_FAIXA = 14;
+	// Só São Gabriel tem plantão noturno; as outras cidades têm só o de domingo
+	const CIDADE_NOTURNO = 'sao_gabriel';
 
 	let dados = $state<PlantaoTV | null>(null);
 	let erro = $state<'nao_autorizada' | 'desativado' | 'limite' | null>(null);
@@ -120,21 +120,16 @@
 	const diaInterno = $derived(proximoDiaInterno(hoje, feriados));
 	const internoDoDia = $derived(escala.filter((t) => t.tipo === 'interno' && cobre(t, diaInterno)));
 	const internoPorPeriodo = $derived(PERIODOS.map((p) => ({ ...p, turnos: internoDoDia.filter((t) => t.periodo === p.id) })));
-	// Técnicos externos: o noturno de hoje (o destaque da tela) e o plantão do
-	// domingo (hoje ou o próximo)
+	// Técnicos externos: o plantão do domingo (hoje ou o próximo), o destaque da
+	// tela junto com o interno, e o noturno de hoje, que só existe em São Gabriel
 	const domingo = $derived(proximoDomingo(hoje));
 	const externos = $derived(
-		CIDADES.map((c) => ({
-			...c,
-			noturno: escala.filter((t) => daEscala(t, 'noturno', c.id) && cobre(t, hoje)),
-			domingo: escala.filter((t) => daEscala(t, 'domingo', c.id) && cobre(t, domingo))
-		}))
+		CIDADES.map((c) => ({ ...c, domingo: escala.filter((t) => daEscala(t, 'domingo', c.id) && cobre(t, domingo)) }))
 	);
+	const noturnoAgora = $derived(escala.filter((t) => daEscala(t, 'noturno', CIDADE_NOTURNO) && cobre(t, hoje)));
 	const folgaAgora = $derived(dados?.escala.filter((t) => deFolga(t, hoje)) ?? []);
-	// Próximas entradas na escala (turnos que ainda vão começar)
 	// Próximas trocas do noturno; o interno e o domingo aparecem na faixa
-	const proximos = $derived(escala.filter((t) => t.tipo === 'noturno' && t.inicio > hoje).slice(0, 7));
-	const noturnoAgora = $derived(externos.flatMap((c) => c.noturno));
+	const proximos = $derived(escala.filter((t) => daEscala(t, 'noturno', CIDADE_NOTURNO) && t.inicio > hoje).slice(0, 7));
 
 	const faixa = $derived(
 		Array.from({ length: DIAS_FAIXA }, (_, i) => {
@@ -148,7 +143,8 @@
 				domingo: ehDomingo(dia),
 				interno: PERIODOS.map((p) => escala.filter((t) => daEscala(t, 'interno', null, p.id) && cobre(t, dia))),
 				cidades: CIDADES.map((c) => ({
-					noturno: escala.filter((t) => daEscala(t, 'noturno', c.id) && cobre(t, dia)),
+					temNoturno: c.id === CIDADE_NOTURNO,
+					noturno: c.id === CIDADE_NOTURNO ? escala.filter((t) => daEscala(t, 'noturno', c.id) && cobre(t, dia)) : [],
 					domingo: escala.filter((t) => daEscala(t, 'domingo', c.id) && cobre(t, dia))
 				})),
 				feriado: feriados.get(dia) ?? null,
@@ -158,11 +154,11 @@
 		})
 	);
 
-	// Nome do noturno o maior possível sem quebrar palavra: a maior palavra cabe
-	// na largura da coluna (cqi), com teto quando divide a coluna com outro
-	function tamanhoNome(nome: string, naColuna: number): string {
+	// Nome nos cartões o maior possível sem quebrar palavra: a maior palavra cabe
+	// na largura do cartão (cqi), com teto quando divide o cartão com outro
+	function tamanhoNome(nome: string, noCartao: number): string {
 		const maiorPalavra = Math.max(...nome.trim().split(/\s+/).map((p) => p.length));
-		const teto = naColuna > 1 ? 2.8 : 4.4;
+		const teto = noCartao > 1 ? 2.2 : 3.4;
 		return `font-size: min(${teto}rem, ${Math.round(135 / Math.max(maiorPalavra, 4))}cqi);`;
 	}
 
@@ -174,6 +170,34 @@
 		return new Date(ms + desvio).toLocaleTimeString('pt-BR', { timeZone: FUSO, hour: '2-digit', minute: '2-digit' });
 	}
 </script>
+
+{#snippet cartao(titulo: string, turnos: Turno[])}
+	{#if turnos.length === 0}
+		<article class="cartao bg-warn-soft border-2 border-warn">
+			<p class="text-[1.25rem] font-bold text-warn">{titulo}</p>
+			<div class="flex-1 flex flex-col justify-center">
+				<p class="tv-display text-[2.4rem] leading-[1.05] text-warn">Sem escala</p>
+				<p class="mt-1 text-[1.05rem] text-warn">Ninguém escalado.</p>
+			</div>
+		</article>
+	{:else}
+		<article class="cartao bg-surface border border-line">
+			<p class="text-[1.25rem] font-bold text-ink-2">{titulo}</p>
+			<div class="flex-1 flex flex-col justify-center gap-4 min-w-0">
+				{#each turnos as t (t.id)}
+					<div class="min-w-0 pl-4 border-l-[0.4rem] rounded-l-sm" style="border-color: {corDaPessoa(t.nome)};">
+						<p class="tv-display leading-[1.05] [overflow-wrap:anywhere] line-clamp-2" style={tamanhoNome(t.nome, turnos.length)}>
+							{t.nome}
+						</p>
+						{#if t.observacao}
+							<p class="mt-1 text-[1.05rem] text-ink-3 truncate">{t.observacao}</p>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		</article>
+	{/if}
+{/snippet}
 
 <svelte:head>
 	<title>{noturnoAgora.length ? `${noturnoAgora.map((t) => t.nome).join(', ')} · ` : ''}Plantão · Projetos NOC</title>
@@ -226,65 +250,47 @@
 		</header>
 
 		<main class="flex-1 min-h-0 grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)] gap-5 px-6">
-			<!-- Destaque: quem está no noturno hoje, um cartão por cidade -->
-			<section class="min-h-0 flex flex-col gap-3" aria-label="Plantão noturno hoje">
-				<h2 class="bloco">Plantão noturno de hoje</h2>
-				<div class="flex-1 min-h-0 grid grid-cols-3 gap-4">
-					{#each externos as c (c.id)}
-						{#if c.noturno.length === 0}
-							<article class="cidade bg-warn-soft border-2 border-warn">
-								<p class="text-[1.35rem] font-bold text-warn">{c.nome}</p>
-								<div class="flex-1 flex flex-col justify-center">
-									<p class="tv-display text-[3rem] leading-[1.05] text-warn">Sem técnico</p>
-									<p class="mt-2 text-[1.15rem] text-warn">Ninguém escalado no noturno de hoje.</p>
-								</div>
-							</article>
-						{:else}
-							<article class="cidade bg-surface border border-line">
-								<p class="text-[1.35rem] font-bold text-ink-2">{c.nome}</p>
-								<div class="flex-1 flex flex-col justify-center gap-6 min-w-0">
-									{#each c.noturno as t (t.id)}
-										<div class="min-w-0 pl-4 border-l-[0.4rem] rounded-l-sm" style="border-color: {corDaPessoa(t.nome)};">
-											<p class="tv-display leading-[1.05] [overflow-wrap:anywhere] line-clamp-3" style={tamanhoNome(t.nome, c.noturno.length)}>
-												{t.nome}
-											</p>
-											<p class="mt-2 text-[1.25rem] text-ink-2 tabular">
-												{t.fim === hoje ? 'Última noite' : `Até ${diaSemana(t.fim)}, ${quantoFalta(t.fim, hoje)}`}
-											</p>
-											{#if t.observacao}
-												<p class="mt-0.5 text-[1.1rem] text-ink-3 truncate">{t.observacao}</p>
-											{/if}
-										</div>
-									{/each}
-								</div>
-							</article>
-						{/if}
-					{/each}
-				</div>
-			</section>
-
-			<!-- Lateral: domingo e interno, folga e próximas trocas -->
-			<aside class="panel min-h-0 flex flex-col overflow-hidden divide-y divide-line">
-				<section class="px-5 py-4" aria-label="Plantão de domingo e interno">
+			<!-- Destaque: o próximo plantão de domingo (externos por cidade) e o interno -->
+			<div class="min-h-0 flex flex-col gap-4">
+				<section class="flex-1 min-h-0 flex flex-col gap-3" aria-label="Plantão de domingo">
 					<h2 class="bloco">
-						{ehDomingo(hoje) ? 'Hoje é domingo' : `Domingo, ${diaSemana(domingo).replace(/^\S+\s/, '')}`}
+						{ehDomingo(hoje) ? 'Plantão de domingo, hoje' : `Plantão de domingo, ${diaSemana(domingo).replace(/^\S+\s/, '')}`}
 					</h2>
-					<dl class="mt-2.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-5 gap-y-1.5 items-baseline">
+					<div class="flex-1 min-h-0 grid grid-cols-3 gap-4">
 						{#each externos as c (c.id)}
-							<dt class="text-[1.05rem] text-ink-3">{c.nome}</dt>
-							<dd class="text-[1.3rem] font-bold leading-tight truncate {c.domingo.length ? '' : 'text-warn'}">
-								{c.domingo.length ? c.domingo.map((t) => t.nome).join(', ') : 'Ninguém escalado'}
-							</dd>
+							{@render cartao(c.nome, c.domingo)}
 						{/each}
+					</div>
+				</section>
+				<section class="flex-1 min-h-0 flex flex-col gap-3" aria-label="Plantão interno">
+					<h2 class="bloco">
+						Plantão interno, {diaInterno === hoje ? 'hoje' : diaComFeriado(diaInterno, feriados)}
+					</h2>
+					<div class="flex-1 min-h-0 grid grid-cols-2 gap-4">
 						{#each internoPorPeriodo as p (p.id)}
-							<dt class="text-[1.05rem] text-ink-3">
-								Interno, {p.nome.toLowerCase()}{diaInterno !== domingo ? `, ${diaInterno === hoje ? 'hoje' : diaComFeriado(diaInterno, feriados)}` : ''}
-							</dt>
-							<dd class="text-[1.3rem] font-bold leading-tight truncate {p.turnos.length ? '' : 'text-warn'}">
-								{p.turnos.length ? p.turnos.map((t) => t.nome).join(', ') : 'Ninguém escalado'}
-							</dd>
+							{@render cartao(p.nome, p.turnos)}
 						{/each}
-					</dl>
+					</div>
+				</section>
+			</div>
+
+			<!-- Lateral: noturno de São Gabriel, folga e próximas trocas -->
+			<aside class="panel min-h-0 flex flex-col overflow-hidden divide-y divide-line">
+				<section class="px-5 py-4" aria-label="Plantão noturno hoje">
+					<h2 class="bloco">Noturno hoje, São Gabriel</h2>
+					{#if noturnoAgora.length === 0}
+						<p class="mt-2 text-[1.3rem] font-bold text-warn">Ninguém escalado</p>
+					{:else}
+						<ul class="mt-2 space-y-1.5">
+							{#each noturnoAgora as t (t.id)}
+								<li class="flex items-center gap-3 min-w-0">
+									<span class="dot !size-3" style="background-color: {corDaPessoa(t.nome)};"></span>
+									<span class="text-[1.3rem] font-bold truncate">{t.nome}</span>
+									<span class="ml-auto shrink-0 text-[1rem] text-ink-3 tabular">{t.fim === hoje ? 'última noite' : `até ${diaSemana(t.fim)}`}</span>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				</section>
 
 				{#if folgaAgora.length > 0}
@@ -313,7 +319,7 @@
 									<span class="dot !size-3" style="background-color: {corDaPessoa(t.nome)};"></span>
 									<div class="min-w-0 flex-1">
 										<div class="text-[1.25rem] font-bold leading-tight truncate">{t.nome}</div>
-										<div class="text-[0.95rem] text-ink-3 truncate">{nomeCidade(t.cidade)}</div>
+										<div class="text-[0.95rem] text-ink-3 truncate">{diaSemana(t.inicio)}</div>
 									</div>
 									<span class="tag !h-7 !text-[0.95rem] shrink-0">{quandoComeca(t.inicio, hoje)}</span>
 								</li>
@@ -343,7 +349,7 @@
 						<span class="self-center pl-1 text-[0.95rem] font-semibold text-ink-3 truncate">{c.nome}</span>
 						{#each faixa as d (d.dia)}
 							{@const cel = d.cidades[i]}
-							{@const falta = cel.noturno.length === 0 || (d.domingo && cel.domingo.length === 0)}
+							{@const falta = (cel.temNoturno && cel.noturno.length === 0) || (d.domingo && cel.domingo.length === 0)}
 							<div class="celula {falta ? 'bg-warn-soft' : ''} {d.dia === hoje ? 'ring-2 ring-accent' : ''}">
 								{#each cel.noturno as t (t.id)}
 									<span class="chip text-white" style="background-color: {corDaPessoa(t.nome)}" title="{t.nome}, noturno">{primeiroNome(t.nome)}</span>
@@ -426,7 +432,7 @@
 </div>
 
 <style>
-	.cidade {
+	.cartao {
 		container-type: inline-size;
 		display: flex;
 		flex-direction: column;
@@ -434,7 +440,7 @@
 		min-width: 0;
 		min-height: 0;
 		overflow: hidden;
-		padding: 1.25rem 1.5rem 1.5rem;
+		padding: 1rem 1.5rem 1.25rem;
 		border-radius: 1rem;
 	}
 	.bloco {
