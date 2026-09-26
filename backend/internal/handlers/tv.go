@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -15,6 +16,7 @@ import (
 	"tiiv/backend/internal/database"
 	"tiiv/backend/internal/database/sqlc"
 	"tiiv/backend/internal/middleware"
+	"tiiv/backend/internal/modulos"
 	"tiiv/backend/internal/response"
 )
 
@@ -89,23 +91,44 @@ type TVPainelResponse struct {
 	Tickets       []TVTicketResponse  `json:"tickets"`
 	PlantaoHoje   []PlantaoResponse   `json:"plantao_hoje"`
 	Avisos        []TVAvisoResponse   `json:"avisos"`
+	// Módulos ligados no setor: a TV esconde os quadros dos desligados
+	Modulos []string `json:"modulos"`
 }
 
 // painelAutorizado: nome exibido no rodapé da TV e o setor cujos tickets,
 // plantão e avisos ela mostra
 type painelAutorizado struct {
-	nome      string
-	setor     pgtype.UUID
-	setorNome string
+	nome        string
+	setor       pgtype.UUID
+	setorNome   string
+	desativados []string
+}
+
+func (p painelAutorizado) temModulo(m string) bool {
+	return !slices.Contains(p.desativados, m)
 }
 
 // autorizarPainel aceita a chave de uma tela (setor da tela) ou uma sessão
-// válida (setor de trabalho do operador)
-func (h *TVHandler) autorizarPainel(w http.ResponseWriter, r *http.Request) (painelAutorizado, bool) {
+// válida (setor de trabalho do operador), desde que o setor tenha os módulos
+func (h *TVHandler) autorizarPainel(w http.ResponseWriter, r *http.Request, exigidos ...string) (painelAutorizado, bool) {
+	p, ok := h.identificarPainel(w, r)
+	if !ok {
+		return p, false
+	}
+	for _, m := range exigidos {
+		if !p.temModulo(m) {
+			response.JSONError(w, http.StatusForbidden, "módulo desativado para este setor")
+			return painelAutorizado{}, false
+		}
+	}
+	return p, true
+}
+
+func (h *TVHandler) identificarPainel(w http.ResponseWriter, r *http.Request) (painelAutorizado, bool) {
 	chave := r.Header.Get(CabecalhoChaveTV)
 	if chave == "" {
 		if user, ok := middleware.GetAuthUser(r.Context()); ok && user != nil && !user.DeveTrocarPin {
-			return painelAutorizado{user.Nome, user.Setor, user.SetorNome}, true
+			return painelAutorizado{user.Nome, user.Setor, user.SetorNome, user.ModulosDesativados}, true
 		}
 		response.JSONError(w, http.StatusUnauthorized, "tela não autorizada")
 		return painelAutorizado{}, false
@@ -129,12 +152,12 @@ func (h *TVHandler) autorizarPainel(w http.ResponseWriter, r *http.Request) (pai
 	h.limites.liberar(ip)
 
 	_ = h.db.Queries.RegistrarAcessoTelaTV(r.Context(), sqlc.RegistrarAcessoTelaTVParams{ID: tela.ID, UltimoIp: ip})
-	return painelAutorizado{tela.Nome, tela.SetorID, tela.SetorNome}, true
+	return painelAutorizado{tela.Nome, tela.SetorID, tela.SetorNome, tela.SetorModulosDesativados}, true
 }
 
 // Painel: GET /api/tv/painel (chave da tela no cabeçalho X-TV-Chave, ou sessão)
 func (h *TVHandler) Painel(w http.ResponseWriter, r *http.Request) {
-	tela, ok := h.autorizarPainel(w, r)
+	tela, ok := h.autorizarPainel(w, r, modulos.TV)
 	if !ok {
 		return
 	}
@@ -149,13 +172,51 @@ func (h *TVHandler) Painel(w http.ResponseWriter, r *http.Request) {
 		Tickets:       []TVTicketResponse{},
 		PlantaoHoje:   []PlantaoResponse{},
 		Avisos:        []TVAvisoResponse{},
+		Modulos:       modulos.Ativos(tela.desativados),
 	}
 
-	// 1. Monitores ativos (fora do ar primeiro, pela ordem da query)
+	// Cada quadro só é montado se o módulo dele está ligado no setor
+	if tela.temModulo(modulos.Monitor) && !h.monitoresNaTV(w, r, &res) {
+		return
+	}
+	if tela.temModulo(modulos.Tickets) && !h.ticketsNaTV(w, r, tela, &res) {
+		return
+	}
+
+	// 3. Quem está de plantão hoje
+	if tela.temModulo(modulos.Plantao) {
+		hoje := hojeSaoPaulo()
+		if lista, err := listarPlantoes(ctx, q, tela.setor, hoje, hoje); err == nil {
+			res.PlantaoHoje = escaladosNoDia(lista, hoje)
+		}
+	}
+
+	// 4. Mural de avisos
+	if tela.temModulo(modulos.Avisos) {
+		if avisos, err := q.ListarAvisosAtivos(ctx, tela.setor); err == nil {
+			for _, a := range avisos {
+				res.Avisos = append(res.Avisos, TVAvisoResponse{
+					ID:          database.UUIDToString(a.ID),
+					Titulo:      a.Titulo,
+					Mensagem:    a.Mensagem,
+					Nivel:       a.Nivel,
+					CriadorNome: a.CriadorNome,
+				})
+			}
+		}
+	}
+
+	response.JSON(w, http.StatusOK, res)
+}
+
+// monitoresNaTV: 1. monitores ativos (fora do ar primeiro, pela ordem da query)
+func (h *TVHandler) monitoresNaTV(w http.ResponseWriter, r *http.Request, res *TVPainelResponse) bool {
+	ctx := r.Context()
+	q := h.db.Queries
 	monitores, err := q.ListarMonitores(ctx)
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar monitores")
-		return
+		return false
 	}
 	fora := make(map[pgtype.UUID]float64)
 	if rows, err := q.SegundosForaUltimas24h(ctx); err == nil {
@@ -179,15 +240,18 @@ func (h *TVHandler) Painel(w http.ResponseWriter, r *http.Request) {
 			Disponibilidade24h: mr.Disponibilidade24h,
 		})
 	}
+	return true
+}
 
-	// 2. Tickets aguardando (prioridade alta e mais antigos primeiro)
-	tickets, err := q.ListarTickets(ctx, sqlc.ListarTicketsParams{
+// ticketsNaTV: 2. tickets aguardando (prioridade alta e mais antigos primeiro)
+func (h *TVHandler) ticketsNaTV(w http.ResponseWriter, r *http.Request, tela painelAutorizado, res *TVPainelResponse) bool {
+	tickets, err := h.db.Queries.ListarTickets(r.Context(), sqlc.ListarTicketsParams{
 		SetorID: tela.setor,
 		Status:  pgtype.Text{String: "aberto", Valid: true},
 	})
 	if err != nil {
 		response.JSONError(w, http.StatusInternalServerError, "erro ao listar tickets")
-		return
+		return false
 	}
 	res.TicketsTotal = len(tickets)
 	for _, tk := range tickets[:min(len(tickets), ticketsNaTV)] {
@@ -199,27 +263,7 @@ func (h *TVHandler) Painel(w http.ResponseWriter, r *http.Request) {
 			CriadoEm:        tk.CriadoEm.Time.Format(time.RFC3339),
 		})
 	}
-
-	// 3. Quem está de plantão hoje
-	hoje := hojeSaoPaulo()
-	if lista, err := listarPlantoes(ctx, q, tela.setor, hoje, hoje); err == nil {
-		res.PlantaoHoje = escaladosNoDia(lista, hoje)
-	}
-
-	// 4. Mural de avisos
-	if avisos, err := q.ListarAvisosAtivos(ctx, tela.setor); err == nil {
-		for _, a := range avisos {
-			res.Avisos = append(res.Avisos, TVAvisoResponse{
-				ID:          database.UUIDToString(a.ID),
-				Titulo:      a.Titulo,
-				Mensagem:    a.Mensagem,
-				Nivel:       a.Nivel,
-				CriadorNome: a.CriadorNome,
-			})
-		}
-	}
-
-	response.JSON(w, http.StatusOK, res)
+	return true
 }
 
 // ListarTelas: GET /api/tv/telas (admin)
@@ -325,7 +369,7 @@ type TVPlantaoResponse struct {
 // Plantao: GET /api/tv/plantao (chave da tela no cabeçalho X-TV-Chave, ou sessão).
 // Escala do setor de hoje até quatro semanas à frente, para o telão do plantão.
 func (h *TVHandler) Plantao(w http.ResponseWriter, r *http.Request) {
-	tela, ok := h.autorizarPainel(w, r)
+	tela, ok := h.autorizarPainel(w, r, modulos.TV, modulos.Plantao)
 	if !ok {
 		return
 	}

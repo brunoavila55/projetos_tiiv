@@ -7,6 +7,7 @@
 	import { apiFetch } from '$lib/api';
 	import { themeStore } from '$lib/theme.svelte';
 	import { radio } from '$lib/radio.svelte';
+	import type { Modulo } from '$lib/modulos';
 	import Avatar from './Avatar.svelte';
 	import {
 		LayoutDashboard,
@@ -58,30 +59,36 @@
 	// Contadores de tickets abertos e monitores fora do ar, atualizados a cada minuto
 	onMount(() => {
 		const atualizar = () => {
-			ticketsStore.atualizar();
-			monitoresStore.atualizar();
+			if (auth.temModulo('tickets')) ticketsStore.atualizar();
+			if (auth.temModulo('monitor')) monitoresStore.atualizar();
 		};
 		atualizar();
 		const timer = setInterval(atualizar, 60_000);
 		return () => clearInterval(timer);
 	});
 
-	const links = [
+	// Itens com módulo só aparecem se ele está ligado no setor
+	type ItemMenu = { href: string; label: string; icon: typeof LayoutDashboard; modulo?: Modulo };
+
+	const todosLinks: ItemMenu[] = [
 		{ href: '/', label: 'Painel', icon: LayoutDashboard },
-		{ href: '/tickets', label: 'Tickets', icon: Inbox },
-		{ href: '/tarefas', label: 'Tarefas', icon: CheckSquare },
-		{ href: '/calendario', label: 'Calendário', icon: Calendar },
-		{ href: '/plantao', label: 'Plantão', icon: ShieldCheck },
-		{ href: '/estoque', label: 'Estoque', icon: Package },
-		{ href: '/tecnicos', label: 'Técnicos', icon: HardHat },
-		{ href: '/monitor', label: 'Monitor', icon: Activity },
-		{ href: '/links', label: 'Links úteis', icon: Link }
+		{ href: '/tickets', label: 'Tickets', icon: Inbox, modulo: 'tickets' },
+		{ href: '/tarefas', label: 'Tarefas', icon: CheckSquare, modulo: 'tarefas' },
+		{ href: '/calendario', label: 'Calendário', icon: Calendar, modulo: 'calendario' },
+		{ href: '/plantao', label: 'Plantão', icon: ShieldCheck, modulo: 'plantao' },
+		{ href: '/estoque', label: 'Estoque', icon: Package, modulo: 'estoque' },
+		{ href: '/tecnicos', label: 'Técnicos', icon: HardHat, modulo: 'tecnicos' },
+		{ href: '/monitor', label: 'Monitor', icon: Activity, modulo: 'monitor' },
+		{ href: '/links', label: 'Links úteis', icon: Link, modulo: 'links' }
 	];
 
-	const adminLinks = [
+	const todosAdminLinks: ItemMenu[] = [
 		{ href: '/usuarios', label: 'Operadores', icon: Users },
-		{ href: '/procedimentos', label: 'Contexto LLM', icon: BookOpen }
+		{ href: '/procedimentos', label: 'Contexto LLM', icon: BookOpen, modulo: 'tira_duvidas' }
 	];
+
+	const links = $derived(todosLinks.filter((l) => !l.modulo || auth.temModulo(l.modulo)));
+	const adminLinks = $derived(todosAdminLinks.filter((l) => !l.modulo || auth.temModulo(l.modulo)));
 
 	const temaLabel = { claro: 'Claro', escuro: 'Escuro', sistema: 'Automático' } as const;
 
@@ -193,36 +200,40 @@
 {#snippet rodape()}
 	{#if auth.user}
 		<div class="space-y-1">
-			<button
-				onclick={() => {
-					radio.aberto = !radio.aberto;
-					mobileMenuOpen = false;
-				}}
-				class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer {radio.aberto
-					? 'bg-muted text-ink'
-					: 'text-ink-2 hover:bg-muted hover:text-ink'}"
-				aria-expanded={radio.aberto}
-			>
-				<Radio class="size-4 {radio.estado === 'tocando' ? 'text-accent' : 'text-ink-3'}" />
-				<span class="truncate">
-					{radio.estado === 'tocando' && radio.atual ? radio.atual.name.trim() : 'Rádio'}
-				</span>
-				{#if radio.estado === 'tocando'}
-					<span class="ml-auto flex items-end gap-[2px] h-3" aria-label="Tocando">
-						<span class="eq-bar"></span><span class="eq-bar [animation-delay:-0.3s]"></span><span
-							class="eq-bar [animation-delay:-0.6s]"
-						></span>
+			{#if auth.temModulo('radio')}
+				<button
+					onclick={() => {
+						radio.aberto = !radio.aberto;
+						mobileMenuOpen = false;
+					}}
+					class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer {radio.aberto
+						? 'bg-muted text-ink'
+						: 'text-ink-2 hover:bg-muted hover:text-ink'}"
+					aria-expanded={radio.aberto}
+				>
+					<Radio class="size-4 {radio.estado === 'tocando' ? 'text-accent' : 'text-ink-3'}" />
+					<span class="truncate">
+						{radio.estado === 'tocando' && radio.atual ? radio.atual.name.trim() : 'Rádio'}
 					</span>
-				{/if}
-			</button>
-			<a
-				href="/tv"
-				onclick={() => (mobileMenuOpen = false)}
-				class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium text-ink-2 hover:bg-muted hover:text-ink transition-colors"
-			>
-				<Tv class="size-4 text-ink-3" />
-				<span>Modo TV</span>
-			</a>
+					{#if radio.estado === 'tocando'}
+						<span class="ml-auto flex items-end gap-[2px] h-3" aria-label="Tocando">
+							<span class="eq-bar"></span><span class="eq-bar [animation-delay:-0.3s]"></span><span
+								class="eq-bar [animation-delay:-0.6s]"
+							></span>
+						</span>
+					{/if}
+				</button>
+			{/if}
+			{#if auth.temModulo('tv')}
+				<a
+					href="/tv"
+					onclick={() => (mobileMenuOpen = false)}
+					class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium text-ink-2 hover:bg-muted hover:text-ink transition-colors"
+				>
+					<Tv class="size-4 text-ink-3" />
+					<span>Modo TV</span>
+				</a>
+			{/if}
 			<button
 				onclick={toggleTheme}
 				class="flex w-full items-center gap-3 h-9 px-3 rounded-lg text-sm font-medium text-ink-2 hover:bg-muted hover:text-ink transition-colors cursor-pointer"

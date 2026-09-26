@@ -13,6 +13,7 @@ import (
 	"tiiv/backend/internal/database"
 	"tiiv/backend/internal/handlers"
 	"tiiv/backend/internal/middleware"
+	"tiiv/backend/internal/modulos"
 	"tiiv/backend/internal/response"
 )
 
@@ -126,6 +127,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Mural de avisos (autor ou admin editam e excluem)
 			protected.Route("/avisos", func(a chi.Router) {
+				a.Use(authMiddleware.RequireModulo(modulos.Avisos))
 				a.Get("/", avisoHandler.Listar)
 				a.Post("/", avisoHandler.Criar)
 				a.Put("/{id}", avisoHandler.Atualizar)
@@ -134,6 +136,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Monitor de disponibilidade (cadastro só admin)
 			protected.Route("/monitores", func(m chi.Router) {
+				m.Use(authMiddleware.RequireModulo(modulos.Monitor))
 				m.Get("/", monitorHandler.Listar)
 				m.Get("/resumo", monitorHandler.Resumo)
 				m.Post("/{id}/verificar", monitorHandler.Verificar)
@@ -149,6 +152,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Telas do modo TV (Apenas Admin)
 			protected.Route("/tv/telas", func(tv chi.Router) {
+				tv.Use(authMiddleware.RequireModulo(modulos.TV))
 				tv.Use(authMiddleware.RequireAdmin)
 				tv.Get("/", tvHandler.ListarTelas)
 				tv.Post("/", tvHandler.CriarTela)
@@ -157,6 +161,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Links úteis (autor ou admin editam e excluem)
 			protected.Route("/links", func(l chi.Router) {
+				l.Use(authMiddleware.RequireModulo(modulos.Links))
 				l.Get("/", linkHandler.Listar)
 				l.Post("/", linkHandler.Criar)
 				l.Put("/{id}", linkHandler.Atualizar)
@@ -165,6 +170,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Calendário
 			protected.Route("/eventos", func(e chi.Router) {
+				e.Use(authMiddleware.RequireModulo(modulos.Calendario))
 				e.Get("/", eventoHandler.Listar)
 				e.Post("/", eventoHandler.Criar)
 				e.Put("/{id}", eventoHandler.Atualizar)
@@ -173,6 +179,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Plantão: escala por nome (montagem só admin)
 			protected.Route("/plantoes", func(p chi.Router) {
+				p.Use(authMiddleware.RequireModulo(modulos.Plantao))
 				p.Get("/", plantaoHandler.Listar)
 				p.Get("/pessoas", plantaoHandler.Pessoas)
 				p.Get("/feriados", plantaoHandler.Feriados)
@@ -188,6 +195,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Tarefas
 			protected.Route("/tarefas", func(t chi.Router) {
+				t.Use(authMiddleware.RequireModulo(modulos.Tarefas))
 				t.Get("/", tarefaHandler.Listar)
 				t.Post("/", tarefaHandler.Criar)
 				t.Put("/{id}", tarefaHandler.Atualizar)
@@ -200,6 +208,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Estoque
 			protected.Route("/estoque", func(est chi.Router) {
+				est.Use(authMiddleware.RequireModulo(modulos.Estoque))
 				est.Get("/itens", estoqueHandler.ListarItens)
 				est.Get("/itens/{id}", estoqueHandler.ObterItem)
 				est.Get("/categorias", estoqueHandler.ListarCategorias)
@@ -218,6 +227,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Tickets: fila aberta pela tela de acesso; resgatar vira tarefa
 			protected.Route("/tickets", func(tk chi.Router) {
+				tk.Use(authMiddleware.RequireModulo(modulos.Tickets))
 				tk.Get("/", ticketHandler.Listar)
 				tk.Get("/resumo", ticketHandler.Resumo)
 				tk.Post("/{id}/resgatar", ticketHandler.Resgatar)
@@ -226,6 +236,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Técnicos: cadastro, entrada/saída e relatórios
 			protected.Route("/tecnicos", func(tec chi.Router) {
+				tec.Use(authMiddleware.RequireModulo(modulos.Tecnicos))
 				tec.Get("/", tecnicoHandler.Listar)
 				tec.Post("/", tecnicoHandler.Criar)
 				tec.Put("/{id}", tecnicoHandler.Atualizar)
@@ -247,6 +258,7 @@ func SetupRouter(cfg *config.Config, db *database.DB) (http.Handler, error) {
 
 			// Procedimentos do tira-dúvidas (Apenas Admin)
 			protected.Route("/procedimentos", func(p chi.Router) {
+				p.Use(authMiddleware.RequireModulo(modulos.TiraDuvidas))
 				p.Use(authMiddleware.RequireAdmin)
 				p.Get("/", procedimentoHandler.Listar)
 				p.Post("/", procedimentoHandler.Criar)

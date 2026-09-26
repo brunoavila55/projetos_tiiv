@@ -20,6 +20,7 @@ import (
 	"tiiv/backend/internal/config"
 	"tiiv/backend/internal/database"
 	"tiiv/backend/internal/database/sqlc"
+	"tiiv/backend/internal/modulos"
 	"tiiv/backend/internal/response"
 )
 
@@ -127,7 +128,7 @@ func (h *AssistenteHandler) Perguntar(w http.ResponseWriter, r *http.Request) {
 		response.JSONError(w, http.StatusBadRequest, msg)
 		return
 	}
-	setor, err := setorDoPedido(r.Context(), h.db.Queries, req.SetorID)
+	setor, err := setorDoPedido(r.Context(), h.db.Queries, req.SetorID, modulos.TiraDuvidas)
 	if errors.Is(err, errSetorPedido) {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return

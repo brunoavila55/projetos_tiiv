@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"slices"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -24,6 +25,14 @@ type AuthUser struct {
 	// Tudo o que é separado por setor é filtrado por ele.
 	Setor     pgtype.UUID `json:"-"`
 	SetorNome string      `json:"-"`
+
+	// Módulos que o superadmin desligou no setor de trabalho
+	ModulosDesativados []string `json:"-"`
+}
+
+// TemModulo: o módulo está ligado no setor de trabalho
+func (u *AuthUser) TemModulo(m string) bool {
+	return !slices.Contains(u.ModulosDesativados, m)
 }
 
 // EhAdmin: admin do setor ou superadmin

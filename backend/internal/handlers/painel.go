@@ -10,6 +10,7 @@ import (
 	"tiiv/backend/internal/database"
 	"tiiv/backend/internal/database/sqlc"
 	"tiiv/backend/internal/middleware"
+	"tiiv/backend/internal/modulos"
 	"tiiv/backend/internal/response"
 )
 
@@ -52,14 +53,17 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 	// Antecedência de uma semana: hoje + os próximos 7 dias
 	fimJanela := inicioHoje.AddDate(0, 0, DiasAntecedenciaPainel+1).Add(-time.Nanosecond)
 
+	// Cada bloco só aparece se o módulo dele está ligado no setor
 	// 1. Marcações do usuário na próxima semana (recorrências desdobradas)
-	eventos, err := h.db.Queries.ListarEventosIntervalo(r.Context(), sqlc.ListarEventosIntervaloParams{
-		Fim:     database.TimeToTimestamptz(inicioHoje),
-		Inicio:  database.TimeToTimestamptz(fimJanela),
-		SetorID: user.Setor,
-	})
-	if err != nil {
-		eventos = []sqlc.ListarEventosIntervaloRow{}
+	eventos := []sqlc.ListarEventosIntervaloRow{}
+	if user.TemModulo(modulos.Calendario) {
+		if rows, err := h.db.Queries.ListarEventosIntervalo(r.Context(), sqlc.ListarEventosIntervaloParams{
+			Fim:     database.TimeToTimestamptz(inicioHoje),
+			Inicio:  database.TimeToTimestamptz(fimJanela),
+			SetorID: user.Setor,
+		}); err == nil {
+			eventos = rows
+		}
 	}
 
 	eventoIDs := make([]pgtype.UUID, 0, len(eventos))
@@ -102,12 +106,14 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 	})
 
 	// 2. Tarefas pendentes atribuídas ao usuário (atrasadas primeiro)
-	tarefas, err := h.db.Queries.ListarTarefasPendentesUsuario(r.Context(), sqlc.ListarTarefasPendentesUsuarioParams{
-		ResponsavelID: userUUID,
-		SetorID:       user.Setor,
-	})
-	if err != nil {
-		tarefas = []sqlc.ListarTarefasPendentesUsuarioRow{}
+	tarefas := []sqlc.ListarTarefasPendentesUsuarioRow{}
+	if user.TemModulo(modulos.Tarefas) {
+		if rows, err := h.db.Queries.ListarTarefasPendentesUsuario(r.Context(), sqlc.ListarTarefasPendentesUsuarioParams{
+			ResponsavelID: userUUID,
+			SetorID:       user.Setor,
+		}); err == nil {
+			tarefas = rows
+		}
 	}
 
 	tarefasPendentes := make([]TarefaItemResponse, 0, len(tarefas))
@@ -144,21 +150,31 @@ func (h *PainelHandler) ObterDadosPainel(w http.ResponseWriter, r *http.Request)
 	}
 
 	// 3. Mural de avisos da equipe (só os que não expiraram)
-	avisos, err := listarAvisosAtivos(r.Context(), h.db.Queries, user)
-	if err != nil {
-		avisos = []AvisoResponse{}
+	avisos := []AvisoResponse{}
+	if user.TemModulo(modulos.Avisos) {
+		if lista, err := listarAvisosAtivos(r.Context(), h.db.Queries, user); err == nil {
+			avisos = lista
+		}
 	}
 
 	// 4. Monitores fora do ar
-	monitores, err := resumoMonitores(r, h.db.Queries)
-	if err != nil {
-		monitores = ResumoMonitoresResponse{Fora: []MonitorForaResponse{}}
+	monitores := ResumoMonitoresResponse{Fora: []MonitorForaResponse{}}
+	if user.TemModulo(modulos.Monitor) {
+		if resumo, err := resumoMonitores(r, h.db.Queries); err == nil {
+			monitores = resumo
+		}
+	}
+
+	// 5. Plantão de hoje e o próximo turno do usuário
+	plantao := PainelPlantaoResponse{Hoje: []PlantaoResponse{}}
+	if user.TemModulo(modulos.Plantao) {
+		plantao = plantaoNoPainel(r.Context(), h.db.Queries, user)
 	}
 
 	response.JSON(w, http.StatusOK, PainelResponse{
 		Avisos:           avisos,
 		Monitores:        monitores,
-		Plantao:          plantaoNoPainel(r.Context(), h.db.Queries, user),
+		Plantao:          plantao,
 		ProximosEventos:  proximosEventos,
 		TarefasPendentes: tarefasPendentes,
 	})

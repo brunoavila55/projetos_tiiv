@@ -12,22 +12,23 @@ import (
 )
 
 const buscarTelaTVPorHash = `-- name: BuscarTelaTVPorHash :one
-SELECT t.id, t.nome, t.chave_hash, t.criado_por, t.criado_em, t.ultimo_acesso_em, t.ultimo_ip, t.setor_id, s.nome AS setor_nome
+SELECT t.id, t.nome, t.chave_hash, t.criado_por, t.criado_em, t.ultimo_acesso_em, t.ultimo_ip, t.setor_id, s.nome AS setor_nome, s.modulos_desativados AS setor_modulos_desativados
 FROM telas_tv t
 JOIN setores s ON s.id = t.setor_id
 WHERE t.chave_hash = $1
 `
 
 type BuscarTelaTVPorHashRow struct {
-	ID             pgtype.UUID        `json:"id"`
-	Nome           string             `json:"nome"`
-	ChaveHash      string             `json:"chave_hash"`
-	CriadoPor      pgtype.UUID        `json:"criado_por"`
-	CriadoEm       pgtype.Timestamptz `json:"criado_em"`
-	UltimoAcessoEm pgtype.Timestamptz `json:"ultimo_acesso_em"`
-	UltimoIp       string             `json:"ultimo_ip"`
-	SetorID        pgtype.UUID        `json:"setor_id"`
-	SetorNome      string             `json:"setor_nome"`
+	ID                      pgtype.UUID        `json:"id"`
+	Nome                    string             `json:"nome"`
+	ChaveHash               string             `json:"chave_hash"`
+	CriadoPor               pgtype.UUID        `json:"criado_por"`
+	CriadoEm                pgtype.Timestamptz `json:"criado_em"`
+	UltimoAcessoEm          pgtype.Timestamptz `json:"ultimo_acesso_em"`
+	UltimoIp                string             `json:"ultimo_ip"`
+	SetorID                 pgtype.UUID        `json:"setor_id"`
+	SetorNome               string             `json:"setor_nome"`
+	SetorModulosDesativados []string           `json:"setor_modulos_desativados"`
 }
 
 func (q *Queries) BuscarTelaTVPorHash(ctx context.Context, chaveHash string) (BuscarTelaTVPorHashRow, error) {
@@ -43,6 +44,7 @@ func (q *Queries) BuscarTelaTVPorHash(ctx context.Context, chaveHash string) (Bu
 		&i.UltimoIp,
 		&i.SetorID,
 		&i.SetorNome,
+		&i.SetorModulosDesativados,
 	)
 	return i, err
 }

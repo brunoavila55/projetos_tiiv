@@ -44,7 +44,7 @@
 	const DIAS_FAIXA = 14;
 
 	let dados = $state<PlantaoTV | null>(null);
-	let erro = $state<'nao_autorizada' | 'limite' | null>(null);
+	let erro = $state<'nao_autorizada' | 'desativado' | 'limite' | null>(null);
 	let ultimoSucesso = $state(0);
 	let falhando = $state(false);
 	let agora = $state(Date.now());
@@ -64,6 +64,12 @@
 			if (res.status === 401) {
 				if (chave) esquecerChaveTV();
 				erro = 'nao_autorizada';
+				return;
+			}
+			if (res.status === 403) {
+				// Modo TV ou plantão desligado no setor da tela
+				erro = 'desativado';
+				dados = null;
 				return;
 			}
 			if (res.status === 429) {
@@ -90,7 +96,7 @@
 
 		carregar();
 		const timerDados = setInterval(() => {
-			if (erro === 'nao_autorizada') return;
+			if (erro === 'nao_autorizada' || erro === 'desativado') return;
 			carregar();
 		}, INTERVALO_MS);
 		const timerRelogio = setInterval(() => (agora = Date.now()), 1000);
@@ -181,9 +187,18 @@
 				<h1 class="text-[2rem] font-bold leading-tight">Tela não autorizada</h1>
 				<p class="text-[1.125rem] text-ink-2">
 					Para usar a TV do plantão sem login, um administrador cadastra esta tela em
-					<strong class="text-ink">Monitor → Telas de TV</strong> e abre aqui o link do plantão.
+					<strong class="text-ink">Operadores → Telas de TV</strong> e abre aqui o link do plantão.
 				</p>
 				<a href="/" class="btn btn-secondary btn-lg">Entrar no sistema</a>
+			</div>
+		</div>
+	{:else if erro === 'desativado'}
+		<div class="flex-1 grid place-items-center p-8">
+			<div class="max-w-[34rem] text-center space-y-4">
+				<Tv class="size-14 mx-auto text-ink-3" strokeWidth={1.5} />
+				<h1 class="text-[2rem] font-bold leading-tight">TV do plantão desativada</h1>
+				<p class="text-[1.125rem] text-ink-2">O modo TV ou o plantão está desligado para o setor desta tela.</p>
+				<a href="/" class="btn btn-secondary btn-lg">Voltar ao sistema</a>
 			</div>
 		</div>
 	{:else if !dados}

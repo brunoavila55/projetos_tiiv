@@ -242,11 +242,13 @@
 			<p class="page-sub">Disponibilidade de hosts e serviços da rede, verificada pelo servidor. Duas falhas seguidas marcam o alvo como fora do ar.</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
-			<a href="/tv" class="btn btn-secondary">
-				<Tv class="size-4" />
-				<span>Modo TV</span>
-			</a>
-			{#if ehAdmin}
+			{#if auth.temModulo('tv')}
+				<a href="/tv" class="btn btn-secondary">
+					<Tv class="size-4" />
+					<span>Modo TV</span>
+				</a>
+			{/if}
+			{#if ehAdmin && auth.temModulo('tv')}
 				<button onclick={() => (telasAberto = true)} class="btn btn-secondary">Telas de TV</button>
 				<button onclick={abrirNovo} class="btn btn-primary">
 					<Plus class="size-4" />

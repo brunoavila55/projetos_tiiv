@@ -5,6 +5,7 @@
 	import { enviarFoto, removerFoto } from '$lib/foto';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import SetoresAdmin from '$lib/components/SetoresAdmin.svelte';
+	import TelasTV from '$lib/components/TelasTV.svelte';
 	import { 
 		UserPlus, 
 		KeyRound, 
@@ -15,7 +16,8 @@
 		Check,
 		Camera,
 		AlertCircle,
-		Building2
+		Building2,
+		Tv
 	} from 'lucide-svelte';
 
 	type Papel = 'superadmin' | 'admin' | 'usuario';
@@ -50,6 +52,7 @@
 	let modalPinAberto = $state(false);
 	let usuarioSelecionado = $state<UsuarioItem | null>(null);
 	let modalSetoresAberto = $state(false);
+	let telasAberto = $state(false);
 
 	// Superadmin vê todos os setores; admin só o próprio
 	let setores = $state<SetorOpcao[]>([]);
@@ -371,6 +374,12 @@
 						<span>Setores</span>
 					</button>
 				{/if}
+				{#if auth.temModulo('tv')}
+					<button onclick={() => (telasAberto = true)} class="btn btn-secondary">
+						<Tv class="size-4" />
+						<span>Telas de TV</span>
+					</button>
+				{/if}
 				<button onclick={abrirCriar} class="btn btn-primary">
 					<UserPlus class="size-4" />
 					<span>Cadastrar operador</span>
@@ -474,7 +483,19 @@
 	</div>
 
 	{#if modalSetoresAberto}
-		<SetoresAdmin onfechar={() => (modalSetoresAberto = false)} onalterado={() => { carregarSetores(); carregar(); }} />
+		<!-- Os módulos do setor atual podem ter mudado: o menu acompanha -->
+		<SetoresAdmin
+			onfechar={() => (modalSetoresAberto = false)}
+			onalterado={() => {
+				carregarSetores();
+				carregar();
+				auth.recarregarPerfil();
+			}}
+		/>
+	{/if}
+
+	{#if telasAberto}
+		<TelasTV onfechar={() => (telasAberto = false)} />
 	{/if}
 
 	<!-- Modal novo operador -->

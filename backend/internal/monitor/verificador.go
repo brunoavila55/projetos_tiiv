@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	"tiiv/backend/internal/database"
 	"tiiv/backend/internal/database/sqlc"
+	"tiiv/backend/internal/modulos"
 )
 
 const (
@@ -159,6 +161,14 @@ func abrirQueda(ctx context.Context, q *sqlc.Queries, m sqlc.Monitores, erro str
 	quedaID, err := q.AbrirQueda(ctx, sqlc.AbrirQuedaParams{MonitorID: m.ID, Erro: erro})
 	if err != nil || !m.AbrirTicket {
 		return err
+	}
+	// Setor com o módulo de tickets desligado não tem fila para receber
+	setor, err := q.BuscarSetor(ctx, m.SetorTicketID)
+	if err != nil {
+		return err
+	}
+	if slices.Contains(setor.ModulosDesativados, modulos.Tickets) {
+		return nil
 	}
 
 	titulo := "Fora do ar: " + m.Nome

@@ -123,18 +123,28 @@
 	let tkDescricao = $state('');
 	let tkPrioridade = $state<'baixa' | 'media' | 'alta'>('media');
 
-	// Setores que recebem pedidos; com um só, a escolha nem aparece
-	let setoresPedido = $state<{ id: string; nome: string }[]>([]);
+	// Setores que recebem pedidos, cada um com os módulos que atende por aqui
+	// (tickets e/ou tira-dúvidas); com um só, a escolha nem aparece
+	let setoresPedido = $state<{ id: string; nome: string; tickets: boolean; tira_duvidas: boolean }[]>([]);
+	let setoresCarregados = $state(false);
 	let tkSetor = $state('');
+	const setoresTicket = $derived(setoresPedido.filter((s) => s.tickets));
+	const setoresDuvida = $derived(setoresPedido.filter((s) => s.tira_duvidas));
 
 	async function carregarSetores() {
 		try {
-			setoresPedido = await apiFetch<{ id: string; nome: string }[]>('/api/setores/publico', { silent: true });
-			if (setoresPedido.length === 1) tkSetor = setoresPedido[0].id;
+			setoresPedido = await apiFetch<typeof setoresPedido>('/api/setores/publico', { silent: true });
+			setoresCarregados = true;
+			if (setoresTicket.length === 1) tkSetor = setoresTicket[0].id;
 		} catch {
 			// Sem a lista, o servidor ainda aceita o pedido quando há um setor só
 		}
 	}
+
+	// O setor pode ter vindo do tira-dúvidas e não receber tickets
+	const setorDoTicket = $derived(
+		setoresTicket.some((s) => s.id === tkSetor) ? tkSetor : setoresTicket.length === 1 ? setoresTicket[0].id : ''
+	);
 
 	// Mantém o nome para quem abre vários tickets seguidos
 	function novoTicket() {
@@ -159,7 +169,7 @@
 					titulo: tkTitulo,
 					descricao: tkDescricao,
 					prioridade: tkPrioridade,
-					setor_id: tkSetor || undefined
+					setor_id: setorDoTicket || undefined
 				})
 			});
 			ticketEnviado = res.numero;
@@ -233,7 +243,13 @@
 		<!-- Reportar um problema -->
 		<main class="flex-1 grid place-items-center px-4 py-8 sm:py-10">
 			<section class="w-full max-w-xl rounded-2xl bg-surface shadow-float p-6 sm:p-9">
-				{#if ticketEnviado !== null}
+				{#if setoresCarregados && setoresTicket.length === 0}
+					<div class="py-4 text-center">
+						<MessageSquareWarning class="mx-auto size-12 text-ink-3" strokeWidth={1.75} />
+						<h1 class="mt-4 text-[1.75rem] font-bold leading-tight tracking-[-0.02em]">Abertura de tickets indisponível</h1>
+						<p class="mt-2 text-ink-2">Nenhum setor recebe tickets por esta tela no momento. Procure a equipe diretamente.</p>
+					</div>
+				{:else if ticketEnviado !== null}
 					<div class="py-4 text-center" role="status" in:fade={{ duration: 150 }}>
 						<CircleCheck class="mx-auto size-12 text-ok" strokeWidth={1.75} />
 						<h1 class="mt-4 text-[1.75rem] font-bold leading-tight tracking-[-0.02em]">Ticket #{ticketEnviado} registrado</h1>
@@ -252,12 +268,12 @@
 					</div>
 
 					<form class="mt-7 space-y-4" onsubmit={enviarTicket}>
-						{#if setoresPedido.length > 1}
+						{#if setoresTicket.length > 1}
 							<div>
 								<label class="label" for="tk-setor">Para qual setor?</label>
 								<select id="tk-setor" bind:value={tkSetor} required class="field h-11">
 									<option value="" disabled>Escolha o setor</option>
-									{#each setoresPedido as st (st.id)}
+									{#each setoresTicket as st (st.id)}
 										<option value={st.id}>{st.nome}</option>
 									{/each}
 								</select>
@@ -303,7 +319,14 @@
 
 	</div>
 
-	<TiraDuvidas onAbrirTicket={ticketDoTiraDuvidas} setores={setoresPedido} bind:setorId={tkSetor} />
+	{#if !setoresCarregados || setoresDuvida.length > 0}
+		<TiraDuvidas
+			onAbrirTicket={ticketDoTiraDuvidas}
+			podeAbrirTicket={!setoresCarregados || setoresTicket.length > 0}
+			setores={setoresDuvida}
+			bind:setorId={tkSetor}
+		/>
+	{/if}
 
 	<!-- Acesso da equipe (painel lateral) -->
 	{#if acessoAberto}

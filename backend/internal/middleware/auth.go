@@ -76,6 +76,8 @@ func (m *AuthMiddleware) sessaoDaRequisicao(r *http.Request) (user *AuthUser, ms
 		DeveTrocarPin: sessao.UsuarioDeveTrocarPin,
 		Setor:         sessao.SetorID,
 		SetorNome:     sessao.SetorNome,
+
+		ModulosDesativados: sessao.SetorModulosDesativados,
 	}, ""
 }
 
@@ -148,4 +150,25 @@ func (m *AuthMiddleware) RequireSuperadmin(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// RequireModulo recusa a rota quando o módulo está desligado no setor de
+// trabalho (vale também para o superadmin, que vê o setor como ele é)
+func (m *AuthMiddleware) RequireModulo(modulo string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, ok := GetAuthUser(r.Context())
+			if !ok || user == nil {
+				response.JSONError(w, http.StatusUnauthorized, "não autenticado")
+				return
+			}
+
+			if !user.TemModulo(modulo) {
+				response.JSONError(w, http.StatusForbidden, "módulo desativado para este setor")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

@@ -18,7 +18,8 @@ SELECT
     u.tema AS usuario_tema,
     u.deve_trocar_pin AS usuario_deve_trocar_pin,
     st.id AS setor_id,
-    st.nome AS setor_nome
+    st.nome AS setor_nome,
+    st.modulos_desativados AS setor_modulos_desativados
 FROM sessoes s
 JOIN usuarios u ON u.id = s.usuario_id
 -- Setor de trabalho: o escolhido na sessão (só superadmin) ou o do usuário

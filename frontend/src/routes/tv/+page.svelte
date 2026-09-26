@@ -5,6 +5,7 @@
 	import { corDaPessoa, rotuloEscala, type Turno } from '$lib/plantao';
 	import { Maximize, Minimize, ArrowLeft, WifiOff, Tv } from 'lucide-svelte';
 	import '$lib/tv.css';
+	import type { Modulo } from '$lib/modulos';
 
 	type Status = 'pendente' | 'online' | 'offline';
 
@@ -29,6 +30,8 @@
 		tickets: { numero: number; titulo: string; solicitante_nome: string; prioridade: 'baixa' | 'media' | 'alta'; criado_em: string }[];
 		plantao_hoje: Turno[];
 		avisos: { id: string; titulo: string; mensagem: string; nivel: 'info' | 'atencao' | 'critico'; criador_nome: string }[];
+		// Módulos ligados no setor: os quadros dos desligados não aparecem
+		modulos: Modulo[];
 	}
 
 	const FUSO = 'America/Sao_Paulo';
@@ -37,7 +40,7 @@
 	const DADOS_VELHOS_MS = 60_000;
 
 	let dados = $state<PainelTV | null>(null);
-	let erro = $state<'nao_autorizada' | 'limite' | null>(null);
+	let erro = $state<'nao_autorizada' | 'desativado' | 'limite' | null>(null);
 	let ultimoSucesso = $state(0);
 	let falhando = $state(false);
 	let agora = $state(Date.now());
@@ -58,6 +61,12 @@
 				// Chave revogada: esquece para não ficar tentando
 				if (chave) esquecerChaveTV();
 				erro = 'nao_autorizada';
+				return;
+			}
+			if (res.status === 403) {
+				// Modo TV desligado no setor da tela
+				erro = 'desativado';
+				dados = null;
 				return;
 			}
 			if (res.status === 429) {
@@ -85,7 +94,7 @@
 		carregar();
 		const timerDados = setInterval(() => {
 			// Tela recusada: só volta com um novo link ou login
-			if (erro === 'nao_autorizada') return;
+			if (erro === 'nao_autorizada' || erro === 'desativado') return;
 			carregar();
 		}, INTERVALO_MS);
 		const timerRelogio = setInterval(() => (agora = Date.now()), 1000);
@@ -131,6 +140,8 @@
 	}
 
 	const rotuloPrioridade = { alta: 'Alta', media: 'Média', baixa: 'Baixa' } as const;
+
+	const tem = (m: Modulo) => dados?.modulos.includes(m) ?? false;
 </script>
 
 <svelte:head>
@@ -145,9 +156,18 @@
 				<h1 class="text-[2rem] font-bold leading-tight">Tela não autorizada</h1>
 				<p class="text-[1.125rem] text-ink-2">
 					Para usar o modo TV sem login, um administrador cadastra esta tela em
-					<strong class="text-ink">Monitor → Telas de TV</strong> e abre aqui o link gerado.
+					<strong class="text-ink">Operadores → Telas de TV</strong> e abre aqui o link gerado.
 				</p>
 				<a href="/" class="btn btn-secondary btn-lg">Entrar no sistema</a>
+			</div>
+		</div>
+	{:else if erro === 'desativado'}
+		<div class="flex-1 grid place-items-center p-8">
+			<div class="max-w-[34rem] text-center space-y-4">
+				<Tv class="size-14 mx-auto text-ink-3" strokeWidth={1.5} />
+				<h1 class="text-[2rem] font-bold leading-tight">Modo TV desativado</h1>
+				<p class="text-[1.125rem] text-ink-2">O modo TV está desligado para o setor desta tela. O superadmin religa em Operadores → Setores.</p>
+				<a href="/" class="btn btn-secondary btn-lg">Voltar ao sistema</a>
 			</div>
 		</div>
 	{:else if !dados}
@@ -168,28 +188,32 @@
 			</div>
 
 			<!-- Estado geral: a peça que se lê do outro lado da sala -->
-			<div
-				class="estado flex-1 min-w-0 {dados.monitores.length === 0
-					? 'bg-muted text-ink-2'
-					: fora.length > 0
-						? 'bg-danger text-paper'
-						: 'bg-ok-soft text-ok'}"
-				role="status"
-			>
-				{#if dados.monitores.length === 0}
-					Nenhum serviço monitorado
-				{:else if fora.length > 0}
-					<span class="tv-lampada tv-pisca !size-[1.1rem]"></span>
-					<span class="truncate">{fora.length === 1 ? `${fora[0].nome} fora do ar` : `${fora.length} serviços fora do ar`}</span>
-				{:else}
-					<span class="tv-lampada !size-[1.1rem]"></span>
-					<span class="truncate">
-						{noAr === dados.monitores.length
-							? `Todos os ${noAr} serviços no ar`
-							: `${noAr} de ${dados.monitores.length} serviços confirmados no ar`}
-					</span>
-				{/if}
-			</div>
+			{#if tem('monitor')}
+				<div
+					class="estado flex-1 min-w-0 {dados.monitores.length === 0
+						? 'bg-muted text-ink-2'
+						: fora.length > 0
+							? 'bg-danger text-paper'
+							: 'bg-ok-soft text-ok'}"
+					role="status"
+				>
+					{#if dados.monitores.length === 0}
+						Nenhum serviço monitorado
+					{:else if fora.length > 0}
+						<span class="tv-lampada tv-pisca !size-[1.1rem]"></span>
+						<span class="truncate">{fora.length === 1 ? `${fora[0].nome} fora do ar` : `${fora.length} serviços fora do ar`}</span>
+					{:else}
+						<span class="tv-lampada !size-[1.1rem]"></span>
+						<span class="truncate">
+							{noAr === dados.monitores.length
+								? `Todos os ${noAr} serviços no ar`
+								: `${noAr} de ${dados.monitores.length} serviços confirmados no ar`}
+						</span>
+					{/if}
+				</div>
+			{:else}
+				<div class="flex-1"></div>
+			{/if}
 
 			<div class="text-right shrink-0">
 				<div class="tv-display text-[3.5rem] leading-none">
@@ -199,103 +223,109 @@
 			</div>
 		</header>
 
-		<main class="flex-1 min-h-0 grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)] gap-5 px-6 pb-3">
+		<main class="flex-1 min-h-0 grid {tem('monitor') ? 'grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)]' : 'grid-cols-1'} gap-5 px-6 pb-3">
 			<!-- Monitores: um cartão por serviço, preenchendo a altura toda -->
-			<section
-				class="min-h-0 grid gap-3 auto-rows-[minmax(0,1fr)]"
-				style="grid-template-columns: repeat({colunas}, minmax(0, 1fr));"
-				aria-label="Monitores"
-			>
-				{#each fora as m (m.id)}
-					<article class="servico bg-danger text-paper {colunas > 2 ? 'col-span-2' : ''}">
-						<h2 class="tv-display text-[2.2rem] leading-[1.1] line-clamp-2">{m.nome}</h2>
-						<p class="mt-auto text-[1.35rem] font-bold">Fora do ar há {duracao(m.status_desde)}</p>
-						{#if m.ultimo_erro}
-							<p class="text-[1.05rem] opacity-80 truncate">{m.ultimo_erro}</p>
-						{/if}
-					</article>
-				{/each}
-				{#each demais as m (m.id)}
-					<article class="servico bg-surface border border-line">
-						<div class="flex items-start gap-3 min-w-0">
-							<span class="tv-lampada mt-[0.5rem] {m.status === 'online' ? 'text-ok' : 'text-ink-3'}"></span>
-							<h2 class="tv-display text-[1.6rem] leading-[1.2] line-clamp-2 min-w-0 {m.status === 'pendente' ? 'text-ink-2' : ''}">{m.nome}</h2>
-						</div>
-						<p class="mt-auto text-[1.05rem] text-ink-3 tabular truncate">
-							{#if m.status === 'pendente'}
-								Aguardando a primeira verificação
-							{:else}
-								{#if m.latencia_ms != null}<span class="text-ink-2 font-semibold">{m.latencia_ms} ms</span>{:else}No ar{/if}{#if m.disponibilidade_24h != null}
-									<span class="ml-3 {m.disponibilidade_24h < 99 ? 'text-warn' : ''}">{formatarPct(m.disponibilidade_24h)} em 24 h</span>
-								{/if}
+			{#if tem('monitor')}
+				<section
+					class="min-h-0 grid gap-3 auto-rows-[minmax(0,1fr)]"
+					style="grid-template-columns: repeat({colunas}, minmax(0, 1fr));"
+					aria-label="Monitores"
+				>
+					{#each fora as m (m.id)}
+						<article class="servico bg-danger text-paper {colunas > 2 ? 'col-span-2' : ''}">
+							<h2 class="tv-display text-[2.2rem] leading-[1.1] line-clamp-2">{m.nome}</h2>
+							<p class="mt-auto text-[1.35rem] font-bold">Fora do ar há {duracao(m.status_desde)}</p>
+							{#if m.ultimo_erro}
+								<p class="text-[1.05rem] opacity-80 truncate">{m.ultimo_erro}</p>
 							{/if}
-						</p>
-					</article>
-				{/each}
-				{#each { length: vazias } as _}
-					<div class="rounded-xl border border-dashed border-line"></div>
-				{/each}
-			</section>
+						</article>
+					{/each}
+					{#each demais as m (m.id)}
+						<article class="servico bg-surface border border-line">
+							<div class="flex items-start gap-3 min-w-0">
+								<span class="tv-lampada mt-[0.5rem] {m.status === 'online' ? 'text-ok' : 'text-ink-3'}"></span>
+								<h2 class="tv-display text-[1.6rem] leading-[1.2] line-clamp-2 min-w-0 {m.status === 'pendente' ? 'text-ink-2' : ''}">{m.nome}</h2>
+							</div>
+							<p class="mt-auto text-[1.05rem] text-ink-3 tabular truncate">
+								{#if m.status === 'pendente'}
+									Aguardando a primeira verificação
+								{:else}
+									{#if m.latencia_ms != null}<span class="text-ink-2 font-semibold">{m.latencia_ms} ms</span>{:else}No ar{/if}{#if m.disponibilidade_24h != null}
+										<span class="ml-3 {m.disponibilidade_24h < 99 ? 'text-warn' : ''}">{formatarPct(m.disponibilidade_24h)} em 24 h</span>
+									{/if}
+								{/if}
+							</p>
+						</article>
+					{/each}
+					{#each { length: vazias } as _}
+						<div class="rounded-xl border border-dashed border-line"></div>
+					{/each}
+				</section>
+			{/if}
 
 			<!-- Coluna lateral: plantão, fila e avisos -->
 			<aside class="min-h-0 flex flex-col gap-4 overflow-hidden">
-				<section class="panel px-5 py-4 shrink-0">
-					<h2 class="bloco">De plantão hoje</h2>
-					{#if dados.plantao_hoje.length === 0}
-						<p class="mt-2 text-[1.1rem] text-warn">Ninguém escalado para hoje.</p>
-					{:else}
-						<ul class="mt-3 space-y-3">
-							{#each dados.plantao_hoje as p (p.id)}
-								<li class="flex items-center gap-3 min-w-0">
-									<Avatar id={p.id} nome={p.nome} cor={corDaPessoa(p.nome)} class="size-11 text-[0.95rem]" />
-									<div class="min-w-0">
-										<div class="text-[1.4rem] font-bold leading-tight truncate">{p.nome}</div>
-										<div class="text-[0.95rem] text-ink-3 truncate">
-											{rotuloEscala(p)}{p.observacao ? `, ${p.observacao}` : ''}
+				{#if tem('plantao')}
+					<section class="panel px-5 py-4 shrink-0">
+						<h2 class="bloco">De plantão hoje</h2>
+						{#if dados.plantao_hoje.length === 0}
+							<p class="mt-2 text-[1.1rem] text-warn">Ninguém escalado para hoje.</p>
+						{:else}
+							<ul class="mt-3 space-y-3">
+								{#each dados.plantao_hoje as p (p.id)}
+									<li class="flex items-center gap-3 min-w-0">
+										<Avatar id={p.id} nome={p.nome} cor={corDaPessoa(p.nome)} class="size-11 text-[0.95rem]" />
+										<div class="min-w-0">
+											<div class="text-[1.4rem] font-bold leading-tight truncate">{p.nome}</div>
+											<div class="text-[0.95rem] text-ink-3 truncate">
+												{rotuloEscala(p)}{p.observacao ? `, ${p.observacao}` : ''}
+											</div>
 										</div>
-									</div>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</section>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</section>
+				{/if}
 
-				<section class="panel px-5 py-4 min-h-0 flex flex-col">
-					<div class="flex items-center justify-between gap-3">
-						<h2 class="bloco">Tickets na fila</h2>
-						<span
-							class="min-w-[2.5rem] h-[2.5rem] px-2.5 rounded-full grid place-items-center text-[1.4rem] font-bold tabular {dados.tickets_total > 0
-								? 'bg-accent text-on-accent'
-								: 'bg-muted text-ink-3'}">{dados.tickets_total}</span
-						>
-					</div>
-					{#if dados.tickets.length === 0}
-						<p class="mt-2 text-[1.1rem] text-ink-3">Fila vazia.</p>
-					{:else}
-						<ul class="tv-lista mt-3">
-							{#each dados.tickets as tk (tk.numero)}
-								<li class="py-2 border-t border-line first:border-t-0 min-w-0 flex gap-3">
-									<span
-										class="w-1 self-stretch rounded-full shrink-0 {tk.prioridade === 'alta'
-											? 'bg-danger'
-											: tk.prioridade === 'media'
-												? 'bg-warn'
-												: 'bg-line-strong'}"
-									></span>
-									<div class="min-w-0 flex-1">
-										<div class="text-[1.15rem] font-semibold leading-snug truncate">{tk.titulo}</div>
-										<div class="text-[0.95rem] text-ink-3 truncate tabular">
-											#{tk.numero}, {tk.solicitante_nome}, aberto há {duracao(tk.criado_em)}
+				{#if tem('tickets')}
+					<section class="panel px-5 py-4 min-h-0 flex flex-col">
+						<div class="flex items-center justify-between gap-3">
+							<h2 class="bloco">Tickets na fila</h2>
+							<span
+								class="min-w-[2.5rem] h-[2.5rem] px-2.5 rounded-full grid place-items-center text-[1.4rem] font-bold tabular {dados.tickets_total > 0
+									? 'bg-accent text-on-accent'
+									: 'bg-muted text-ink-3'}">{dados.tickets_total}</span
+							>
+						</div>
+						{#if dados.tickets.length === 0}
+							<p class="mt-2 text-[1.1rem] text-ink-3">Fila vazia.</p>
+						{:else}
+							<ul class="tv-lista mt-3">
+								{#each dados.tickets as tk (tk.numero)}
+									<li class="py-2 border-t border-line first:border-t-0 min-w-0 flex gap-3">
+										<span
+											class="w-1 self-stretch rounded-full shrink-0 {tk.prioridade === 'alta'
+												? 'bg-danger'
+												: tk.prioridade === 'media'
+													? 'bg-warn'
+													: 'bg-line-strong'}"
+										></span>
+										<div class="min-w-0 flex-1">
+											<div class="text-[1.15rem] font-semibold leading-snug truncate">{tk.titulo}</div>
+											<div class="text-[0.95rem] text-ink-3 truncate tabular">
+												#{tk.numero}, {tk.solicitante_nome}, aberto há {duracao(tk.criado_em)}
+											</div>
 										</div>
-									</div>
-									{#if tk.prioridade === 'alta'}
-										<span class="tag tag-danger self-center shrink-0 !text-[0.9rem] !h-7">{rotuloPrioridade.alta}</span>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</section>
+										{#if tk.prioridade === 'alta'}
+											<span class="tag tag-danger self-center shrink-0 !text-[0.9rem] !h-7">{rotuloPrioridade.alta}</span>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</section>
+				{/if}
 
 				{#if dados.avisos.length > 0}
 					<section class="panel px-5 py-4 min-h-0 flex flex-col">

@@ -13,31 +13,38 @@ import (
 
 const atualizarSetor = `-- name: AtualizarSetor :one
 UPDATE setores
-SET nome = $2, aceita_pedidos = $3
+SET nome = $2, aceita_pedidos = $3, modulos_desativados = $4
 WHERE id = $1
-RETURNING id, nome, aceita_pedidos, criado_em
+RETURNING id, nome, aceita_pedidos, criado_em, modulos_desativados
 `
 
 type AtualizarSetorParams struct {
-	ID            pgtype.UUID `json:"id"`
-	Nome          string      `json:"nome"`
-	AceitaPedidos bool        `json:"aceita_pedidos"`
+	ID                 pgtype.UUID `json:"id"`
+	Nome               string      `json:"nome"`
+	AceitaPedidos      bool        `json:"aceita_pedidos"`
+	ModulosDesativados []string    `json:"modulos_desativados"`
 }
 
 func (q *Queries) AtualizarSetor(ctx context.Context, arg AtualizarSetorParams) (Setores, error) {
-	row := q.db.QueryRow(ctx, atualizarSetor, arg.ID, arg.Nome, arg.AceitaPedidos)
+	row := q.db.QueryRow(ctx, atualizarSetor,
+		arg.ID,
+		arg.Nome,
+		arg.AceitaPedidos,
+		arg.ModulosDesativados,
+	)
 	var i Setores
 	err := row.Scan(
 		&i.ID,
 		&i.Nome,
 		&i.AceitaPedidos,
 		&i.CriadoEm,
+		&i.ModulosDesativados,
 	)
 	return i, err
 }
 
 const buscarSetor = `-- name: BuscarSetor :one
-SELECT id, nome, aceita_pedidos, criado_em FROM setores WHERE id = $1
+SELECT id, nome, aceita_pedidos, criado_em, modulos_desativados FROM setores WHERE id = $1
 `
 
 func (q *Queries) BuscarSetor(ctx context.Context, id pgtype.UUID) (Setores, error) {
@@ -48,29 +55,32 @@ func (q *Queries) BuscarSetor(ctx context.Context, id pgtype.UUID) (Setores, err
 		&i.Nome,
 		&i.AceitaPedidos,
 		&i.CriadoEm,
+		&i.ModulosDesativados,
 	)
 	return i, err
 }
 
 const criarSetor = `-- name: CriarSetor :one
-INSERT INTO setores (nome, aceita_pedidos)
-VALUES ($1, $2)
-RETURNING id, nome, aceita_pedidos, criado_em
+INSERT INTO setores (nome, aceita_pedidos, modulos_desativados)
+VALUES ($1, $2, $3)
+RETURNING id, nome, aceita_pedidos, criado_em, modulos_desativados
 `
 
 type CriarSetorParams struct {
-	Nome          string `json:"nome"`
-	AceitaPedidos bool   `json:"aceita_pedidos"`
+	Nome               string   `json:"nome"`
+	AceitaPedidos      bool     `json:"aceita_pedidos"`
+	ModulosDesativados []string `json:"modulos_desativados"`
 }
 
 func (q *Queries) CriarSetor(ctx context.Context, arg CriarSetorParams) (Setores, error) {
-	row := q.db.QueryRow(ctx, criarSetor, arg.Nome, arg.AceitaPedidos)
+	row := q.db.QueryRow(ctx, criarSetor, arg.Nome, arg.AceitaPedidos, arg.ModulosDesativados)
 	var i Setores
 	err := row.Scan(
 		&i.ID,
 		&i.Nome,
 		&i.AceitaPedidos,
 		&i.CriadoEm,
+		&i.ModulosDesativados,
 	)
 	return i, err
 }
@@ -144,18 +154,19 @@ func (q *Queries) ListarEquipeSetor(ctx context.Context, setorID pgtype.UUID) ([
 
 const listarSetores = `-- name: ListarSetores :many
 SELECT
-    s.id, s.nome, s.aceita_pedidos, s.criado_em,
+    s.id, s.nome, s.aceita_pedidos, s.modulos_desativados, s.criado_em,
     (SELECT count(*) FROM usuarios u WHERE u.setor_id = s.id AND u.ativo) AS usuarios_ativos
 FROM setores s
 ORDER BY lower(s.nome)
 `
 
 type ListarSetoresRow struct {
-	ID             pgtype.UUID        `json:"id"`
-	Nome           string             `json:"nome"`
-	AceitaPedidos  bool               `json:"aceita_pedidos"`
-	CriadoEm       pgtype.Timestamptz `json:"criado_em"`
-	UsuariosAtivos int64              `json:"usuarios_ativos"`
+	ID                 pgtype.UUID        `json:"id"`
+	Nome               string             `json:"nome"`
+	AceitaPedidos      bool               `json:"aceita_pedidos"`
+	ModulosDesativados []string           `json:"modulos_desativados"`
+	CriadoEm           pgtype.Timestamptz `json:"criado_em"`
+	UsuariosAtivos     int64              `json:"usuarios_ativos"`
 }
 
 func (q *Queries) ListarSetores(ctx context.Context) ([]ListarSetoresRow, error) {
@@ -171,6 +182,7 @@ func (q *Queries) ListarSetores(ctx context.Context) ([]ListarSetoresRow, error)
 			&i.ID,
 			&i.Nome,
 			&i.AceitaPedidos,
+			&i.ModulosDesativados,
 			&i.CriadoEm,
 			&i.UsuariosAtivos,
 		); err != nil {
@@ -185,14 +197,15 @@ func (q *Queries) ListarSetores(ctx context.Context) ([]ListarSetoresRow, error)
 }
 
 const listarSetoresPedidos = `-- name: ListarSetoresPedidos :many
-SELECT id, nome FROM setores
+SELECT id, nome, modulos_desativados FROM setores
 WHERE aceita_pedidos
 ORDER BY lower(nome)
 `
 
 type ListarSetoresPedidosRow struct {
-	ID   pgtype.UUID `json:"id"`
-	Nome string      `json:"nome"`
+	ID                 pgtype.UUID `json:"id"`
+	Nome               string      `json:"nome"`
+	ModulosDesativados []string    `json:"modulos_desativados"`
 }
 
 // Setores que aparecem na tela de acesso (ticket e tira-dúvidas)
@@ -205,7 +218,7 @@ func (q *Queries) ListarSetoresPedidos(ctx context.Context) ([]ListarSetoresPedi
 	var items []ListarSetoresPedidosRow
 	for rows.Next() {
 		var i ListarSetoresPedidosRow
-		if err := rows.Scan(&i.ID, &i.Nome); err != nil {
+		if err := rows.Scan(&i.ID, &i.Nome, &i.ModulosDesativados); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -217,7 +230,7 @@ func (q *Queries) ListarSetoresPedidos(ctx context.Context) ([]ListarSetoresPedi
 }
 
 const primeiroSetor = `-- name: PrimeiroSetor :one
-SELECT id, nome, aceita_pedidos, criado_em FROM setores ORDER BY criado_em, nome LIMIT 1
+SELECT id, nome, aceita_pedidos, criado_em, modulos_desativados FROM setores ORDER BY criado_em, nome LIMIT 1
 `
 
 func (q *Queries) PrimeiroSetor(ctx context.Context) (Setores, error) {
@@ -228,6 +241,7 @@ func (q *Queries) PrimeiroSetor(ctx context.Context) (Setores, error) {
 		&i.Nome,
 		&i.AceitaPedidos,
 		&i.CriadoEm,
+		&i.ModulosDesativados,
 	)
 	return i, err
 }

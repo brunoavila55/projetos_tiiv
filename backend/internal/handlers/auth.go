@@ -13,6 +13,7 @@ import (
 	"tiiv/backend/internal/database"
 	"tiiv/backend/internal/database/sqlc"
 	"tiiv/backend/internal/middleware"
+	"tiiv/backend/internal/modulos"
 	"tiiv/backend/internal/response"
 )
 
@@ -88,8 +89,8 @@ type UserProfileResponse struct {
 	FotoVersao *int64 `json:"foto_versao"`
 	// Admin inicial: precisa trocar o PIN antes de usar o sistema
 	DeveTrocarPin bool `json:"deve_trocar_pin"`
-	// Setor de trabalho (o superadmin pode trocar)
-	Setor SetorPublico `json:"setor"`
+	// Setor de trabalho (o superadmin pode trocar), com os módulos ligados
+	Setor SetorTrabalho `json:"setor"`
 }
 
 // Login: POST /api/auth/login
@@ -194,9 +195,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Sessão nova começa no setor da própria pessoa
-	var setor SetorPublico
+	var setor SetorTrabalho
 	if s, err := h.db.Queries.BuscarSetor(r.Context(), user.SetorID); err == nil {
-		setor = SetorPublico{ID: database.UUIDToString(s.ID), Nome: s.Nome}
+		setor = SetorTrabalho{ID: database.UUIDToString(s.ID), Nome: s.Nome, Modulos: modulos.Ativos(s.ModulosDesativados)}
 	}
 
 	response.JSON(w, http.StatusOK, UserProfileResponse{
@@ -260,7 +261,11 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		FotoVersao: fotoV,
 
 		DeveTrocarPin: user.DeveTrocarPin,
-		Setor:         SetorPublico{ID: database.UUIDToString(user.Setor), Nome: user.SetorNome},
+		Setor: SetorTrabalho{
+			ID:      database.UUIDToString(user.Setor),
+			Nome:    user.SetorNome,
+			Modulos: modulos.Ativos(user.ModulosDesativados),
+		},
 	})
 }
 

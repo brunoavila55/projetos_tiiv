@@ -42,7 +42,8 @@ SELECT
     u.tema AS usuario_tema,
     u.deve_trocar_pin AS usuario_deve_trocar_pin,
     st.id AS setor_id,
-    st.nome AS setor_nome
+    st.nome AS setor_nome,
+    st.modulos_desativados AS setor_modulos_desativados
 FROM sessoes s
 JOIN usuarios u ON u.id = s.usuario_id
 JOIN setores st ON st.id = COALESCE(CASE WHEN u.papel = 'superadmin' THEN s.setor_id END, u.setor_id)
@@ -50,20 +51,21 @@ WHERE s.token_hash = $1 AND u.ativo = true
 `
 
 type BuscarSessaoPorHashRow struct {
-	ID                   pgtype.UUID        `json:"id"`
-	TokenHash            string             `json:"token_hash"`
-	UsuarioID            pgtype.UUID        `json:"usuario_id"`
-	ExpiraEm             pgtype.Timestamptz `json:"expira_em"`
-	UltimoUsoEm          pgtype.Timestamptz `json:"ultimo_uso_em"`
-	CriadoEm             pgtype.Timestamptz `json:"criado_em"`
-	UsuarioNome          string             `json:"usuario_nome"`
-	UsuarioCor           string             `json:"usuario_cor"`
-	UsuarioPapel         string             `json:"usuario_papel"`
-	UsuarioAtivo         bool               `json:"usuario_ativo"`
-	UsuarioTema          string             `json:"usuario_tema"`
-	UsuarioDeveTrocarPin bool               `json:"usuario_deve_trocar_pin"`
-	SetorID              pgtype.UUID        `json:"setor_id"`
-	SetorNome            string             `json:"setor_nome"`
+	ID                      pgtype.UUID        `json:"id"`
+	TokenHash               string             `json:"token_hash"`
+	UsuarioID               pgtype.UUID        `json:"usuario_id"`
+	ExpiraEm                pgtype.Timestamptz `json:"expira_em"`
+	UltimoUsoEm             pgtype.Timestamptz `json:"ultimo_uso_em"`
+	CriadoEm                pgtype.Timestamptz `json:"criado_em"`
+	UsuarioNome             string             `json:"usuario_nome"`
+	UsuarioCor              string             `json:"usuario_cor"`
+	UsuarioPapel            string             `json:"usuario_papel"`
+	UsuarioAtivo            bool               `json:"usuario_ativo"`
+	UsuarioTema             string             `json:"usuario_tema"`
+	UsuarioDeveTrocarPin    bool               `json:"usuario_deve_trocar_pin"`
+	SetorID                 pgtype.UUID        `json:"setor_id"`
+	SetorNome               string             `json:"setor_nome"`
+	SetorModulosDesativados []string           `json:"setor_modulos_desativados"`
 }
 
 // Setor de trabalho: o escolhido na sessão (só superadmin) ou o do usuário
@@ -85,6 +87,7 @@ func (q *Queries) BuscarSessaoPorHash(ctx context.Context, tokenHash string) (Bu
 		&i.UsuarioDeveTrocarPin,
 		&i.SetorID,
 		&i.SetorNome,
+		&i.SetorModulosDesativados,
 	)
 	return i, err
 }

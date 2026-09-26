@@ -1,9 +1,15 @@
 import { apiFetch, ApiError } from './api';
 import { themeStore } from './theme.svelte';
+import type { Modulo } from './modulos';
 
 export interface Setor {
 	id: string;
 	nome: string;
+}
+
+// Setor de trabalho, com os módulos ligados nele
+export interface SetorTrabalho extends Setor {
+	modulos: Modulo[];
 }
 
 export interface UserProfile {
@@ -12,7 +18,7 @@ export interface UserProfile {
 	cor: string;
 	papel: 'superadmin' | 'admin' | 'usuario';
 	// Setor de trabalho: tudo o que é separado por setor vem filtrado por ele
-	setor: Setor;
+	setor: SetorTrabalho;
 	tema?: 'claro' | 'escuro' | 'sistema';
 	foto_versao?: number | null;
 	// Admin inicial: precisa trocar o PIN antes de usar o sistema
@@ -36,6 +42,11 @@ class AuthStore {
 	ehAdmin = $derived(this.user?.papel === 'admin' || this.user?.papel === 'superadmin');
 	ehSuperadmin = $derived(this.user?.papel === 'superadmin');
 
+	// Módulo ligado no setor de trabalho
+	temModulo(m: Modulo): boolean {
+		return this.user?.setor.modulos?.includes(m) ?? false;
+	}
+
 	constructor() {
 		if (typeof window !== 'undefined') {
 			this.setupActivityListeners();
@@ -57,6 +68,16 @@ class AuthStore {
 			return null;
 		} finally {
 			this.loading = false;
+		}
+	}
+
+	// Atualiza o perfil sem passar pela tela de carregamento (ex.: módulos do
+	// setor mudaram)
+	async recarregarPerfil() {
+		try {
+			this.user = await apiFetch<UserProfile>('/api/auth/me', { silent: true });
+		} catch {
+			// Mantém o perfil atual; a próxima chamada trata sessão expirada
 		}
 	}
 

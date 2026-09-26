@@ -1,13 +1,13 @@
 -- name: ListarSetores :many
 SELECT
-    s.id, s.nome, s.aceita_pedidos, s.criado_em,
+    s.id, s.nome, s.aceita_pedidos, s.modulos_desativados, s.criado_em,
     (SELECT count(*) FROM usuarios u WHERE u.setor_id = s.id AND u.ativo) AS usuarios_ativos
 FROM setores s
 ORDER BY lower(s.nome);
 
 -- name: ListarSetoresPedidos :many
 -- Setores que aparecem na tela de acesso (ticket e tira-dúvidas)
-SELECT id, nome FROM setores
+SELECT id, nome, modulos_desativados FROM setores
 WHERE aceita_pedidos
 ORDER BY lower(nome);
 
@@ -18,13 +18,13 @@ SELECT * FROM setores WHERE id = $1;
 SELECT * FROM setores ORDER BY criado_em, nome LIMIT 1;
 
 -- name: CriarSetor :one
-INSERT INTO setores (nome, aceita_pedidos)
-VALUES ($1, $2)
+INSERT INTO setores (nome, aceita_pedidos, modulos_desativados)
+VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: AtualizarSetor :one
 UPDATE setores
-SET nome = $2, aceita_pedidos = $3
+SET nome = $2, aceita_pedidos = $3, modulos_desativados = $4
 WHERE id = $1
 RETURNING *;
 

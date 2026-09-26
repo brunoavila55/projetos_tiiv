@@ -307,10 +307,12 @@
 				<button aria-pressed={aba === 'resumo'} onclick={() => trocarAba('resumo')}>Resumo</button>
 				<button aria-pressed={aba === 'calendario'} onclick={() => trocarAba('calendario')}>Calendário</button>
 			</div>
-			<a href="/plantao/tv" class="btn btn-ghost" title="Abrir a escala em tela cheia para o telão">
-				<Tv class="size-4" />
-				<span class="hidden sm:inline">Modo TV</span>
-			</a>
+			{#if auth.temModulo('tv')}
+				<a href="/plantao/tv" class="btn btn-ghost" title="Abrir a escala em tela cheia para o telão">
+					<Tv class="size-4" />
+					<span class="hidden sm:inline">Modo TV</span>
+				</a>
+			{/if}
 			{#if ehAdmin}
 				<button onclick={() => (novo = {})} class="btn btn-primary">
 					<Plus class="size-4" />

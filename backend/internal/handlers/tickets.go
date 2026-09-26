@@ -16,6 +16,7 @@ import (
 	"tiiv/backend/internal/database"
 	"tiiv/backend/internal/database/sqlc"
 	"tiiv/backend/internal/middleware"
+	"tiiv/backend/internal/modulos"
 	"tiiv/backend/internal/response"
 )
 
@@ -87,7 +88,7 @@ func (h *TicketHandler) CriarPublico(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setor, err := setorDoPedido(r.Context(), h.db.Queries, req.SetorID)
+	setor, err := setorDoPedido(r.Context(), h.db.Queries, req.SetorID, modulos.Tickets)
 	if errors.Is(err, errSetorPedido) {
 		response.JSONError(w, http.StatusBadRequest, err.Error())
 		return

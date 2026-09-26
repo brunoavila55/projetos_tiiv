@@ -17,16 +17,24 @@
 		fontes?: Fonte[];
 	}
 
-	// setorId é o mesmo do formulário de ticket: a dúvida e o ticket vão para o mesmo setor
+	// setorId é o mesmo do formulário de ticket: a dúvida e o ticket vão para o
+	// mesmo setor. setores são só os que têm o tira-dúvidas ligado.
 	let {
 		onAbrirTicket,
+		podeAbrirTicket = true,
 		setores = [],
 		setorId = $bindable('')
 	}: {
 		onAbrirTicket: (descricao: string) => void;
+		podeAbrirTicket?: boolean;
 		setores?: { id: string; nome: string }[];
 		setorId?: string;
 	} = $props();
+
+	// O setor pode ter vindo do ticket e não ter o tira-dúvidas
+	const setorDaDuvida = $derived(
+		setores.some((s) => s.id === setorId) ? setorId : setores.length === 1 ? setores[0].id : ''
+	);
 
 	// "desligado" = sem credenciais da Cloudflare; o botão nem aparece
 	let status = $state<'carregando' | 'disponivel' | 'cota' | 'desligado'>('carregando');
@@ -65,7 +73,7 @@
 	async function enviar() {
 		const texto = pergunta.trim();
 		if (!texto || enviando || status !== 'disponivel') return;
-		if (setores.length > 1 && !setorId) {
+		if (setores.length > 1 && !setorDaDuvida) {
 			erro = 'Escolha o setor da sua dúvida';
 			return;
 		}
@@ -82,7 +90,7 @@
 				silent: true,
 				body: JSON.stringify({
 					mensagens: mensagens.map(({ papel, texto }) => ({ papel, texto })),
-					setor_id: setorId || undefined
+					setor_id: setorDaDuvida || undefined
 				})
 			});
 			mensagens.push({ papel: 'assistente', texto: res.resposta, fontes: res.fontes });
@@ -212,7 +220,7 @@
 					</div>
 				{/if}
 
-				{#if perguntou && !enviando}
+				{#if perguntou && !enviando && podeAbrirTicket}
 					<div class="flex justify-center pt-1">
 						<button type="button" onclick={abrirTicket} class="btn btn-sm btn-ghost text-accent">
 							Não resolveu? Abrir ticket
@@ -225,8 +233,9 @@
 			<div class="border-t border-line p-3">
 				{#if status === 'cota'}
 					<p class="px-1 py-2 text-sm text-ink-2">
-						O tira-dúvidas atingiu o limite de hoje e volta amanhã. Se precisar de ajuda agora,
-						<button type="button" onclick={abrirTicket} class="font-semibold text-accent underline underline-offset-2 cursor-pointer">abra um ticket</button>.
+						O tira-dúvidas atingiu o limite de hoje e volta amanhã.{#if podeAbrirTicket}
+							Se precisar de ajuda agora,
+							<button type="button" onclick={abrirTicket} class="font-semibold text-accent underline underline-offset-2 cursor-pointer">abra um ticket</button>.{/if}
 					</p>
 				{:else}
 					{#if erro}

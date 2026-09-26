@@ -202,6 +202,13 @@
 		return `Seu próximo ${tipo} começa ${quando}: ${t.inicio === t.fim ? dia(t.inicio) : `${dia(t.inicio)} a ${dia(t.fim)}`}`;
 	}
 
+	const atalhos = $derived(
+		[
+			{ href: '/tarefas', label: 'Tarefas', desc: 'Quadro da equipe', icon: CheckSquare, modulo: 'tarefas' as const },
+			{ href: '/calendario', label: 'Calendário', desc: 'Marcações do mês', icon: Calendar, modulo: 'calendario' as const }
+		].filter((a) => auth.temModulo(a.modulo))
+	);
+
 	function quandoFalta(iso: string): string {
 		const n = diasAte(iso);
 		if (n < 0) return 'em andamento';
@@ -235,69 +242,73 @@
 			</p>
 			<h1 class="page-title mt-0.5">{saudacao()}, {primeiroNome(auth.user?.nome)}</h1>
 		</div>
-		<div class="flex flex-wrap gap-2">
-			<a href="/tarefas" class="btn btn-primary">
-				<Plus class="size-4" />
-				<span>Nova tarefa</span>
-			</a>
-		</div>
+		{#if auth.temModulo('tarefas')}
+			<div class="flex flex-wrap gap-2">
+				<a href="/tarefas" class="btn btn-primary">
+					<Plus class="size-4" />
+					<span>Nova tarefa</span>
+				</a>
+			</div>
+		{/if}
 	</div>
 
 	{#if loading}
 		<div class="flex justify-center py-20"><div class="spinner"></div></div>
 	{:else if dados}
 		<!-- Mural de avisos -->
-		<section class="panel">
-			<div class="flex items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-line">
-				<h2 class="flex items-center gap-2 text-[15px] font-bold text-ink">
-					<Megaphone class="size-4 text-ink-3" />
-					Mural de avisos
-					{#if dados.avisos.length}
-						<span class="font-semibold text-ink-3 tabular">{dados.avisos.length}</span>
-					{/if}
-				</h2>
-				<button onclick={abrirNovoAviso} class="btn btn-sm btn-soft">
-					<Plus class="size-4" />
-					<span>Novo aviso</span>
-				</button>
-			</div>
-			{#if dados.avisos.length === 0}
-				<p class="px-5 py-6 text-sm text-ink-3 text-center">Nenhum aviso no mural.</p>
-			{:else}
-				<ul class="divide-y divide-line">
-					{#each dados.avisos as a (a.id)}
-						{@const nivel = NIVEIS[a.nivel]}
-						<li class="group flex items-start gap-3 px-5 py-3">
-							<div class="min-w-0 flex-1 border-l-[3px] pl-3 {nivel.borda}">
-								<div class="flex flex-wrap items-center gap-2">
-									<span class="font-semibold text-ink text-sm leading-snug">{a.titulo}</span>
-									{#if a.nivel !== 'info'}<span class="tag {nivel.tag}">{nivel.rotulo}</span>{/if}
+		{#if auth.temModulo('avisos')}
+			<section class="panel">
+				<div class="flex items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-line">
+					<h2 class="flex items-center gap-2 text-[15px] font-bold text-ink">
+						<Megaphone class="size-4 text-ink-3" />
+						Mural de avisos
+						{#if dados.avisos.length}
+							<span class="font-semibold text-ink-3 tabular">{dados.avisos.length}</span>
+						{/if}
+					</h2>
+					<button onclick={abrirNovoAviso} class="btn btn-sm btn-soft">
+						<Plus class="size-4" />
+						<span>Novo aviso</span>
+					</button>
+				</div>
+				{#if dados.avisos.length === 0}
+					<p class="px-5 py-6 text-sm text-ink-3 text-center">Nenhum aviso no mural.</p>
+				{:else}
+					<ul class="divide-y divide-line">
+						{#each dados.avisos as a (a.id)}
+							{@const nivel = NIVEIS[a.nivel]}
+							<li class="group flex items-start gap-3 px-5 py-3">
+								<div class="min-w-0 flex-1 border-l-[3px] pl-3 {nivel.borda}">
+									<div class="flex flex-wrap items-center gap-2">
+										<span class="font-semibold text-ink text-sm leading-snug">{a.titulo}</span>
+										{#if a.nivel !== 'info'}<span class="tag {nivel.tag}">{nivel.rotulo}</span>{/if}
+									</div>
+									{#if a.mensagem}
+										<p class="text-sm text-ink-2 mt-1 whitespace-pre-line break-words">{a.mensagem}</p>
+									{/if}
+									<div class="flex flex-wrap gap-x-3 text-[13px] text-ink-3 mt-1">
+										<span>{a.criador_nome}</span>
+										<span>{a.expira_em ? `até ${dataCurta(a.expira_em)}` : 'sem prazo'}</span>
+									</div>
 								</div>
-								{#if a.mensagem}
-									<p class="text-sm text-ink-2 mt-1 whitespace-pre-line break-words">{a.mensagem}</p>
+								{#if a.pode_editar}
+									<div class="flex shrink-0 gap-1">
+										<button onclick={() => abrirEditarAviso(a)} class="icon-btn" title="Editar" aria-label="Editar aviso">
+											<Pencil class="size-4" />
+										</button>
+										<button onclick={() => excluirAviso(a)} class="icon-btn icon-btn-danger" title="Excluir" aria-label="Excluir aviso">
+											<Trash2 class="size-4" />
+										</button>
+									</div>
 								{/if}
-								<div class="flex flex-wrap gap-x-3 text-[13px] text-ink-3 mt-1">
-									<span>{a.criador_nome}</span>
-									<span>{a.expira_em ? `até ${dataCurta(a.expira_em)}` : 'sem prazo'}</span>
-								</div>
-							</div>
-							{#if a.pode_editar}
-								<div class="flex shrink-0 gap-1">
-									<button onclick={() => abrirEditarAviso(a)} class="icon-btn" title="Editar" aria-label="Editar aviso">
-										<Pencil class="size-4" />
-									</button>
-									<button onclick={() => excluirAviso(a)} class="icon-btn icon-btn-danger" title="Excluir" aria-label="Excluir aviso">
-										<Trash2 class="size-4" />
-									</button>
-								</div>
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
+		{/if}
 
-		<!-- Monitor de disponibilidade -->
+		<!-- Monitor de disponibilidade (vem vazio se o módulo está desligado) -->
 		{#if dados.monitores.fora.length > 0}
 			<section class="rounded-xl border border-danger/40 bg-danger-soft">
 				<a href="/monitor" class="flex items-center gap-2 px-4 pt-3.5 pb-2 text-sm font-bold text-danger hover:underline underline-offset-2">
@@ -366,76 +377,77 @@
 			</a>
 		{/if}
 
-		<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+		<div class="grid grid-cols-1 {auth.temModulo('calendario') && auth.temModulo('tarefas') ? 'lg:grid-cols-2' : ''} gap-5 items-start">
 			<!-- Agenda -->
-			<section class="panel">
-				{@render cabecalho('Próximos 7 dias', dados.proximos_eventos.length, '/calendario', 'Calendário')}
-				{#if dados.proximos_eventos.length === 0}
-					{@render vazio('Nada marcado para a próxima semana.')}
-				{:else}
-					<ul class="divide-y divide-line">
-						{#each dados.proximos_eventos.slice(0, 6) as ev (ev.id)}
-							<li class="flex gap-4 px-5 py-3">
-								<div class="w-14 shrink-0 tabular">
-									<div class="text-[13px] font-semibold text-ink-3 first-letter:uppercase">{rotuloDia(ev.inicio)}</div>
-									<div class="text-[15px] font-bold text-ink">{dataCurta(ev.inicio)}</div>
-								</div>
-								<div class="min-w-0 flex-1 border-l-[3px] pl-3" style="border-color: {ev.criador_cor};">
-									<div class="font-semibold text-ink text-sm leading-snug">{ev.titulo}</div>
-									<div class="flex gap-3 text-[13px] text-ink-3 mt-0.5 min-w-0">
-										<span class="shrink-0 {diasAte(ev.inicio) <= 1 ? 'font-semibold text-accent' : ''}">{quandoFalta(ev.inicio)}</span>
-										{#if diasAte(ev.fim) !== diasAte(ev.inicio)}<span class="shrink-0">até {dataCurta(ev.fim)}</span>{/if}
-										<span class="truncate">{ev.criador_nome}</span>
+			{#if auth.temModulo('calendario')}
+				<section class="panel">
+					{@render cabecalho('Próximos 7 dias', dados.proximos_eventos.length, '/calendario', 'Calendário')}
+					{#if dados.proximos_eventos.length === 0}
+						{@render vazio('Nada marcado para a próxima semana.')}
+					{:else}
+						<ul class="divide-y divide-line">
+							{#each dados.proximos_eventos.slice(0, 6) as ev (ev.id)}
+								<li class="flex gap-4 px-5 py-3">
+									<div class="w-14 shrink-0 tabular">
+										<div class="text-[13px] font-semibold text-ink-3 first-letter:uppercase">{rotuloDia(ev.inicio)}</div>
+										<div class="text-[15px] font-bold text-ink">{dataCurta(ev.inicio)}</div>
 									</div>
-								</div>
-							</li>
-						{/each}
-					</ul>
-					{#if dados.proximos_eventos.length > 6}
-						<a href="/calendario" class="block px-5 py-3 border-t border-line text-[13px] font-semibold text-ink-3 hover:text-accent">
-							Mais {dados.proximos_eventos.length - 6} no calendário
-						</a>
+									<div class="min-w-0 flex-1 border-l-[3px] pl-3" style="border-color: {ev.criador_cor};">
+										<div class="font-semibold text-ink text-sm leading-snug">{ev.titulo}</div>
+										<div class="flex gap-3 text-[13px] text-ink-3 mt-0.5 min-w-0">
+											<span class="shrink-0 {diasAte(ev.inicio) <= 1 ? 'font-semibold text-accent' : ''}">{quandoFalta(ev.inicio)}</span>
+											{#if diasAte(ev.fim) !== diasAte(ev.inicio)}<span class="shrink-0">até {dataCurta(ev.fim)}</span>{/if}
+											<span class="truncate">{ev.criador_nome}</span>
+										</div>
+									</div>
+								</li>
+							{/each}
+						</ul>
+						{#if dados.proximos_eventos.length > 6}
+							<a href="/calendario" class="block px-5 py-3 border-t border-line text-[13px] font-semibold text-ink-3 hover:text-accent">
+								Mais {dados.proximos_eventos.length - 6} no calendário
+							</a>
+						{/if}
 					{/if}
-				{/if}
-			</section>
+				</section>
+			{/if}
 
 			<!-- Minhas tarefas -->
-			<section class="panel">
-				{@render cabecalho('Minhas tarefas', dados.tarefas_pendentes.length, '/tarefas', 'Ver todas')}
-				{#if dados.tarefas_pendentes.length === 0}
-					{@render vazio('Nenhuma tarefa pendente com você.')}
-				{:else}
-					<ul class="divide-y divide-line">
-						{#each dados.tarefas_pendentes as t (t.id)}
-							<li class="flex items-start gap-3 px-5 py-3">
-								<span
-									class="mt-1.5 size-2 shrink-0 rounded-full {t.atrasada ? 'bg-danger' : t.prioridade === 'alta' ? 'bg-warn' : 'bg-line-strong'}"
-									aria-hidden="true"
-								></span>
-								<div class="min-w-0 flex-1">
-									<div class="font-semibold text-ink text-sm leading-snug">{t.titulo}</div>
-									<div class="text-[13px] mt-0.5 {t.atrasada ? 'text-danger font-semibold' : 'text-ink-3'}">
-										{t.atrasada ? 'Atrasada, prazo' : t.prazo ? 'Prazo' : 'Sem prazo'}
-										{#if t.prazo}{new Date(t.prazo).toLocaleDateString('pt-BR')}{/if}
+			{#if auth.temModulo('tarefas')}
+				<section class="panel">
+					{@render cabecalho('Minhas tarefas', dados.tarefas_pendentes.length, '/tarefas', 'Ver todas')}
+					{#if dados.tarefas_pendentes.length === 0}
+						{@render vazio('Nenhuma tarefa pendente com você.')}
+					{:else}
+						<ul class="divide-y divide-line">
+							{#each dados.tarefas_pendentes as t (t.id)}
+								<li class="flex items-start gap-3 px-5 py-3">
+									<span
+										class="mt-1.5 size-2 shrink-0 rounded-full {t.atrasada ? 'bg-danger' : t.prioridade === 'alta' ? 'bg-warn' : 'bg-line-strong'}"
+										aria-hidden="true"
+									></span>
+									<div class="min-w-0 flex-1">
+										<div class="font-semibold text-ink text-sm leading-snug">{t.titulo}</div>
+										<div class="text-[13px] mt-0.5 {t.atrasada ? 'text-danger font-semibold' : 'text-ink-3'}">
+											{t.atrasada ? 'Atrasada, prazo' : t.prazo ? 'Prazo' : 'Sem prazo'}
+											{#if t.prazo}{new Date(t.prazo).toLocaleDateString('pt-BR')}{/if}
+										</div>
 									</div>
-								</div>
-								{#if t.prioridade === 'alta'}
-									<Flag class="size-3.5 mt-1 text-warn shrink-0" aria-label="Prioridade alta" />
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
-
+									{#if t.prioridade === 'alta'}
+										<Flag class="size-3.5 mt-1 text-warn shrink-0" aria-label="Prioridade alta" />
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</section>
+			{/if}
 		</div>
 
 		<!-- Atalhos -->
+		{#if atalhos.length}
 		<nav class="grid grid-cols-2 gap-3" aria-label="Atalhos">
-			{#each [
-				{ href: '/tarefas', label: 'Tarefas', desc: 'Quadro da equipe', icon: CheckSquare },
-				{ href: '/calendario', label: 'Calendário', desc: 'Marcações do mês', icon: Calendar }
-			] as atalho}
+			{#each atalhos as atalho}
 				{@const Icon = atalho.icon}
 				<a href={atalho.href} class="group flex items-center gap-3 px-4 py-3.5 rounded-xl border border-line hover:bg-surface hover:border-line-strong transition-colors">
 					<Icon class="size-5 text-ink-3 group-hover:text-accent transition-colors" />
@@ -446,6 +458,7 @@
 				</a>
 			{/each}
 		</nav>
+		{/if}
 	{:else}
 		<div class="alert bg-danger-soft text-danger">Não foi possível carregar o painel. Recarregue a página para tentar de novo.</div>
 	{/if}

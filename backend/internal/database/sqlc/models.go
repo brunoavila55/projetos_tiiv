@@ -172,10 +172,11 @@ type Sessoes struct {
 }
 
 type Setores struct {
-	ID            pgtype.UUID        `json:"id"`
-	Nome          string             `json:"nome"`
-	AceitaPedidos bool               `json:"aceita_pedidos"`
-	CriadoEm      pgtype.Timestamptz `json:"criado_em"`
+	ID                 pgtype.UUID        `json:"id"`
+	Nome               string             `json:"nome"`
+	AceitaPedidos      bool               `json:"aceita_pedidos"`
+	CriadoEm           pgtype.Timestamptz `json:"criado_em"`
+	ModulosDesativados []string           `json:"modulos_desativados"`
 }
 
 type TarefaComentarios struct {

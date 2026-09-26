@@ -11,7 +11,7 @@ WHERE t.setor_id = $1
 ORDER BY lower(t.nome);
 
 -- name: BuscarTelaTVPorHash :one
-SELECT t.*, s.nome AS setor_nome
+SELECT t.*, s.nome AS setor_nome, s.modulos_desativados AS setor_modulos_desativados
 FROM telas_tv t
 JOIN setores s ON s.id = t.setor_id
 WHERE t.chave_hash = $1;
